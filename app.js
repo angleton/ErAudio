@@ -1,16 +1,11 @@
 const controls = {
   speed: document.querySelector('#speed-slider'),
-  pitch: document.querySelector('#pitch-slider'),
-  tempo: document.querySelector('#tempo-slider'),
   scrubber: document.querySelector('#scrubber'),
   volume: document.querySelector('#volume'),
-  balance: document.querySelector('#balance'),
 };
 
 const valueDisplays = {
   speed: document.querySelector('#val-speed'),
-  pitch: document.querySelector('#val-pitch'),
-  tempo: document.querySelector('#val-tempo'),
 };
 
 const eventStatus = document.querySelector('#event-status');
@@ -26,6 +21,9 @@ const openForm = document.querySelector('#open-form');
 const youtubeInput = document.querySelector('#youtube-input');
 const youtubeInputError = document.querySelector('#youtube-input-error');
 const fallbackStorage = new Map();
+const googleClientId = window.ERAUDIO_CONFIG?.googleClientId || '';
+const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
+let youtubeAccessToken = '';
 
 const favoriteLists = [
   {
@@ -135,6 +133,7 @@ function renderFavoritesList(listId) {
     item.className = `playlist-item${index === 0 ? ' active' : ''}`;
     item.type = 'button';
     item.dataset.track = String(index + 1);
+    if (track.videoId) item.dataset.videoId = track.videoId;
     item.textContent = `${index + 1}. ${track.title} [${track.duration}]`;
     return item;
   }));
@@ -164,15 +163,124 @@ function setYouTubeAccount(accountName) {
   youtubeLoginButton.setAttribute('aria-label', `YouTube account: ${normalizedName}`);
 }
 
+function parseIsoDuration(value) {
+  const match = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(value || '');
+  if (!match) return '00:00';
+  const totalSeconds = (Number(match[1] || 0) * 3600) + (Number(match[2] || 0) * 60) + Number(match[3] || 0);
+  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+async function youtubeApi(path, params) {
+  const url = new URL(`https://www.googleapis.com/youtube/v3/${path}`);
+  Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${youtubeAccessToken}` } });
+  if (!response.ok) throw new Error(`YouTube API ${path} failed (${response.status})`);
+  return response.json();
+}
+
+async function fetchAllPages(path, params) {
+  const items = [];
+  let pageToken = '';
+  do {
+    const page = await youtubeApi(path, pageToken ? { ...params, pageToken } : params);
+    items.push(...page.items);
+    pageToken = page.nextPageToken || '';
+  } while (pageToken);
+  return items;
+}
+
+async function loadPlaylistTracks(list) {
+  if (list.loaded || !list.playlistId) return;
+  const entries = await fetchAllPages('playlistItems', {
+    part: 'snippet,contentDetails',
+    playlistId: list.playlistId,
+    maxResults: '50',
+  });
+  const playable = entries.filter((entry) => entry.contentDetails?.videoId
+    && !['Private video', 'Deleted video'].includes(entry.snippet?.title));
+  const durations = new Map();
+  for (let start = 0; start < playable.length; start += 50) {
+    const ids = playable.slice(start, start + 50).map((entry) => entry.contentDetails.videoId);
+    const videos = await youtubeApi('videos', { part: 'contentDetails', id: ids.join(','), maxResults: '50' });
+    videos.items.forEach((video) => durations.set(video.id, parseIsoDuration(video.contentDetails.duration)));
+  }
+  list.tracks = playable.map((entry) => ({
+    title: entry.snippet.title,
+    videoId: entry.contentDetails.videoId,
+    duration: durations.get(entry.contentDetails.videoId) || '00:00',
+  }));
+  list.loaded = true;
+}
+
+async function selectFavoritesList(listId) {
+  const list = favoriteLists.find((candidate) => candidate.id === listId) || favoriteLists[0];
+  try {
+    await loadPlaylistTracks(list);
+  } catch (error) {
+    announceEvent({ type: 'error', name: error.message });
+  }
+  renderFavoritesList(list.id);
+}
+
+async function loadAccountPlaylists() {
+  const channels = await youtubeApi('channels', { part: 'snippet,contentDetails', mine: 'true' });
+  const channel = channels.items?.[0];
+  if (!channel) throw new Error('No YouTube channel found for this account.');
+  setYouTubeAccount(channel.snippet.title);
+
+  const playlists = await fetchAllPages('playlists', { part: 'snippet', mine: 'true', maxResults: '50' });
+  const accountLists = [];
+  const related = channel.contentDetails.relatedPlaylists;
+  if (related.likes) accountLists.push({ id: related.likes, playlistId: related.likes, name: 'Liked videos', tracks: [] });
+  playlists.forEach((playlist) => {
+    accountLists.push({ id: playlist.id, playlistId: playlist.id, name: playlist.snippet.title, tracks: [] });
+  });
+  if (!accountLists.length) return;
+
+  favoriteLists.splice(0, favoriteLists.length, ...accountLists);
+  favoritesSelect.replaceChildren(...favoriteLists.map((list) => {
+    const option = document.createElement('option');
+    option.value = list.id;
+    option.textContent = list.name;
+    return option;
+  }));
+  playlistSourceRow.hidden = false;
+  await selectFavoritesList(favoriteLists[0].id);
+}
+
 function requestYouTubeLogin() {
   document.dispatchEvent(new CustomEvent('eraudio:youtube-login-request'));
   announceEvent({ type: 'login', name: 'YouTube' });
+
+  if (!googleClientId) {
+    announceEvent({ type: 'error', name: 'Set googleClientId in config.js to enable YouTube sign-in' });
+    return;
+  }
+  if (!window.google?.accounts?.oauth2) {
+    announceEvent({ type: 'error', name: 'Google sign-in script failed to load' });
+    return;
+  }
+
+  google.accounts.oauth2.initTokenClient({
+    client_id: googleClientId,
+    scope: youtubeScope,
+    callback: async (tokenResponse) => {
+      if (tokenResponse.error) {
+        announceEvent({ type: 'error', name: tokenResponse.error });
+        return;
+      }
+      youtubeAccessToken = tokenResponse.access_token;
+      try {
+        await loadAccountPlaylists();
+      } catch (error) {
+        announceEvent({ type: 'error', name: error.message });
+      }
+    },
+  }).requestAccessToken();
 }
 
 function formatValue(controlName, value) {
   if (controlName === 'speed') return `${Number(value).toFixed(3)}x`;
-  if (controlName === 'pitch') return `${Number(value).toFixed(1)} st`;
-  if (controlName === 'tempo') return `${Number(value).toFixed(1)}%`;
   return value;
 }
 
@@ -208,7 +316,7 @@ document.querySelectorAll('[data-control]').forEach((control) => {
 });
 
 favoritesSelect.addEventListener('change', () => {
-  renderFavoritesList(favoritesSelect.value);
+  selectFavoritesList(favoritesSelect.value);
 });
 
 youtubeLoginButton.addEventListener('click', requestYouTubeLogin);
@@ -275,10 +383,10 @@ openForm.addEventListener('submit', (event) => {
 
 document.querySelector('#btn-reset-all').addEventListener('click', () => {
   updateControl('speed', '1.00');
-  updateControl('pitch', '0.0');
-  updateControl('tempo', '0.0');
-  document.querySelector('#chk-preserve-pitch').checked = true;
-  announceEvent({ type: 'reset', name: 'all playback controls' });
+  document.querySelectorAll('[data-speed]').forEach((preset) => {
+    preset.classList.toggle('active', preset.dataset.speed === '1.0');
+  });
+  announceEvent({ type: 'reset', name: 'playback speed' });
 });
 
 initializeFavorites();

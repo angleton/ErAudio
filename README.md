@@ -1,6 +1,6 @@
 # ErAudio YouTube Web Player (with Pitchfork High-Granularity Control)
 
-A retro YouTube audio web player interface inspired by the classic **Winamp 2.x skin**, branded as **ErAudio**, and paired with the **PaceMaker / Pitchfork** DSP plugin for fine-grained audio tempo, speed, and pitch control.
+A retro YouTube audio web player interface inspired by the classic **Winamp 2.x skin**, branded as **ErAudio**, and paired with a **Pitchfork**-style playback speed control.
 
 ---
 
@@ -9,7 +9,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 This project aims to preserve the compact retro-audio-player aesthetic that inspired it while establishing ErAudio as its own product identity.
 
 ### Current UI Prototype
-The prototype recreates a classic retro player window (dark metallic panels, bevelled buttons, green/yellow LED matrix display, spectrum visualization) alongside a Pitchfork/PaceMaker-style plugin window with high-precision Speed, Pitch, and Tempo sliders, plus a dedicated playlist window (pure audio playback, no video screen display in this iteration).
+The prototype recreates a classic retro player window (dark metallic panels, bevelled buttons, green/yellow LED matrix display) alongside a Pitchfork-style plugin window with a high-precision Speed slider and presets, plus a dedicated playlist window (pure audio playback, no video screen display in this iteration).
 
 ![ErAudio YouTube Player UI Prototype](screenshot-ui.png)
 <br>
@@ -22,7 +22,7 @@ The prototype recreates a classic retro player window (dark metallic panels, bev
 ### Current Stage: Interactive HTML5 UI Prototype
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
-* **Granular Controls:** Speed slider configured for high-precision steps (`0.0025x` increments, minimum `0.0625x` to match YouTube's `playbackRate` limit), semitone pitch adjustments, and tempo sliders.
+* **Granular Controls:** Speed slider configured for high-precision steps (`0.0025x` increments, minimum `0.0625x` to match YouTube's `playbackRate` limit).
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.
 * **Open Input:** The Open control accepts an 11-character video ID or a YouTube watch, short, embed, Shorts, or live URL. It validates the ID format and emits an `eraudio:control` event with the input, normalized URL, video ID, query parameters, and fragment. This validates syntax only; it does not verify that a video exists or start playback.
 * **Event Hooks:** Controls dispatch an `eraudio:control` `CustomEvent` on `document`. The interface can be opened directly as a local file; if browser storage is unavailable, preferences fall back to in-memory values for that page session.
@@ -31,7 +31,7 @@ The prototype recreates a classic retro player window (dark metallic panels, bev
 * **Rust + WebAssembly (Wasm):** Rust application state management, playlist handling, keyboard shortcuts, and player logic.
 * **YouTube playback:** Start with a YouTube video ID or URL entered through the ErAudio-style **Open** control. A later iteration may offer YouTube browsing/search, subject to the available YouTube APIs and their authentication, quota, and usage requirements.
 * **Audio-first presentation:** The player can present YouTube playback as an audio-focused experience while retaining the underlying supported YouTube player. Extracting and redistributing raw YouTube audio is not assumed to be part of this project.
-* **Playback controls:** The YouTube IFrame Player API can provide supported playback-rate controls, but it does not guarantee arbitrary floating-point rates. Pitch and tempo processing may therefore require an approved playback pipeline or a separate DSP layer rather than direct cross-origin iframe manipulation.
+* **Playback controls:** The YouTube IFrame Player API can provide supported playback-rate controls, but it does not guarantee arbitrary floating-point rates. Pitch, tempo, spectrum analysis, and stream bitrate/sample-rate readouts are not exposed by the embed, so those controls are intentionally omitted; they would require an approved playback pipeline or a separate DSP layer rather than direct cross-origin iframe manipulation.
 * **Optional browser extension interop:** A browser extension could report which tabs are marked audible through the WebExtensions `tabs` API in Chromium-based browsers and Firefox. This is useful for discovery and companion features, but it does not expose exact audio routing or the individual audio element responsible for sound.
 * **Desktop window behavior:** HTML/CSS can make the player surface translucent, but a normal browser page cannot make its outer browser window transparent or define OS-level click-through regions. True transparent-window behavior requires a desktop wrapper or native host such as Electron, Tauri, WinUI, WPF, or WinForms.
 
@@ -54,6 +54,14 @@ This is a static HTML/CSS/JavaScript project. No build step, dependencies, datab
 ### Option 1: Open the file directly
 
 Open `index.html` in a modern browser, for example by double-clicking it in File Explorer. The URL will start with `file://`. The player interface and YouTube URL/ID parsing work locally; if the browser blocks local storage, saved preferences last only for the current page session.
+
+### Signing in to load your playlists
+
+Clicking **YOUTUBE LOGIN** signs in with Google and replaces the sample playlist with the account's **Liked videos** and own playlists (the first one is selected by default). This needs a one-time setup:
+
+1. In Google Cloud Console, enable **YouTube Data API v3** and create an OAuth 2.0 **Web application** client ID.
+2. Add the origin you serve the page from (for example `http://localhost:8080`) to **Authorized JavaScript origins**. Google sign-in does not work from `file://`, so serve the folder, e.g. `python -m http.server 8080`.
+3. Put the client ID in [config.js](config.js) as `googleClientId`.
 
 ### Option 2: Use a local HTTP server
 
