@@ -1,5 +1,5 @@
 /* ==========================================================================
-  ErAMP CLASSIC SKIN & PITCHFORK PLUGIN STYLESHEET
+  ErAudio CLASSIC SKIN & PITCHFORK PLUGIN STYLESHEET
    ========================================================================== */
 
 :root {
@@ -93,6 +93,70 @@ input:focus-visible {
   border: 0;
 }
 
+.open-dialog {
+  width: min(420px, calc(100vw - 28px));
+  margin: auto;
+  padding: 4px;
+  color: #cccccc;
+  background: var(--panel-bg);
+  border: 2px solid var(--panel-border-light);
+  box-shadow: 4px 6px 24px #000000cc;
+}
+
+.open-dialog::backdrop {
+  background: #000000b8;
+}
+
+.open-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.open-dialog .title-bar {
+  cursor: default;
+}
+
+.open-dialog-body {
+  display: grid;
+  gap: 7px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.open-dialog-body input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: var(--lcd-green);
+  background: #080b08;
+  border: 1px solid var(--panel-border-dark);
+  font-family: var(--font-mono);
+  user-select: text;
+}
+
+.open-dialog-error {
+  min-height: 14px;
+  color: #ff7777;
+}
+
+.open-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 6px 6px;
+}
+
+.open-dialog-actions .pl-btn {
+  min-width: 74px;
+  min-height: 26px;
+}
+
+.open-dialog-actions .open-submit {
+  color: var(--accent-gold);
+}
+
 body {
   background-color: var(--bg-dark);
   background-image: 
@@ -110,7 +174,7 @@ body {
 }
 
 /* ==========================================================================
-  ErAMP CONTAINER & WINDOW SHELL
+  ErAudio CONTAINER & WINDOW SHELL
    ========================================================================== */
 
 .winamp-container {

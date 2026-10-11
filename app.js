@@ -18,22 +18,105 @@ const favoritesSelect = document.querySelector('#favorites-select');
 const playlistSourceRow = document.querySelector('#playlist-source-row');
 const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
-const favoritesStorageKey = 'eramp:selected-favorites-list';
+const favoritesStorageKey = 'eraudio:selected-favorites-list';
 const youtubeLoginButton = document.querySelector('#youtube-login');
-const youtubeAccountStorageKey = 'eramp:youtube-account-name';
+const youtubeAccountStorageKey = 'eraudio:youtube-account-name';
+const openDialog = document.querySelector('#open-dialog');
+const openForm = document.querySelector('#open-form');
+const youtubeInput = document.querySelector('#youtube-input');
+const youtubeInputError = document.querySelector('#youtube-input-error');
+const fallbackStorage = new Map();
 
 const favoriteLists = [
   {
     id: 'favorites',
     name: 'Favorites',
     tracks: [
-      { title: 'Retro Synthwave - ErAMP Theme', duration: '03:45' },
+      { title: 'Retro Synthwave - ErAudio Theme', duration: '03:45' },
       { title: 'Chiptune Symphony No. 9', duration: '04:12' },
       { title: 'HTML5 & Wasm Audio Demo', duration: '02:30' },
       { title: 'Pitchfork High Precision Speed Test', duration: '05:00' },
     ],
   },
 ];
+
+function readStoredValue(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return fallbackStorage.get(key) ?? null;
+  }
+}
+
+function writeStoredValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    fallbackStorage.set(key, value);
+  }
+}
+
+function collectQueryParameters(searchParams) {
+  return [...searchParams.entries()].reduce((parameters, [key, value]) => {
+    if (Object.hasOwn(parameters, key)) {
+      parameters[key] = Array.isArray(parameters[key])
+        ? [...parameters[key], value]
+        : [parameters[key], value];
+    } else {
+      parameters[key] = value;
+    }
+    return parameters;
+  }, {});
+}
+
+function parseYouTubeInput(value) {
+  const input = String(value || '').trim();
+  const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
+
+  if (videoIdPattern.test(input)) {
+    return { videoId: input, input, url: null, queryParameters: {}, fragment: '' };
+  }
+  if (!input) {
+    throw new Error('Paste a YouTube link or enter an 11-character video ID.');
+  }
+
+  let url;
+  try {
+    const normalizedInput = /^[a-z][a-z\d+.-]*:/i.test(input)
+      ? input
+      : `https://${input.replace(/^\/\//, '')}`;
+    url = new URL(normalizedInput);
+  } catch {
+    throw new Error('Enter a valid YouTube link or an 11-character video ID.');
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const supportedHosts = new Set([
+    'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com',
+    'youtube-nocookie.com', 'www.youtube-nocookie.com', 'youtu.be', 'www.youtu.be',
+  ]);
+  if (!['https:', 'http:'].includes(url.protocol) || !supportedHosts.has(hostname)) {
+    throw new Error('Use a link from youtube.com or youtu.be.');
+  }
+
+  const queryParameters = collectQueryParameters(url.searchParams);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const videoId = hostname.endsWith('youtu.be')
+    ? pathSegments[0]
+    : queryParameters.v || (['embed', 'shorts', 'live', 'v'].includes(pathSegments[0]) ? pathSegments[1] : null);
+
+  if (!videoId || !videoIdPattern.test(videoId)) {
+    throw new Error('That link does not contain a valid 11-character YouTube video ID.');
+  }
+
+  return {
+    videoId,
+    input,
+    url: url.href,
+    queryParameters,
+    fragment: url.hash ? url.hash.slice(1) : '',
+  };
+}
 
 function formatPlaylistDuration(tracks) {
   const seconds = tracks.reduce((total, track) => {
@@ -45,7 +128,7 @@ function formatPlaylistDuration(tracks) {
 
 function renderFavoritesList(listId) {
   const selectedList = favoriteLists.find((list) => list.id === listId) || favoriteLists[0];
-  localStorage.setItem(favoritesStorageKey, selectedList.id);
+  writeStoredValue(favoritesStorageKey, selectedList.id);
   favoritesSelect.value = selectedList.id;
   playlistList.replaceChildren(...selectedList.tracks.map((track, index) => {
     const item = document.createElement('button');
@@ -67,7 +150,7 @@ function initializeFavorites() {
     return option;
   }));
   playlistSourceRow.hidden = favoriteLists.length < 2;
-  const savedListId = localStorage.getItem(favoritesStorageKey);
+  const savedListId = readStoredValue(favoritesStorageKey);
   renderFavoritesList(favoriteLists.some((list) => list.id === savedListId) ? savedListId : favoriteLists[0].id);
 }
 
@@ -75,14 +158,14 @@ function setYouTubeAccount(accountName) {
   const normalizedName = String(accountName || '').trim();
   if (!normalizedName) return;
 
-  localStorage.setItem(youtubeAccountStorageKey, normalizedName);
-  youtubeLoginButton.textContent = `${normalizedName} ErAMP`;
+  writeStoredValue(youtubeAccountStorageKey, normalizedName);
+  youtubeLoginButton.textContent = `${normalizedName} ErAudio`;
   youtubeLoginButton.dataset.tooltip = `Signed in as ${normalizedName}`;
   youtubeLoginButton.setAttribute('aria-label', `YouTube account: ${normalizedName}`);
 }
 
 function requestYouTubeLogin() {
-  document.dispatchEvent(new CustomEvent('eramp:youtube-login-request'));
+  document.dispatchEvent(new CustomEvent('eraudio:youtube-login-request'));
   announceEvent({ type: 'login', name: 'YouTube' });
 }
 
@@ -94,7 +177,7 @@ function formatValue(controlName, value) {
 }
 
 function announceEvent(detail) {
-  const event = new CustomEvent('eramp:control', { detail });
+  const event = new CustomEvent('eraudio:control', { detail });
   document.dispatchEvent(event);
   eventStatus.textContent = `Event: ${detail.type} (${detail.name})`;
 }
@@ -130,7 +213,7 @@ favoritesSelect.addEventListener('change', () => {
 
 youtubeLoginButton.addEventListener('click', requestYouTubeLogin);
 
-document.addEventListener('eramp:youtube-authenticated', (event) => {
+document.addEventListener('eraudio:youtube-authenticated', (event) => {
   setYouTubeAccount(event.detail?.accountName);
 });
 
@@ -154,10 +237,40 @@ document.addEventListener('click', (event) => {
     button.setAttribute('aria-pressed', String(isActive));
   }
 
+  if (button.dataset.action === 'open') {
+    youtubeInputError.textContent = '';
+    youtubeInput.removeAttribute('aria-invalid');
+    openDialog.showModal();
+    youtubeInput.focus();
+  }
+
+  if (button.dataset.action === 'close-open-dialog') {
+    openDialog.close();
+  }
+
   announceEvent({
     type: 'click',
     name: button.dataset.action || button.dataset.track || button.textContent.trim(),
   });
+});
+
+openForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  try {
+    const parsedInput = parseYouTubeInput(youtubeInput.value);
+    youtubeInputError.textContent = '';
+    youtubeInput.removeAttribute('aria-invalid');
+    openDialog.close();
+    announceEvent({
+      type: 'open-request',
+      name: parsedInput.videoId,
+      ...parsedInput,
+    });
+  } catch (error) {
+    youtubeInputError.textContent = error.message;
+    youtubeInput.setAttribute('aria-invalid', 'true');
+    youtubeInput.focus();
+  }
 });
 
 document.querySelector('#btn-reset-all').addEventListener('click', () => {
@@ -169,9 +282,9 @@ document.querySelector('#btn-reset-all').addEventListener('click', () => {
 });
 
 initializeFavorites();
-setYouTubeAccount(localStorage.getItem(youtubeAccountStorageKey));
+setYouTubeAccount(readStoredValue(youtubeAccountStorageKey));
 
 // Application code can react here without coupling the controls to playback yet.
-document.addEventListener('eramp:control', (event) => {
-  console.debug('ErAMP control event', event.detail);
+document.addEventListener('eraudio:control', (event) => {
+  console.debug('ErAudio control event', event.detail);
 });

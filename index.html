@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ErAMP Web Player (with Pitchfork Plugin UI)</title>
+  <title>ErAudio Web Player (with Pitchfork Plugin UI)</title>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -39,7 +39,7 @@
         </div>
         <div class="display-right">
           <div class="marquee-container">
-            <div class="marquee-text" id="track-title">1. Retro YouTube Player - ErAMP Classic Theme</div>
+            <div class="marquee-text" id="track-title">1. Retro YouTube Player - ErAudio Classic Theme</div>
           </div>
           <div class="vis-container">
             <div class="spectrum-analyzer">
@@ -171,7 +171,7 @@
     <!-- PLAYLIST WINDOW -->
     <div class="winamp-window playlist-window">
       <div class="title-bar">
-        <div class="title-bar-text">ErAMP PLAYLIST</div>
+        <div class="title-bar-text">ErAudio PLAYLIST</div>
         <div class="title-bar-controls">
           <button class="win-btn minimize tooltip-target" data-tooltip="Minimize playlist window" aria-label="Minimize playlist window">_</button>
         </div>
@@ -195,6 +195,23 @@
     </div>
 
   </div>
+  <dialog class="open-dialog" id="open-dialog" aria-labelledby="open-dialog-title">
+    <form class="open-dialog-form" id="open-form" novalidate>
+      <div class="title-bar">
+        <h2 class="title-bar-text" id="open-dialog-title">OPEN YOUTUBE VIDEO</h2>
+        <button class="win-btn" type="button" data-action="close-open-dialog" aria-label="Close dialog">X</button>
+      </div>
+      <div class="open-dialog-body">
+        <label for="youtube-input">VIDEO URL OR ID</label>
+        <input id="youtube-input" name="youtubeInput" type="text" autocomplete="url" spellcheck="false" placeholder="Paste a YouTube link or video ID" aria-describedby="youtube-input-error" autofocus>
+        <p class="open-dialog-error" id="youtube-input-error" role="alert" aria-live="polite"></p>
+      </div>
+      <div class="open-dialog-actions">
+        <button class="pl-btn" type="button" data-action="close-open-dialog">CANCEL</button>
+        <button class="pl-btn open-submit" type="submit">OPEN</button>
+      </div>
+    </form>
+  </dialog>
   <p class="event-status" id="event-status" role="status" aria-live="polite">Ready for input events.</p>
 </body>
 </html>
