@@ -26,16 +26,20 @@ const googleClientId = window.ERAUDIO_CONFIG?.googleClientId || '';
 const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
 
+const trackTitleDisplay = document.querySelector('#track-title');
+const timeDisplay = document.querySelector('#time-display');
+const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
+let ytPlayer = null;
+let ytReady = false;
+let playingTrack = null;
+let playingList = null;
+let scrubbing = false;
+
 const favoriteLists = [
   {
     id: 'favorites',
     name: 'Favorites',
-    tracks: [
-      { title: 'Retro Synthwave - ErAudio Theme', duration: '03:45' },
-      { title: 'Chiptune Symphony No. 9', duration: '04:12' },
-      { title: 'HTML5 & Wasm Audio Demo', duration: '02:30' },
-      { title: 'Pitchfork High Precision Speed Test', duration: '05:00' },
-    ],
+    tracks: [],
   },
 ];
 
@@ -118,7 +122,7 @@ function renderFavoritesList(listId) {
   favoritesSelect.value = selectedList.id;
   playlistList.replaceChildren(...selectedList.tracks.map((track, index) => {
     const item = document.createElement('button');
-    item.className = `playlist-item${index === 0 ? ' active' : ''}${track.selected ? ' selected' : ''}`;
+    item.className = `playlist-item${track === playingTrack ? ' active' : ''}${track.selected ? ' selected' : ''}`;
     item.type = 'button';
     item.setAttribute('aria-pressed', String(Boolean(track.selected)));
     item.dataset.track = String(index + 1);
@@ -220,13 +224,16 @@ async function loadAccountPlaylists() {
   const playlists = await fetchAllPages('playlists', { part: 'snippet', mine: 'true', maxResults: '50' });
   const accountLists = [];
   const related = channel.contentDetails.relatedPlaylists;
+  const addedTracks = favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added));
   if (related.likes) accountLists.push({ id: related.likes, playlistId: related.likes, name: 'Liked videos', tracks: [] });
   playlists.forEach((playlist) => {
     accountLists.push({ id: playlist.id, playlistId: playlist.id, name: playlist.snippet.title, tracks: [] });
   });
+  if (addedTracks.length) accountLists.push({ id: 'added-videos', name: 'Added videos', tracks: addedTracks, loaded: true });
   if (!accountLists.length) return;
 
   favoriteLists.splice(0, favoriteLists.length, ...accountLists);
+  playingList = favoriteLists.find((list) => list.tracks.includes(playingTrack)) || playingList;
   favoritesSelect.replaceChildren(...favoriteLists.map((list) => {
     const option = document.createElement('option');
     option.value = list.id;
@@ -301,6 +308,166 @@ function trySilentLogin(attemptsLeft = 20) {
   }
 }
 
+function formatClock(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds || 0));
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function updateNowPlaying() {
+  if (!playingTrack) {
+    trackTitleDisplay.textContent = idleTitle;
+    return;
+  }
+  const index = (playingList?.tracks || []).indexOf(playingTrack);
+  trackTitleDisplay.textContent = `${index >= 0 ? `${index + 1}. ` : ''}${playingTrack.title}`;
+}
+
+function applyControl(name, value) {
+  if (!ytReady) return;
+  if (name === 'volume') ytPlayer.setVolume(Number(value));
+  if (name === 'speed') ytPlayer.setPlaybackRate(Number(value));
+}
+
+function resetTransportDisplay() {
+  timeDisplay.textContent = '00:00';
+  controls.scrubber.value = 0;
+}
+
+function playTrack(list, track) {
+  playingList = list;
+  playingTrack = track;
+  updateNowPlaying();
+  resetTransportDisplay();
+  if (ytReady) ytPlayer.loadVideoById(track.videoId);
+  if (currentListId === list.id) renderFavoritesList(list.id);
+}
+
+function stopPlayback() {
+  if (ytReady) ytPlayer.stopVideo();
+  resetTransportDisplay();
+}
+
+function stepTrack(step, { wrap = true } = {}) {
+  const tracks = playingList?.tracks || [];
+  const index = tracks.indexOf(playingTrack);
+  if (index < 0 || !tracks.length) return false;
+  let nextIndex = index + step;
+  if (nextIndex < 0 || nextIndex >= tracks.length) {
+    if (!wrap) return false;
+    nextIndex = (nextIndex + tracks.length) % tracks.length;
+  }
+  playTrack(playingList, tracks[nextIndex]);
+  return true;
+}
+
+function startPlayback() {
+  if (playingTrack) {
+    if (ytReady) ytPlayer.playVideo();
+    return;
+  }
+  const list = currentList();
+  const track = list.tracks.find((candidate) => candidate.selected) || list.tracks[0];
+  if (track) {
+    playTrack(list, track);
+  } else {
+    showInputDialog('open');
+  }
+}
+
+function onPlayerStateChange(event) {
+  if (!playingTrack) return;
+  if (event.data === YT.PlayerState.PLAYING) {
+    applyControl('speed', controls.speed.value);
+    const duration = ytPlayer.getDuration();
+    if (duration > 0 && playingTrack.duration === '--:--') {
+      playingTrack.duration = formatClock(duration);
+      if (currentListId === playingList?.id) renderFavoritesList(currentListId);
+    }
+    const videoTitle = ytPlayer.getVideoData?.().title;
+    if (videoTitle && playingTrack.title !== videoTitle) {
+      playingTrack.title = videoTitle;
+      updateNowPlaying();
+      if (currentListId === playingList?.id) renderFavoritesList(currentListId);
+    }
+  } else if (event.data === YT.PlayerState.ENDED) {
+    if (!stepTrack(1, { wrap: false })) resetTransportDisplay();
+  }
+}
+
+function onPlayerError() {
+  announceEvent({ type: 'error', name: 'This video cannot be played (it may be private or not embeddable)' });
+  trackTitleDisplay.textContent = `Unable to play: ${playingTrack?.title || 'video'}`;
+}
+
+function initYouTubePlayer() {
+  window.onYouTubeIframeAPIReady = () => {
+    ytPlayer = new YT.Player('yt-player', {
+      width: '1',
+      height: '1',
+      playerVars: { playsinline: 1, controls: 0, disablekb: 1 },
+      events: {
+        onReady: () => {
+          ytReady = true;
+          ytPlayer.setVolume(Number(controls.volume.value));
+          if (playingTrack) ytPlayer.loadVideoById(playingTrack.videoId);
+        },
+        onStateChange: onPlayerStateChange,
+        onError: onPlayerError,
+      },
+    });
+  };
+  const script = document.createElement('script');
+  script.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(script);
+
+  setInterval(() => {
+    if (!ytReady || !playingTrack) return;
+    const state = ytPlayer.getPlayerState();
+    if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED) return;
+    const duration = ytPlayer.getDuration();
+    const position = ytPlayer.getCurrentTime();
+    if (scrubbing) return;
+    timeDisplay.textContent = formatClock(position);
+    if (duration > 0) controls.scrubber.value = (position / duration) * 100;
+  }, 250);
+}
+
+function addTrack(videoId) {
+  const list = currentList();
+  let track = list.tracks.find((candidate) => candidate.videoId === videoId);
+  if (!track) {
+    track = { title: `YouTube video ${videoId}`, videoId, duration: '--:--', added: true };
+    list.tracks.push(track);
+    resolveTrackTitle(track);
+    renderFavoritesList(list.id);
+  }
+  return { list, track };
+}
+
+async function resolveTrackTitle(track) {
+  try {
+    const response = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${track.videoId}`)}`);
+    if (!response.ok) return;
+    const title = (await response.json()).title;
+    if (!title) return;
+    track.title = title;
+    if (track === playingTrack) updateNowPlaying();
+    renderFavoritesList(currentListId);
+  } catch {
+    // Best effort; the player supplies the title once playback starts.
+  }
+}
+
+function showInputDialog(mode) {
+  openDialog.dataset.mode = mode;
+  openDialogTitle.textContent = mode === 'add' ? 'ADD URL TO PLAYLIST' : 'OPEN YOUTUBE VIDEO';
+  youtubeInput.value = '';
+  youtubeInputError.textContent = '';
+  youtubeInput.removeAttribute('aria-invalid');
+  openDialog.showModal();
+  youtubeInput.focus();
+}
+
 function formatValue(controlName, value) {
   if (controlName === 'speed') return `${Number(value).toFixed(3)}x`;
   return value;
@@ -317,6 +484,7 @@ function updateControl(controlName, value) {
   if (!control) return;
 
   control.value = value;
+  applyControl(controlName, value);
   if (valueDisplays[controlName]) {
     valueDisplays[controlName].textContent = formatValue(controlName, value);
   }
@@ -326,6 +494,13 @@ function updateControl(controlName, value) {
 document.querySelectorAll('[data-control]').forEach((control) => {
   control.addEventListener('input', () => {
     const controlName = control.dataset.control;
+    if (controlName === 'scrubber') {
+      scrubbing = true;
+      const duration = ytReady ? ytPlayer.getDuration() : 0;
+      timeDisplay.textContent = formatClock((Number(control.value) / 100) * duration);
+    } else {
+      applyControl(controlName, control.value);
+    }
     if (valueDisplays[controlName]) {
       valueDisplays[controlName].textContent = formatValue(controlName, control.value);
     }
@@ -333,6 +508,10 @@ document.querySelectorAll('[data-control]').forEach((control) => {
   });
 
   control.addEventListener('change', () => {
+    if (control.dataset.control === 'scrubber') {
+      scrubbing = false;
+      if (ytReady && playingTrack) ytPlayer.seekTo((Number(control.value) / 100) * ytPlayer.getDuration(), true);
+    }
     announceEvent({ type: 'change', name: control.dataset.control, value: control.value });
   });
 });
@@ -372,7 +551,6 @@ document.addEventListener('click', (event) => {
         const itemTrack = tracks[Number(item.dataset.track) - 1];
         item.classList.toggle('selected', Boolean(itemTrack?.selected));
         item.setAttribute('aria-pressed', String(Boolean(itemTrack?.selected)));
-        item.classList.toggle('active', item === button);
       });
     }
   }
@@ -387,20 +565,25 @@ document.addEventListener('click', (event) => {
   if (button.dataset.action === 'remove-track') {
     const list = currentList();
     if (list.tracks.some((track) => track.selected)) {
+      if (playingTrack?.selected && list.tracks.includes(playingTrack)) {
+        stopPlayback();
+        playingTrack = null;
+        playingList = null;
+        updateNowPlaying();
+      }
       list.tracks = list.tracks.filter((track) => !track.selected);
       renderFavoritesList(list.id);
+      updateNowPlaying();
     }
   }
 
-  if (button.dataset.action === 'add-url') {
-    openDialog.dataset.mode = 'add';
-    openDialogTitle.textContent = 'ADD URL TO PLAYLIST';
-    youtubeInput.value = '';
-    youtubeInputError.textContent = '';
-    youtubeInput.removeAttribute('aria-invalid');
-    openDialog.showModal();
-    youtubeInput.focus();
-  }
+  if (button.dataset.action === 'add-url') showInputDialog('add');
+
+  if (button.dataset.action === 'play') startPlayback();
+  if (button.dataset.action === 'pause' && ytReady && playingTrack) ytPlayer.pauseVideo();
+  if (button.dataset.action === 'stop') stopPlayback();
+  if (button.dataset.action === 'next') stepTrack(1);
+  if (button.dataset.action === 'previous') stepTrack(-1);
 
   if (button.dataset.action?.startsWith('toggle-')) {
     const isActive = button.classList.toggle('active');
@@ -409,14 +592,7 @@ document.addEventListener('click', (event) => {
     document.getElementById(targetId).hidden = !isActive;
   }
 
-  if (button.dataset.action === 'open') {
-    openDialog.dataset.mode = '';
-    openDialogTitle.textContent = 'OPEN YOUTUBE VIDEO';
-    youtubeInputError.textContent = '';
-    youtubeInput.removeAttribute('aria-invalid');
-    openDialog.showModal();
-    youtubeInput.focus();
-  }
+  if (button.dataset.action === 'open') showInputDialog('open');
 
   if (button.dataset.action === 'close-open-dialog') {
     openDialog.close();
@@ -428,18 +604,12 @@ document.addEventListener('click', (event) => {
   });
 });
 
-async function addTrackFromVideoId(videoId) {
+playlistList.addEventListener('dblclick', (event) => {
+  const item = event.target.closest('[data-track]');
   const list = currentList();
-  let title = `YouTube video ${videoId}`;
-  try {
-    const response = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`);
-    if (response.ok) title = (await response.json()).title || title;
-  } catch {
-    // Title lookup is best-effort; the placeholder title is used offline or when blocked.
-  }
-  list.tracks.push({ title, videoId, duration: '--:--' });
-  if (currentListId === list.id) renderFavoritesList(list.id);
-}
+  const track = item && list.tracks[Number(item.dataset.track) - 1];
+  if (track) playTrack(list, track);
+});
 
 openForm.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -448,12 +618,10 @@ openForm.addEventListener('submit', (event) => {
     youtubeInputError.textContent = '';
     youtubeInput.removeAttribute('aria-invalid');
     openDialog.close();
-    if (openDialog.dataset.mode === 'add') {
-      addTrackFromVideoId(parsedInput.videoId);
-      return;
-    }
+    const { list, track } = addTrack(parsedInput.videoId);
+    if (openDialog.dataset.mode !== 'add') playTrack(list, track);
     announceEvent({
-      type: 'open-request',
+      type: openDialog.dataset.mode === 'add' ? 'add-request' : 'open-request',
       name: parsedInput.videoId,
       videoId: parsedInput.videoId,
     });
@@ -473,6 +641,8 @@ document.querySelector('#btn-reset-all').addEventListener('click', () => {
 });
 
 initializeFavorites();
+initYouTubePlayer();
+updateNowPlaying();
 setYouTubeAccount(readStoredValue(youtubeAccountStorageKey));
 
 // Application code can react here without coupling the controls to playback yet.

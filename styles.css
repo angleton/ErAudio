@@ -81,6 +81,17 @@ input:focus-visible {
   visibility: visible;
 }
 
+.yt-host {
+  height: 1px;
+  left: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  width: 1px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
