@@ -14,6 +14,7 @@ const playlistSourceRow = document.querySelector('#playlist-source-row');
 const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
 const favoritesStorageKey = 'eraudio:selected-favorites-list';
+const addedTracksStorageKey = 'eraudio:added-tracks';
 const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeAccountStorageKey = 'eraudio:youtube-account-name';
 const openDialog = document.querySelector('#open-dialog');
@@ -131,10 +132,38 @@ function renderFavoritesList(listId) {
     return item;
   }));
   playlistInfo.textContent = `${selectedList.name.toUpperCase()} / ${selectedList.tracks.length} TRACKS / ${formatPlaylistDuration(selectedList.tracks)} TOTAL`;
+  saveAddedTracks();
   announceEvent({ type: 'playlist', name: selectedList.name });
 }
 
+function saveAddedTracks() {
+  const added = favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added));
+  writeStoredValue(addedTracksStorageKey, JSON.stringify(added.map(({ title, videoId, duration }) => (
+    { title, videoId, duration }
+  ))));
+}
+
+function restoreAddedTracks() {
+  try {
+    const saved = JSON.parse(readStoredValue(addedTracksStorageKey) || '[]');
+    const seen = new Set();
+    saved.forEach((entry) => {
+      if (typeof entry?.videoId !== 'string' || seen.has(entry.videoId)) return;
+      seen.add(entry.videoId);
+      favoriteLists[0].tracks.push({
+        title: String(entry.title || `YouTube video ${entry.videoId}`),
+        videoId: entry.videoId,
+        duration: String(entry.duration || '--:--'),
+        added: true,
+      });
+    });
+  } catch {
+    // Ignore corrupt saved data.
+  }
+}
+
 function initializeFavorites() {
+  restoreAddedTracks();
   favoritesSelect.replaceChildren(...favoriteLists.map((list) => {
     const option = document.createElement('option');
     option.value = list.id;
@@ -497,6 +526,14 @@ function announceEvent(detail) {
   eventStatus.textContent = `Event: ${detail.type} (${detail.name})`;
 }
 
+// The player reports 0 until a video has loaded, so fall back to the track's known duration.
+function currentDuration() {
+  const playerDuration = ytReady ? ytPlayer.getDuration() : 0;
+  if (playerDuration > 0) return playerDuration;
+  const [minutes, seconds] = String(playingTrack?.duration || '').split(':').map(Number);
+  return Number.isFinite(minutes) && Number.isFinite(seconds) ? (minutes * 60) + seconds : 0;
+}
+
 function updateControl(controlName, value) {
   const control = controls[controlName];
   if (!control) return;
@@ -514,8 +551,7 @@ document.querySelectorAll('[data-control]').forEach((control) => {
     const controlName = control.dataset.control;
     if (controlName === 'scrubber') {
       scrubbing = true;
-      const duration = ytReady ? ytPlayer.getDuration() : 0;
-      timeDisplay.textContent = formatClock((Number(control.value) / 100) * duration);
+      timeDisplay.textContent = formatClock((Number(control.value) / 100) * currentDuration());
     } else {
       applyControl(controlName, control.value);
     }
@@ -528,7 +564,9 @@ document.querySelectorAll('[data-control]').forEach((control) => {
   control.addEventListener('change', () => {
     if (control.dataset.control === 'scrubber') {
       scrubbing = false;
-      if (ytReady && playingTrack) ytPlayer.seekTo((Number(control.value) / 100) * ytPlayer.getDuration(), true);
+      const target = (Number(control.value) / 100) * currentDuration();
+      timeDisplay.textContent = formatClock(target);
+      if (ytReady && playingTrack) ytPlayer.seekTo(target, true);
     }
     announceEvent({ type: 'change', name: control.dataset.control, value: control.value });
   });
@@ -566,6 +604,8 @@ document.addEventListener('click', (event) => {
         tracks.forEach((candidate) => { candidate.selected = candidate === track; });
         loadTrackIntoPlayer(currentList(), track);
       }
+      // Handled here rather than via dblclick because the first click re-renders the list items.
+      if (event.detail >= 2 && !event.ctrlKey && !event.metaKey) playTrack(currentList(), track);
       document.querySelectorAll('[data-track]').forEach((item) => {
         const itemTrack = tracks[Number(item.dataset.track) - 1];
         item.classList.toggle('selected', Boolean(itemTrack?.selected));
@@ -621,13 +661,6 @@ document.addEventListener('click', (event) => {
     type: 'click',
     name: button.dataset.action || button.dataset.track || button.textContent.trim(),
   });
-});
-
-playlistList.addEventListener('dblclick', (event) => {
-  const item = event.target.closest('[data-track]');
-  const list = currentList();
-  const track = item && list.tracks[Number(item.dataset.track) - 1];
-  if (track) playTrack(list, track);
 });
 
 openForm.addEventListener('submit', (event) => {
