@@ -28,6 +28,7 @@ const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
 
 const trackTitleDisplay = document.querySelector('#track-title');
+const pauseButton = document.querySelector('[data-action="pause"]');
 const timeDisplay = document.querySelector('#time-display');
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
@@ -429,6 +430,8 @@ function setTrackTitle(track, title) {
 }
 
 function onPlayerStateChange(event) {
+  pauseButton.classList.toggle('paused', event.data === YT.PlayerState.PAUSED);
+  pauseButton.setAttribute('aria-pressed', String(event.data === YT.PlayerState.PAUSED));
   if (!playingTrack) return;
   if (event.data === YT.PlayerState.PLAYING) {
     applyControl('speed', controls.speed.value);
@@ -639,7 +642,10 @@ document.addEventListener('click', (event) => {
   if (button.dataset.action === 'add-url') showInputDialog('add');
 
   if (button.dataset.action === 'play') startPlayback();
-  if (button.dataset.action === 'pause' && ytReady && playingTrack) ytPlayer.pauseVideo();
+  if (button.dataset.action === 'pause' && ytReady && playingTrack) {
+    if (ytPlayer.getPlayerState() === YT.PlayerState.PAUSED) ytPlayer.playVideo();
+    else ytPlayer.pauseVideo();
+  }
   if (button.dataset.action === 'stop') stopPlayback();
   if (button.dataset.action === 'next') stepTrack(1);
   if (button.dataset.action === 'previous') stepTrack(-1);

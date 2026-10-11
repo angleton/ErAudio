@@ -486,6 +486,12 @@ body {
   text-shadow: 0 0 3px #ffcc0088;
 }
 
+.transport-btn.pause.paused {
+  color: var(--accent-gold);
+  text-shadow: 0 0 3px #ffcc0088;
+  border-color: var(--accent-gold);
+}
+
 /* ==========================================================================
    PITCHFORK / PACEMAKER PLUGIN WINDOW
    ========================================================================== */
