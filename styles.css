@@ -232,11 +232,6 @@ body {
   color: #ffffff;
 }
 
-.title-bar-controls {
-  display: flex;
-  gap: 3px;
-}
-
 .win-btn {
   background: linear-gradient(180deg, #4c4c5a 0%, #202029 100%);
   border-top: 1px solid #6b6b7d;
