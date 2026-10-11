@@ -54,25 +54,12 @@ function writeStoredValue(key, value) {
   }
 }
 
-function collectQueryParameters(searchParams) {
-  return [...searchParams.entries()].reduce((parameters, [key, value]) => {
-    if (Object.hasOwn(parameters, key)) {
-      parameters[key] = Array.isArray(parameters[key])
-        ? [...parameters[key], value]
-        : [parameters[key], value];
-    } else {
-      parameters[key] = value;
-    }
-    return parameters;
-  }, {});
-}
-
 function parseYouTubeInput(value) {
   const input = String(value || '').trim();
   const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
 
   if (videoIdPattern.test(input)) {
-    return { videoId: input, input, url: null, queryParameters: {}, fragment: '' };
+    return { videoId: input };
   }
   if (!input) {
     throw new Error('Paste a YouTube link or enter an 11-character video ID.');
@@ -97,23 +84,16 @@ function parseYouTubeInput(value) {
     throw new Error('Use a link from youtube.com or youtu.be.');
   }
 
-  const queryParameters = collectQueryParameters(url.searchParams);
   const pathSegments = url.pathname.split('/').filter(Boolean);
   const videoId = hostname.endsWith('youtu.be')
     ? pathSegments[0]
-    : queryParameters.v || (['embed', 'shorts', 'live', 'v'].includes(pathSegments[0]) ? pathSegments[1] : null);
+    : url.searchParams.get('v') || (['embed', 'shorts', 'live', 'v'].includes(pathSegments[0]) ? pathSegments[1] : null);
 
   if (!videoId || !videoIdPattern.test(videoId)) {
     throw new Error('That link does not contain a valid 11-character YouTube video ID.');
   }
 
-  return {
-    videoId,
-    input,
-    url: url.href,
-    queryParameters,
-    fragment: url.hash ? url.hash.slice(1) : '',
-  };
+  return { videoId };
 }
 
 function formatPlaylistDuration(tracks) {
@@ -372,7 +352,7 @@ openForm.addEventListener('submit', (event) => {
     announceEvent({
       type: 'open-request',
       name: parsedInput.videoId,
-      ...parsedInput,
+      videoId: parsedInput.videoId,
     });
   } catch (error) {
     youtubeInputError.textContent = error.message;
