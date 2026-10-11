@@ -323,6 +323,8 @@ document.addEventListener('click', (event) => {
   if (button.dataset.action?.startsWith('toggle-')) {
     const isActive = button.classList.toggle('active');
     button.setAttribute('aria-pressed', String(isActive));
+    const targetId = button.dataset.action === 'toggle-playlist' ? 'playlist-window' : 'pitchfork-window';
+    document.getElementById(targetId).hidden = !isActive;
   }
 
   if (button.dataset.action === 'open') {

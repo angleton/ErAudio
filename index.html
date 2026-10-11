@@ -69,14 +69,14 @@
 
         <!-- Toggle Buttons (PL, Pitchfork) -->
         <div class="toggle-buttons">
-          <button class="toggle-btn active tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle playlist" aria-pressed="true">PL</button>
-          <button class="toggle-btn active tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-pressed="true">PITCH</button>
+          <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle playlist" aria-pressed="false">PL</button>
+          <button class="toggle-btn tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-pressed="false">PITCH</button>
         </div>
       </div>
     </div>
 
     <!-- PITCHFORK PLUGIN WINDOW -->
-    <div class="winamp-window pitchfork-window">
+    <div class="winamp-window pitchfork-window" id="pitchfork-window" hidden>
       <div class="title-bar">
         <div class="title-bar-text">PITCHFORK - SPEED CONTROL</div>
         <div class="title-bar-controls">
@@ -117,7 +117,7 @@
     </div>
 
     <!-- PLAYLIST WINDOW -->
-    <div class="winamp-window playlist-window">
+    <div class="winamp-window playlist-window" id="playlist-window" hidden>
       <div class="title-bar">
         <div class="title-bar-text">ErAudio PLAYLIST</div>
         <div class="title-bar-controls">

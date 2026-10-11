@@ -185,6 +185,10 @@ body {
   max-width: 100%;
 }
 
+.winamp-window[hidden] {
+  display: none;
+}
+
 .winamp-window {
   background: var(--panel-bg);
   border-top: 2px solid var(--panel-border-light);
