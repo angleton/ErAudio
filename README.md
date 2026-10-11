@@ -22,7 +22,7 @@ The prototype recreates a classic retro player window (dark metallic panels, bev
 ### Current Stage: Interactive HTML5 UI Prototype
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
-* **Granular Controls:** Speed slider configured for high-precision steps (`0.005x` increments), semitone pitch adjustments, and tempo sliders.
+* **Granular Controls:** Speed slider configured for high-precision steps (`0.0025x` increments, minimum `0.0625x` to match YouTube's `playbackRate` limit), semitone pitch adjustments, and tempo sliders.
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.
 * **Open Input:** The Open control accepts an 11-character video ID or a YouTube watch, short, embed, Shorts, or live URL. It validates the ID format and emits an `eraudio:control` event with the input, normalized URL, video ID, query parameters, and fragment. This validates syntax only; it does not verify that a video exists or start playback.
 * **Event Hooks:** Controls dispatch an `eraudio:control` `CustomEvent` on `document`. The interface can be opened directly as a local file; if browser storage is unavailable, preferences fall back to in-memory values for that page session.
