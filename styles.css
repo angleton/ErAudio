@@ -232,29 +232,6 @@ body {
   color: #ffffff;
 }
 
-.win-btn {
-  background: linear-gradient(180deg, #4c4c5a 0%, #202029 100%);
-  border-top: 1px solid #6b6b7d;
-  border-left: 1px solid #6b6b7d;
-  border-right: 1px solid #111;
-  border-bottom: 1px solid #111;
-  color: #ffffff;
-  font-size: 9px;
-  font-weight: bold;
-  width: 14px;
-  height: 12px;
-  line-height: 10px;
-  text-align: center;
-  cursor: pointer;
-}
-
-.win-btn:active {
-  border-top: 1px solid #111;
-  border-left: 1px solid #111;
-  border-right: 1px solid #6b6b7d;
-  border-bottom: 1px solid #6b6b7d;
-}
-
 /* ==========================================================================
    MAIN PLAYER WINDOW
    ========================================================================== */
