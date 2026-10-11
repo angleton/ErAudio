@@ -228,25 +228,21 @@ async function loadAccountPlaylists() {
   await selectFavoritesList(favoriteLists[0].id);
 }
 
-function requestYouTubeLogin() {
-  document.dispatchEvent(new CustomEvent('eraudio:youtube-login-request'));
-  announceEvent({ type: 'login', name: 'YouTube' });
+let tokenClient = null;
+let silentAttempt = false;
 
-  if (!googleClientId) {
-    announceEvent({ type: 'error', name: 'Set googleClientId in config.js to enable YouTube sign-in' });
-    return;
-  }
-  if (!window.google?.accounts?.oauth2) {
-    announceEvent({ type: 'error', name: 'Google sign-in script failed to load' });
-    return;
-  }
+function getTokenClient() {
+  if (tokenClient) return tokenClient;
+  if (!googleClientId || !window.google?.accounts?.oauth2) return null;
 
-  google.accounts.oauth2.initTokenClient({
+  tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: googleClientId,
     scope: youtubeScope,
     callback: async (tokenResponse) => {
+      const wasSilent = silentAttempt;
+      silentAttempt = false;
       if (tokenResponse.error) {
-        announceEvent({ type: 'error', name: tokenResponse.error });
+        if (!wasSilent) announceEvent({ type: 'error', name: tokenResponse.error });
         return;
       }
       youtubeAccessToken = tokenResponse.access_token;
@@ -256,7 +252,44 @@ function requestYouTubeLogin() {
         announceEvent({ type: 'error', name: error.message });
       }
     },
-  }).requestAccessToken();
+    error_callback: (error) => {
+      const wasSilent = silentAttempt;
+      silentAttempt = false;
+      if (!wasSilent) announceEvent({ type: 'error', name: error.message || error.type });
+    },
+  });
+  return tokenClient;
+}
+
+// Reuses the browser's existing Google session: with prior consent this signs in
+// without any UI; otherwise Google shows a one-click account chooser.
+function requestYouTubeLogin({ silent = false } = {}) {
+  if (!silent) {
+    document.dispatchEvent(new CustomEvent('eraudio:youtube-login-request'));
+    announceEvent({ type: 'login', name: 'YouTube' });
+  }
+
+  if (!googleClientId) {
+    if (!silent) announceEvent({ type: 'error', name: 'Set googleClientId in config.js to enable YouTube sign-in' });
+    return;
+  }
+  const client = getTokenClient();
+  if (!client) {
+    if (!silent) announceEvent({ type: 'error', name: 'Google sign-in script failed to load' });
+    return;
+  }
+
+  silentAttempt = silent;
+  client.requestAccessToken({ prompt: silent ? 'none' : '' });
+}
+
+function trySilentLogin(attemptsLeft = 20) {
+  if (!googleClientId) return;
+  if (window.google?.accounts?.oauth2) {
+    requestYouTubeLogin({ silent: true });
+  } else if (attemptsLeft > 0) {
+    setTimeout(() => trySilentLogin(attemptsLeft - 1), 250);
+  }
 }
 
 function formatValue(controlName, value) {
@@ -299,7 +332,8 @@ favoritesSelect.addEventListener('change', () => {
   selectFavoritesList(favoritesSelect.value);
 });
 
-youtubeLoginButton.addEventListener('click', requestYouTubeLogin);
+youtubeLoginButton.addEventListener('click', () => requestYouTubeLogin());
+trySilentLogin();
 
 document.addEventListener('eraudio:youtube-authenticated', (event) => {
   setYouTubeAccount(event.detail?.accountName);
