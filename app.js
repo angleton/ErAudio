@@ -342,6 +342,23 @@ function playTrack(list, track) {
   if (currentListId === list.id) renderFavoritesList(list.id);
 }
 
+// Makes the track active; keeps playing if already playing, otherwise just cues it.
+function loadTrackIntoPlayer(list, track) {
+  if (track === playingTrack) return;
+  const wasPlaying = ytReady && playingTrack
+    && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
+  if (wasPlaying) {
+    playTrack(list, track);
+    return;
+  }
+  playingList = list;
+  playingTrack = track;
+  updateNowPlaying();
+  resetTransportDisplay();
+  if (ytReady) ytPlayer.cueVideoById(track.videoId);
+  if (currentListId === list.id) renderFavoritesList(list.id);
+}
+
 function stopPlayback() {
   if (ytReady) ytPlayer.stopVideo();
   resetTransportDisplay();
@@ -374,6 +391,14 @@ function startPlayback() {
   }
 }
 
+// Single place that applies a resolved video title to the playlist and now-playing display.
+function setTrackTitle(track, title) {
+  if (!track || !title || track.title === title) return;
+  track.title = title;
+  if (track === playingTrack) updateNowPlaying();
+  renderFavoritesList(currentListId);
+}
+
 function onPlayerStateChange(event) {
   if (!playingTrack) return;
   if (event.data === YT.PlayerState.PLAYING) {
@@ -383,12 +408,7 @@ function onPlayerStateChange(event) {
       playingTrack.duration = formatClock(duration);
       if (currentListId === playingList?.id) renderFavoritesList(currentListId);
     }
-    const videoTitle = ytPlayer.getVideoData?.().title;
-    if (videoTitle && playingTrack.title !== videoTitle) {
-      playingTrack.title = videoTitle;
-      updateNowPlaying();
-      if (currentListId === playingList?.id) renderFavoritesList(currentListId);
-    }
+    setTrackTitle(playingTrack, ytPlayer.getVideoData?.().title);
   } else if (event.data === YT.PlayerState.ENDED) {
     if (!stepTrack(1, { wrap: false })) resetTransportDisplay();
   }
@@ -438,9 +458,9 @@ function addTrack(videoId) {
   if (!track) {
     track = { title: `YouTube video ${videoId}`, videoId, duration: '--:--', added: true };
     list.tracks.push(track);
-    resolveTrackTitle(track);
     renderFavoritesList(list.id);
   }
+  if (track.title === `YouTube video ${videoId}`) resolveTrackTitle(track);
   return { list, track };
 }
 
@@ -450,9 +470,7 @@ async function resolveTrackTitle(track) {
     if (!response.ok) return;
     const title = (await response.json()).title;
     if (!title) return;
-    track.title = title;
-    if (track === playingTrack) updateNowPlaying();
-    renderFavoritesList(currentListId);
+    setTrackTitle(track, title);
   } catch {
     // Best effort; the player supplies the title once playback starts.
   }
@@ -546,6 +564,7 @@ document.addEventListener('click', (event) => {
         track.selected = !track.selected;
       } else {
         tracks.forEach((candidate) => { candidate.selected = candidate === track; });
+        loadTrackIntoPlayer(currentList(), track);
       }
       document.querySelectorAll('[data-track]').forEach((item) => {
         const itemTrack = tracks[Number(item.dataset.track) - 1];
