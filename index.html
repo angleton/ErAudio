@@ -63,9 +63,10 @@
           </div>
         </div>
 
-        <!-- Toggle Buttons (PL, Pitchfork) -->
+        <!-- Toggle Buttons (VID, PL, Pitchfork) -->
         <div class="toggle-buttons">
-          <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle playlist" aria-pressed="false">PL</button>
+          <button class="toggle-btn tooltip-target" id="btn-vid" type="button" data-action="toggle-videos" data-tooltip="Toggle videos" aria-pressed="false">VID</button>
+          <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle playlist (chapters / timestamps)" aria-pressed="false">PL</button>
           <button class="toggle-btn tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-pressed="false">PITCH</button>
         </div>
       </div>
@@ -109,10 +110,10 @@
       </div>
     </div>
 
-    <!-- PLAYLIST WINDOW -->
-    <div class="winamp-window playlist-window" id="playlist-window" hidden>
+    <!-- VIDEOS WINDOW -->
+    <div class="winamp-window playlist-window" id="videos-window" hidden>
       <div class="title-bar">
-        <div class="title-bar-text">ErAudio PLAYLIST</div>
+        <div class="title-bar-text">ErAudio VIDEOS</div>
       </div>
 
       <div class="playlist-body">
@@ -129,6 +130,21 @@
         <button class="pl-btn" type="button" data-action="remove-track">- REMOVE</button>
         <button class="pl-btn" type="button" data-action="select-all">SEL ALL</button>
         <div class="pl-info" id="playlist-info">FAVORITES</div>
+      </div>
+    </div>
+
+    <!-- PLAYLIST WINDOW (chapters / timestamps of the active video) -->
+    <div class="winamp-window playlist-window" id="playlist-window" hidden>
+      <div class="title-bar">
+        <div class="title-bar-text">ErAudio PLAYLIST</div>
+      </div>
+
+      <div class="playlist-body">
+        <div class="playlist-list" id="marker-list" aria-label="Chapters and timestamps of the active video"></div>
+      </div>
+
+      <div class="playlist-footer">
+        <div class="pl-info" id="marker-info">NO VIDEO</div>
       </div>
     </div>
 

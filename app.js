@@ -29,6 +29,8 @@ let youtubeAccessToken = '';
 
 const trackTitleDisplay = document.querySelector('#track-title');
 const pauseButton = document.querySelector('[data-action="pause"]');
+const markerList = document.querySelector('#marker-list');
+const markerInfo = document.querySelector('#marker-info');
 const timeDisplay = document.querySelector('#time-display');
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
@@ -292,6 +294,7 @@ function getTokenClient() {
         return;
       }
       youtubeAccessToken = tokenResponse.access_token;
+      ensureMarkers(playingTrack);
       try {
         await loadAccountPlaylists();
       } catch (error) {
@@ -344,6 +347,7 @@ function formatClock(totalSeconds) {
 }
 
 function updateNowPlaying() {
+  renderMarkers();
   if (!playingTrack) {
     trackTitleDisplay.textContent = idleTitle;
     return;
@@ -363,10 +367,111 @@ function resetTransportDisplay() {
   controls.scrubber.value = 0;
 }
 
+function parseClockToSeconds(value) {
+  return value.split(':').map(Number).reduce((total, part) => (total * 60) + part, 0);
+}
+
+// Extracts timestamp lines from a video description. If they satisfy YouTube's chapter
+// rules (start at 0:00, at least 3 entries, each at least 10s long) they are chapters.
+function parseDescriptionMarkers(description) {
+  const timestampPattern = /(?:^|[\s(\[])((?:\d{1,2}:)?\d{1,2}:\d{2})(?=$|[\s)\]\-–—:.,|])/;
+  const trimPattern = /^[\s\-–—:.,|()[\]]+|[\s\-–—:.,|()[\]]+$/g;
+  const byStart = new Map();
+  String(description || '').split(/\r?\n/).forEach((line) => {
+    const match = timestampPattern.exec(line);
+    if (!match) return;
+    const start = parseClockToSeconds(match[1]);
+    if (byStart.has(start)) return;
+    const title = line.replace(match[1], '').replace(trimPattern, '');
+    byStart.set(start, { start, title });
+  });
+  const entries = [...byStart.values()].sort((a, b) => a.start - b.start);
+  if (entries.length < 2) return { kind: 'none', entries: [] };
+  entries.forEach((entry, index) => { entry.title ||= `Part ${index + 1}`; });
+  const isChapters = entries.length >= 3 && entries[0].start === 0
+    && entries.every((entry, index) => index === 0 || entry.start - entries[index - 1].start >= 10);
+  return { kind: isChapters ? 'chapters' : 'timestamps', entries };
+}
+
+let markerRenderKey = '';
+let activeMarkerIndex = -1;
+
+function renderMarkers() {
+  const markers = playingTrack?.markers;
+  const key = `${playingTrack?.videoId || ''}|${markers ? markers.kind : (youtubeAccessToken ? 'loading' : 'signin')}`;
+  if (key === markerRenderKey) return;
+  markerRenderKey = key;
+  activeMarkerIndex = -1;
+
+  const placeholder = (text) => {
+    const empty = document.createElement('div');
+    empty.className = 'playlist-empty';
+    empty.textContent = text;
+    markerList.replaceChildren(empty);
+  };
+
+  if (!playingTrack) {
+    placeholder('Open a video to see its chapters or timestamps.');
+    markerInfo.textContent = 'NO VIDEO';
+  } else if (!markers) {
+    placeholder(youtubeAccessToken ? 'Looking for chapters / timestamps...' : 'Sign in to YouTube to detect chapters / timestamps.');
+    markerInfo.textContent = youtubeAccessToken ? 'LOADING' : 'SIGN IN REQUIRED';
+  } else if (!markers.entries.length) {
+    placeholder('No chapters or timestamps found in this video\'s description.');
+    markerInfo.textContent = 'NONE FOUND';
+  } else {
+    markerList.replaceChildren(...markers.entries.map((entry, index) => {
+      const item = document.createElement('button');
+      item.className = 'playlist-item';
+      item.type = 'button';
+      item.dataset.marker = String(index);
+      item.textContent = `${index + 1}. ${entry.title} [${formatClock(entry.start)}]`;
+      return item;
+    }));
+    markerInfo.textContent = `${markers.kind.toUpperCase()} / ${markers.entries.length} ENTRIES`;
+  }
+}
+
+async function ensureMarkers(track) {
+  if (!track || track.markers || track.markersLoading || !youtubeAccessToken) return;
+  track.markersLoading = true;
+  try {
+    const data = await youtubeApi('videos', { part: 'snippet', id: track.videoId });
+    const description = data.items?.[0]?.snippet?.description;
+    if (description === undefined) return;
+    track.markers = parseDescriptionMarkers(description);
+  } catch {
+    // Leave unresolved so a later attempt (e.g. after re-login) can retry.
+  } finally {
+    track.markersLoading = false;
+    if (track === playingTrack) renderMarkers();
+  }
+}
+
+function highlightActiveMarker(position) {
+  const entries = playingTrack?.markers?.entries;
+  if (!entries?.length) return;
+  let index = -1;
+  entries.forEach((entry, i) => { if (position >= entry.start) index = i; });
+  if (index === activeMarkerIndex) return;
+  activeMarkerIndex = index;
+  markerList.querySelectorAll('[data-marker]').forEach((item) => {
+    item.classList.toggle('active', Number(item.dataset.marker) === index);
+  });
+}
+
+function seekToMarker(index) {
+  const entry = playingTrack?.markers?.entries[index];
+  if (!entry || !ytReady) return;
+  ytPlayer.seekTo(entry.start, true);
+  ytPlayer.playVideo();
+}
+
 function playTrack(list, track) {
   playingList = list;
   playingTrack = track;
   updateNowPlaying();
+  ensureMarkers(track);
   resetTransportDisplay();
   if (ytReady) ytPlayer.loadVideoById(track.videoId);
   if (currentListId === list.id) renderFavoritesList(list.id);
@@ -384,6 +489,7 @@ function loadTrackIntoPlayer(list, track) {
   playingList = list;
   playingTrack = track;
   updateNowPlaying();
+  ensureMarkers(track);
   resetTransportDisplay();
   if (ytReady) ytPlayer.cueVideoById(track.videoId);
   if (currentListId === list.id) renderFavoritesList(list.id);
@@ -480,6 +586,7 @@ function initYouTubePlayer() {
     const position = ytPlayer.getCurrentTime();
     if (scrubbing) return;
     timeDisplay.textContent = formatClock(position);
+    highlightActiveMarker(position);
     if (duration > 0) controls.scrubber.value = (position / duration) * 100;
   }, 250);
 }
@@ -653,7 +760,10 @@ document.addEventListener('click', (event) => {
   if (button.dataset.action?.startsWith('toggle-')) {
     const isActive = button.classList.toggle('active');
     button.setAttribute('aria-pressed', String(isActive));
-    const targetId = button.dataset.action === 'toggle-playlist' ? 'playlist-window' : 'pitchfork-window';
+    const targetId = {
+      'toggle-videos': 'videos-window',
+      'toggle-playlist': 'playlist-window',
+    }[button.dataset.action] || 'pitchfork-window';
     document.getElementById(targetId).hidden = !isActive;
   }
 
@@ -667,6 +777,11 @@ document.addEventListener('click', (event) => {
     type: 'click',
     name: button.dataset.action || button.dataset.track || button.textContent.trim(),
   });
+});
+
+markerList.addEventListener('dblclick', (event) => {
+  const item = event.target.closest('[data-marker]');
+  if (item) seekToMarker(Number(item.dataset.marker));
 });
 
 openForm.addEventListener('submit', (event) => {
