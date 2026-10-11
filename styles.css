@@ -714,6 +714,11 @@ body {
   }
 }
 
+.playlist-item.selected {
+  background: #2d3a52;
+  color: #ffffff;
+}
+
 .playlist-item:hover {
   background: #002200;
 }
@@ -721,6 +726,11 @@ body {
 .playlist-item.active {
   background: #004400;
   color: #ffffff;
+}
+
+.playlist-item.active.selected {
+  background: #2d3a52;
+  box-shadow: inset 3px 0 0 #00aa00;
 }
 
 .playlist-footer {
