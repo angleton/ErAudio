@@ -76,15 +76,31 @@ Open `index.html` in a modern browser, for example by double-clicking it in File
 
 ### For maintainers: enabling YOUTUBE LOGIN for everyone
 
-Clicking **YOUTUBE LOGIN** signs in with Google and replaces the sample playlist with the account's **Liked videos** and own playlists. If the browser already has a Google session that previously approved ErAudio, sign-in happens automatically on page load. End users never need Google Cloud access; the maintainer does this setup **once**:
+Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and lets the PLAYLIST window read a video's description to detect chapters and timestamps. If the browser already has a Google session that previously approved ErAudio, sign-in happens automatically on page load. End users never need Google Cloud access; the maintainer does this setup **once**.
 
-1. In Google Cloud Console, enable **YouTube Data API v3** and create an OAuth 2.0 **Web application** client ID.
-2. Add every origin the app is served from to **Authorized JavaScript origins**: `https://angleton.github.io` for GitHub Pages, and optionally `http://localhost:8000` for local runs. Google sign-in does not work from `file://`.
-3. Put the client ID in [config.js](config.js) as `googleClientId`. The client ID is public, not a secret, so it is safe to commit.
-4. Publish with **GitHub Pages**: repository **Settings → Pages → Deploy from a branch → `main` / root**.
-5. Submit the app for **OAuth verification** (the `youtube.readonly` scope is sensitive; this needs a privacy policy and a short demo video). Until Google approves it, users see an "unverified app" warning and only accounts listed as **Test users** (up to 100) can sign in.
+Until `googleClientId` in [config.js](config.js) is set, the app shows "Set googleClientId in config.js to enable YouTube sign-in".
 
-Without a client ID, pasting a YouTube link still works; only account playlists are unavailable.
+1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or choose an existing one).
+2. Under **APIs & Services → Library**, enable **YouTube Data API v3**.
+3. Under **APIs & Services → OAuth consent screen** (**Google Auth Platform** in newer consoles):
+   - Choose **External** as the user type, then enter the app name and a support email.
+   - Add the scope `https://www.googleapis.com/auth/youtube.readonly`.
+   - While the app is in **Testing** mode, only accounts listed under **Test users** (up to 100) can sign in. Add any accounts you want to use before verification.
+4. Under **Credentials → Create credentials → OAuth client ID**, choose **Web application**. Under **Authorized JavaScript origins**, add every origin the app is served from, exactly (scheme, host and port; no trailing slash or path):
+   - `https://angleton.github.io` for GitHub Pages
+   - `http://localhost:8000` for local runs (Option 2 below)
+
+   Google sign-in does not work from `file://`, and no redirect URI is needed. Origin changes can take a few minutes to apply.
+5. Copy the client ID (it ends in `.apps.googleusercontent.com`) into [config.js](config.js) as `googleClientId`. The client ID is public, not a secret, so it is safe to commit.
+6. Publish with **GitHub Pages**: repository **Settings → Pages → Deploy from a branch → `main` / root**.
+7. To let **anyone's** Google account sign in, not just test users, set the consent screen's publishing status to **In production** and submit the app for **OAuth verification**. The `youtube.readonly` scope is sensitive, so Google requires a privacy policy and a short demo video. Until it is approved, users see an "unverified app" warning (choose **Advanced → Continue**) and only test users can sign in.
+
+Troubleshooting:
+- `origin_mismatch` / `redirect_uri_mismatch`: the page's origin is not in step 4 exactly as written.
+- `access_denied`: the account is not a test user (step 3) and the app is not yet verified.
+- "Set googleClientId…": step 5 is missing.
+
+Without a client ID, pasting a YouTube link still works; only account playlists and chapter/timestamp detection are unavailable.
 
 ### Option 2: Use a local HTTP server
 
