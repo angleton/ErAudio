@@ -28,7 +28,7 @@ const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
 
 const trackTitleDisplay = document.querySelector('#track-title');
-const pauseButton = document.querySelector('[data-action="pause"]');
+const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
 const markerInfo = document.querySelector('#marker-info');
 const timeDisplay = document.querySelector('#time-display');
@@ -536,8 +536,10 @@ function setTrackTitle(track, title) {
 }
 
 function onPlayerStateChange(event) {
-  pauseButton.classList.toggle('paused', event.data === YT.PlayerState.PAUSED);
-  pauseButton.setAttribute('aria-pressed', String(event.data === YT.PlayerState.PAUSED));
+  pauseButtons.forEach((button) => {
+    button.classList.toggle('paused', event.data === YT.PlayerState.PAUSED);
+    button.setAttribute('aria-pressed', String(event.data === YT.PlayerState.PAUSED));
+  });
   if (!playingTrack) return;
   if (event.data === YT.PlayerState.PLAYING) {
     applyControl('speed', controls.speed.value);
@@ -626,7 +628,7 @@ function showInputDialog(mode) {
 }
 
 function formatValue(controlName, value) {
-  if (controlName === 'speed') return `${Number(value).toFixed(3)}x`;
+  if (controlName === 'speed') return `${((Number(value) - 1) * 100).toFixed(2)}%`;
   return value;
 }
 
@@ -805,12 +807,37 @@ openForm.addEventListener('submit', (event) => {
   }
 });
 
-document.querySelector('#btn-reset-all').addEventListener('click', () => {
+function resetPitch() {
   updateControl('speed', '1.00');
-  document.querySelectorAll('[data-speed]').forEach((preset) => {
-    preset.classList.toggle('active', preset.dataset.speed === '1.0');
-  });
   announceEvent({ type: 'reset', name: 'playback speed' });
+}
+
+document.querySelector('[data-pf-reset]').addEventListener('click', resetPitch);
+
+document.querySelectorAll('[data-pf]').forEach((button) => {
+  button.addEventListener('click', () => {
+    announceEvent({ type: 'button', name: button.dataset.pf });
+  });
+});
+
+// Each BPM button is a tap counter: taps within the gap window are averaged into a BPM.
+const bpmMaxGapMs = 2500;
+const bpmMaxTaps = 8;
+document.querySelectorAll('[data-bpm]').forEach((button) => {
+  let taps = [];
+  button.addEventListener('click', () => {
+    const now = performance.now();
+    if (taps.length && now - taps[taps.length - 1] > bpmMaxGapMs) taps = [];
+    taps.push(now);
+    taps = taps.slice(-bpmMaxTaps);
+    if (taps.length < 2) {
+      announceEvent({ type: 'button', name: 'BPM tap' });
+      return;
+    }
+    const bpm = 60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1));
+    button.textContent = String(Math.round(bpm));
+    announceEvent({ type: 'bpm', name: 'BPM', value: bpm.toFixed(1) });
+  });
 });
 
 initializeFavorites();

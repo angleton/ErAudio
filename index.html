@@ -73,38 +73,48 @@
 
     <!-- PITCHFORK PLUGIN WINDOW -->
     <div class="winamp-window pitchfork-window" id="pitchfork-window" hidden>
-      <div class="title-bar">
-        <div class="title-bar-text">PITCHFORK - SPEED CONTROL</div>
+      <div class="title-bar pitchfork-title">
+        <div class="title-bar-text">PITCHFORK</div>
       </div>
 
       <div class="plugin-body">
-        <div class="plugin-header">
-          <span class="plugin-status-led active"></span>
-          <span class="plugin-title">HIGH-GRANULARITY SPEED CONTROL</span>
-          <button class="plugin-reset-btn tooltip-target" id="btn-reset-all" type="button" data-action="reset" data-tooltip="Reset speed">RESET ALL</button>
+        <div class="pf-slider-col">
+          <label class="sr-only" for="speed-slider">Playback speed</label>
+          <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="0.0625" max="4.00" step="0.0025" value="1.00">
         </div>
 
-        <div class="plugin-sliders-grid">
-          <!-- SPEED CONTROL -->
-          <div class="plugin-control-card">
-            <div class="card-header">
-              <span class="card-label">PLAYBACK SPEED</span>
-              <span class="card-value" id="val-speed">1.000x</span>
-            </div>
-            <div class="slider-wrapper">
-              <label class="sr-only" for="speed-slider">Playback speed</label>
-              <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="0.0625" max="4.00" step="0.0025" value="1.00">
-            </div>
-            <div class="preset-pills">
-              <button class="preset-pill" type="button" data-speed="0.7">0.7x</button>
-              <button class="preset-pill" type="button" data-speed="0.8">0.8x</button>
-              <button class="preset-pill" type="button" data-speed="0.9">0.9x</button>
-              <button class="preset-pill active" type="button" data-speed="1.0">1.0x</button>
-              <button class="preset-pill" type="button" data-speed="1.1">1.1x</button>
-              <button class="preset-pill" type="button" data-speed="1.2">1.2x</button>
-              <button class="preset-pill" type="button" data-speed="1.3">1.3x</button>
-            </div>
+        <div class="pf-left">
+          <button class="pf-btn" type="button" data-pf="Left ++">++</button>
+          <button class="pf-btn" type="button" data-pf="Left +">+</button>
+          <button class="pf-btn" type="button" data-pf="Left --">--</button>
+          <button class="pf-btn" type="button" data-pf="Left -">-</button>
+          <button class="pf-btn" type="button" data-pf="M2=M">M2=M</button>
+          <button class="pf-btn" type="button" data-pf="M-M2">M-M2</button>
+          <button class="pf-btn pf-bpm" type="button" data-bpm>BPM</button>
+          <button class="pf-btn pf-bpm" type="button" data-bpm>BPM</button>
+        </div>
+
+        <div class="pf-center">
+          <button class="pf-btn" type="button" data-pf-reset>=0=</button>
+          <button class="pf-btn" type="button" data-pf="Pitch Up">▲▲</button>
+          <button class="pf-btn" type="button" data-pf="Pitch Down">▼▼</button>
+          <div class="pf-readout-row">
+            <button class="pf-btn" type="button" data-pf="=">=</button>
+            <span class="pf-readout" id="val-speed">0.00%</span>
           </div>
+        </div>
+
+        <div class="pf-right">
+          <button class="pf-btn pf-r-plus" type="button" data-pf="Right +">+</button>
+          <button class="pf-btn pf-r-plus2" type="button" data-pf="Right ++">++</button>
+          <button class="pf-btn pf-r-plus" type="button" data-pf="Right -">-</button>
+          <button class="pf-btn pf-r-plus2" type="button" data-pf="Right --">--</button>
+          <button class="pf-btn pf-ac" type="button" data-pf="AC">AC</button>
+          <button class="pf-btn pf-cue" type="button" data-pf="CUE">CUE</button>
+          <button class="pf-btn pf-pause" type="button" data-action="pause" aria-label="Pause">||</button>
+          <button class="pf-btn pf-mplus" type="button" data-pf="M+">M+</button>
+          <button class="pf-btn pf-prev" type="button" data-pf="Previous N">◄N</button>
+          <button class="pf-btn pf-next" type="button" data-pf="Next N">N►</button>
         </div>
       </div>
     </div>
