@@ -7,7 +7,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 ## ▶️ Quick Start (no install needed)
 
 1. **Open the player:** <https://angleton.github.io/ErAudio/>
-2. **Play something:** click **Open**, paste a YouTube link, and press **OPEN**. No account needed.
+2. **Start listening:** ErAudio initially loads **Bedrock - Heaven Scent (Original Mix) (1999)**. Click **Open** to switch to another YouTube link or video ID; no account needed.
 3. **Optional, load your own playlists:** click **YOUTUBE LOGIN** at the top, choose the Google account you already use for YouTube, and approve access. Your Liked videos and playlists then appear in the playlist window.
 4. **Show more windows:** the **PL** button shows or hides the playlist, and **PITCH** shows or hides the speed control. Only the main player is visible at first.
 

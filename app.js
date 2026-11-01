@@ -15,6 +15,11 @@ const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
 const favoritesStorageKey = 'eraudio:selected-favorites-list';
 const addedTracksStorageKey = 'eraudio:added-tracks';
+const defaultTrack = {
+  title: 'Bedrock - Heaven Scent (Original Mix) (1999)',
+  videoId: '5scF4Rx9uP0',
+  duration: '--:--',
+};
 const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeAccountStorageKey = 'eraudio:youtube-account-name';
 const openDialog = document.querySelector('#open-dialog');
@@ -27,6 +32,14 @@ const googleClientId = window.ERAUDIO_CONFIG?.googleClientId || '';
 const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
 
+const favoriteLists = [
+  {
+    id: 'favorites',
+    name: 'Favorites',
+    tracks: [defaultTrack],
+  },
+];
+
 const trackTitleDisplay = document.querySelector('#track-title');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
@@ -35,17 +48,9 @@ const timeDisplay = document.querySelector('#time-display');
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
 let ytReady = false;
-let playingTrack = null;
-let playingList = null;
+let playingTrack = defaultTrack;
+let playingList = favoriteLists[0];
 let scrubbing = false;
-
-const favoriteLists = [
-  {
-    id: 'favorites',
-    name: 'Favorites',
-    tracks: [],
-  },
-];
 
 function readStoredValue(key) {
   try {
@@ -149,7 +154,7 @@ function saveAddedTracks() {
 function restoreAddedTracks() {
   try {
     const saved = JSON.parse(readStoredValue(addedTracksStorageKey) || '[]');
-    const seen = new Set();
+    const seen = new Set(favoriteLists.flatMap((list) => list.tracks.map((track) => track.videoId)));
     saved.forEach((entry) => {
       if (typeof entry?.videoId !== 'string' || seen.has(entry.videoId)) return;
       seen.add(entry.videoId);
@@ -826,6 +831,7 @@ document.querySelectorAll('[data-pitch-step]').forEach((button) => {
 
 document.querySelectorAll('[data-pf]').forEach((button) => {
   button.addEventListener('click', () => {
+    if (button.dataset.pf === 'AC') resetPitch();
     announceEvent({ type: 'button', name: button.dataset.pf });
   });
 });
