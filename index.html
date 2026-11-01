@@ -80,14 +80,14 @@
       <div class="plugin-body">
         <div class="pf-slider-col">
           <label class="sr-only" for="speed-slider">Playback speed</label>
-          <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="0.0625" max="4.00" step="0.0025" value="1.00">
+          <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="0.0625" max="4.00" step="0.0001" value="1.00">
         </div>
 
         <div class="pf-left">
-          <button class="pf-btn" type="button" data-pf="Left ++">++</button>
-          <button class="pf-btn" type="button" data-pf="Left +">+</button>
-          <button class="pf-btn" type="button" data-pf="Left --">--</button>
-          <button class="pf-btn" type="button" data-pf="Left -">-</button>
+          <button class="pf-btn" type="button" data-pitch-step="0.10">++</button>
+          <button class="pf-btn" type="button" data-pitch-step="0.01">+</button>
+          <button class="pf-btn" type="button" data-pitch-step="-0.10">--</button>
+          <button class="pf-btn" type="button" data-pitch-step="-0.01">-</button>
           <button class="pf-btn" type="button" data-pf="M2=M">M2=M</button>
           <button class="pf-btn" type="button" data-pf="M-M2">M-M2</button>
           <button class="pf-btn pf-bpm" type="button" data-bpm>BPM</button>
@@ -105,10 +105,10 @@
         </div>
 
         <div class="pf-right">
-          <button class="pf-btn pf-r-plus" type="button" data-pf="Right +">+</button>
-          <button class="pf-btn pf-r-plus2" type="button" data-pf="Right ++">++</button>
-          <button class="pf-btn pf-r-plus" type="button" data-pf="Right -">-</button>
-          <button class="pf-btn pf-r-plus2" type="button" data-pf="Right --">--</button>
+          <button class="pf-btn pf-r-plus" type="button" data-pitch-step="0.01">+</button>
+          <button class="pf-btn pf-r-plus2" type="button" data-pitch-step="0.10">++</button>
+          <button class="pf-btn pf-r-plus" type="button" data-pitch-step="-0.01">-</button>
+          <button class="pf-btn pf-r-plus2" type="button" data-pitch-step="-0.10">--</button>
           <button class="pf-btn pf-ac" type="button" data-pf="AC">AC</button>
           <button class="pf-btn pf-cue" type="button" data-pf="CUE">CUE</button>
           <button class="pf-btn pf-pause" type="button" data-action="pause" aria-label="Pause">||</button>

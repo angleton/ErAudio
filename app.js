@@ -814,6 +814,16 @@ function resetPitch() {
 
 document.querySelector('[data-pf-reset]').addEventListener('click', resetPitch);
 
+// Steps are in percentage points of the pitch readout (0.01 = 0.01%).
+document.querySelectorAll('[data-pitch-step]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const slider = controls.speed;
+    const next = Number(slider.value) + (Number(button.dataset.pitchStep) / 100);
+    const clamped = Math.min(Number(slider.max), Math.max(Number(slider.min), next));
+    updateControl('speed', clamped.toFixed(4));
+  });
+});
+
 document.querySelectorAll('[data-pf]').forEach((button) => {
   button.addEventListener('click', () => {
     announceEvent({ type: 'button', name: button.dataset.pf });
