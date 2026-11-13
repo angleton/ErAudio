@@ -820,12 +820,65 @@ function resetPitch() {
 document.querySelector('[data-pf-reset]').addEventListener('click', resetPitch);
 
 // Steps are in percentage points of the pitch readout (0.01 = 0.01%).
-document.querySelectorAll('[data-pitch-step]').forEach((button) => {
-  button.addEventListener('click', () => {
-    const slider = controls.speed;
-    const next = Number(slider.value) + (Number(button.dataset.pitchStep) / 100);
-    const clamped = Math.min(Number(slider.max), Math.max(Number(slider.min), next));
-    updateControl('speed', clamped.toFixed(4));
+// Defaults are overridden at load by ErAudio.json (left = permanent, right = temporary).
+const stepConfig = {
+  permanent: { '++': 0.10, '+': 0.01, '--': 0.10, '-': 0.01 },
+  temporary: { '++': 0.10, '+': 0.01, '--': 0.10, '-': 0.01 },
+};
+
+async function loadStepConfig() {
+  try {
+    const response = await fetch('ErAudio.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    const config = await response.json();
+    ['permanent', 'temporary'].forEach((group) => {
+      Object.keys(stepConfig[group]).forEach((key) => {
+        const value = Number(config?.[group]?.[key]);
+        if (Number.isFinite(value) && value >= 0) stepConfig[group][key] = value;
+      });
+    });
+  } catch {
+    // Missing or invalid file: keep the defaults.
+  }
+}
+const stepConfigReady = loadStepConfig();
+
+function steppedSpeed(button, base, group) {
+  const slider = controls.speed;
+  const label = button.textContent.trim();
+  const sign = label.startsWith('-') ? -1 : 1;
+  const next = base + (sign * stepConfig[group][label] / 100);
+  return Math.min(Number(slider.max), Math.max(Number(slider.min), next)).toFixed(4);
+}
+
+// Left-side buttons change the speed permanently.
+document.querySelectorAll('.pf-left [data-pitch-step]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    await stepConfigReady;
+    updateControl('speed', steppedSpeed(button, Number(controls.speed.value), 'permanent'));
+  });
+});
+
+// Right-side buttons are momentary: the step applies only while held, then the prior speed is restored.
+document.querySelectorAll('.pf-right [data-pitch-step]').forEach((button) => {
+  let restoreValue = null;
+  const press = () => {
+    if (restoreValue !== null) return;
+    restoreValue = controls.speed.value;
+    updateControl('speed', steppedSpeed(button, Number(restoreValue), 'temporary'));
+  };
+  const release = () => {
+    if (restoreValue === null) return;
+    updateControl('speed', restoreValue);
+    restoreValue = null;
+  };
+  button.addEventListener('pointerdown', press);
+  ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((type) => button.addEventListener(type, release));
+  button.addEventListener('keydown', (event) => {
+    if (event.key === ' ' || event.key === 'Enter') press();
+  });
+  button.addEventListener('keyup', (event) => {
+    if (event.key === ' ' || event.key === 'Enter') release();
   });
 });
 
