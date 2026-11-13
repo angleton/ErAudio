@@ -822,8 +822,8 @@ document.querySelector('[data-pf-reset]').addEventListener('click', resetPitch);
 // Steps are in percentage points of the pitch readout (0.01 = 0.01%).
 // Defaults are overridden at load by ErAudio.json (left = permanent, right = temporary).
 const stepConfig = {
-  permanent: { '++': 0.10, '+': 0.01, '--': 0.10, '-': 0.01 },
-  temporary: { '++': 0.10, '+': 0.01, '--': 0.10, '-': 0.01 },
+  permanent: { large: 0.10, small: 0.01 },
+  temporary: { large: 0.10, small: 0.01 },
 };
 
 async function loadStepConfig() {
@@ -845,14 +845,13 @@ const stepConfigReady = loadStepConfig();
 
 function steppedSpeed(button, base, group) {
   const slider = controls.speed;
-  const label = button.textContent.trim();
-  const sign = label.startsWith('-') ? -1 : 1;
-  const next = base + (sign * stepConfig[group][label] / 100);
+  const sign = button.dataset.stepDir === 'down' ? -1 : 1;
+  const next = base + (sign * stepConfig[group][button.dataset.stepSize] / 100);
   return Math.min(Number(slider.max), Math.max(Number(slider.min), next)).toFixed(4);
 }
 
 // Left-side buttons change the speed permanently.
-document.querySelectorAll('.pf-left [data-pitch-step]').forEach((button) => {
+document.querySelectorAll('.pf-left [data-step-size]').forEach((button) => {
   button.addEventListener('click', async () => {
     await stepConfigReady;
     updateControl('speed', steppedSpeed(button, Number(controls.speed.value), 'permanent'));
@@ -860,7 +859,7 @@ document.querySelectorAll('.pf-left [data-pitch-step]').forEach((button) => {
 });
 
 // Right-side buttons are momentary: the step applies only while held, then the prior speed is restored.
-document.querySelectorAll('.pf-right [data-pitch-step]').forEach((button) => {
+document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
   let restoreValue = null;
   const press = () => {
     if (restoreValue !== null) return;
