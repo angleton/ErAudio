@@ -78,7 +78,7 @@ Open `index.html` in a modern browser, for example by double-clicking it in File
 
 Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and lets the PLAYLIST window read a video's description to detect chapters and timestamps. If the browser already has a Google session that previously approved ErAudio, sign-in happens automatically on page load. End users never need Google Cloud access; the maintainer does this setup **once**.
 
-Until `googleClientId` in [config.js](config.js) is set, the app shows "Set googleClientId in config.js to enable YouTube sign-in".
+Until `googleClientId` in [config.js](config.js) is set, the login button displays a notice that sign-in is not configured, with a link to these setup instructions.
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or choose an existing one).
 2. Under **APIs & Services → Library**, enable **YouTube Data API v3**.
@@ -98,7 +98,7 @@ Until `googleClientId` in [config.js](config.js) is set, the app shows "Set goog
 Troubleshooting:
 - `origin_mismatch` / `redirect_uri_mismatch`: the page's origin is not in step 4 exactly as written.
 - `access_denied`: the account is not a test user (step 3) and the app is not yet verified.
-- "Set googleClientId…": step 5 is missing.
+- "YouTube sign-in is not configured": step 5 is missing.
 
 Without a client ID, pasting a YouTube link still works; only account playlists and chapter/timestamp detection are unavailable.
 

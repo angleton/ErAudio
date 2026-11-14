@@ -21,6 +21,8 @@ const defaultTrack = {
   duration: '--:--',
 };
 const youtubeLoginButton = document.querySelector('#youtube-login');
+const loginNotice = document.querySelector('#login-notice');
+const loginNoticeMessage = document.querySelector('#login-notice-message');
 const youtubeAccountStorageKey = 'eraudio:youtube-account-name';
 const openDialog = document.querySelector('#open-dialog');
 const openForm = document.querySelector('#open-form');
@@ -284,6 +286,12 @@ async function loadAccountPlaylists() {
 let tokenClient = null;
 let silentAttempt = false;
 
+function showLoginError(message) {
+  loginNoticeMessage.textContent = message;
+  loginNotice.hidden = false;
+  announceEvent({ type: 'error', name: message });
+}
+
 function getTokenClient() {
   if (tokenClient) return tokenClient;
   if (!googleClientId || !window.google?.accounts?.oauth2) return null;
@@ -295,9 +303,10 @@ function getTokenClient() {
       const wasSilent = silentAttempt;
       silentAttempt = false;
       if (tokenResponse.error) {
-        if (!wasSilent) announceEvent({ type: 'error', name: tokenResponse.error });
+        if (!wasSilent) showLoginError(`YouTube sign-in failed: ${tokenResponse.error}. Try again or check the setup instructions.`);
         return;
       }
+      loginNotice.hidden = true;
       youtubeAccessToken = tokenResponse.access_token;
       ensureMarkers(playingTrack);
       try {
@@ -309,7 +318,7 @@ function getTokenClient() {
     error_callback: (error) => {
       const wasSilent = silentAttempt;
       silentAttempt = false;
-      if (!wasSilent) announceEvent({ type: 'error', name: error.message || error.type });
+      if (!wasSilent) showLoginError(`YouTube sign-in failed: ${error.message || error.type}. Try again or check the setup instructions.`);
     },
   });
   return tokenClient;
@@ -319,17 +328,22 @@ function getTokenClient() {
 // without any UI; otherwise Google shows a one-click account chooser.
 function requestYouTubeLogin({ silent = false } = {}) {
   if (!silent) {
+    loginNotice.hidden = true;
     document.dispatchEvent(new CustomEvent('eraudio:youtube-login-request'));
     announceEvent({ type: 'login', name: 'YouTube' });
   }
 
+  if (location.protocol === 'file:') {
+    if (!silent) showLoginError('YouTube sign-in cannot run from a local file. Use the hosted player or serve ErAudio over HTTP with a configured Google OAuth client ID.');
+    return;
+  }
   if (!googleClientId) {
-    if (!silent) announceEvent({ type: 'error', name: 'Set googleClientId in config.js to enable YouTube sign-in' });
+    if (!silent) showLoginError('YouTube sign-in is not configured for this copy of ErAudio. The maintainer must set a Google OAuth client ID. You can still play YouTube links.');
     return;
   }
   const client = getTokenClient();
   if (!client) {
-    if (!silent) announceEvent({ type: 'error', name: 'Google sign-in script failed to load' });
+    if (!silent) showLoginError('Google sign-in could not load. Check your connection or browser blockers, then try again.');
     return;
   }
 

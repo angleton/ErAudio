@@ -196,6 +196,18 @@ body {
   max-width: 100%;
 }
 
+.login-notice {
+  padding: 8px;
+  color: #ffffff;
+  background: var(--panel-bg);
+  border: 1px solid var(--accent-gold);
+  font: 12px/1.5 var(--font-mono);
+}
+
+.login-notice a {
+  color: var(--accent-gold);
+}
+
 .winamp-window[hidden] {
   display: none;
 }
