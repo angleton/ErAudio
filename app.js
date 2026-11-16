@@ -4,10 +4,10 @@ const controls = {
   volume: document.querySelector('#volume'),
 };
 
-const speedLimits = { min: 0.0625, max: 4 };
+const speedLimits = { min: 0.5, max: 1.5 };
 const speedPositionLimit = 30000;
 
-// Map each half separately so normal speed stays centered despite asymmetric limits.
+// Map each half separately so normal speed stays centered if the limits change.
 function currentSpeedRate() {
   const position = Number(controls.speed.value);
   const span = position < 0 ? 1 - speedLimits.min : speedLimits.max - 1;
