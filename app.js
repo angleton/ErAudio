@@ -1393,31 +1393,94 @@ const stepConfig = {
   temporary: { large: 0.10, small: 0.01 },
   ramp: { percentPerSecond: 1 },
 };
+const stepGroups = ['permanent', 'temporary'];
+const stepSizes = ['large', 'small'];
+const stepStorageKey = 'eraudio:speed-steps';
+const stepMessage = document.querySelector('#step-message');
+const stepDefaults = {};
+
+function readStepOverrides() {
+  const raw = localStorage.getItem(stepStorageKey);
+  if (raw === null) return {};
+  const stored = JSON.parse(raw);
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+    throw new Error('Invalid saved speed steps.');
+  }
+  const overrides = {};
+  stepGroups.forEach((group) => {
+    if (stored[group] === undefined) return;
+    if (!stored[group] || typeof stored[group] !== 'object' || Array.isArray(stored[group])) {
+      throw new Error('Invalid saved speed steps.');
+    }
+    overrides[group] = {};
+    stepSizes.forEach((size) => {
+      const value = stored[group][size];
+      if (value === undefined) return;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        throw new Error('Invalid saved speed steps.');
+      }
+      overrides[group][size] = value;
+    });
+  });
+  return overrides;
+}
+
+function applyStepOverrides(overrides) {
+  stepGroups.forEach((group) => {
+    stepSizes.forEach((size) => {
+      stepConfig[group][size] = overrides[group]?.[size] ?? stepDefaults[group][size];
+    });
+  });
+}
+
+function stepError(message, error) {
+  stepMessage.textContent = message;
+  if (error) console.error(message, error);
+  announceEvent({ type: 'error', name: message });
+}
 
 async function loadStepConfig() {
   try {
     const response = await fetch('ErAudio.json', { cache: 'no-store' });
-    if (!response.ok) return;
-    const config = await response.json();
-    ['permanent', 'temporary'].forEach((group) => {
-      Object.keys(stepConfig[group]).forEach((key) => {
-        const value = Number(config?.[group]?.[key]);
-        if (Number.isFinite(value) && value >= 0) stepConfig[group][key] = value;
+    if (response.ok) {
+      const config = await response.json();
+      stepGroups.forEach((group) => {
+        stepSizes.forEach((key) => {
+          const value = Number(config?.[group]?.[key]);
+          if (Number.isFinite(value) && value >= 0) stepConfig[group][key] = value;
+        });
       });
-    });
-    if (config?.ramp?.percentPerSecond !== undefined) {
-      const rate = config.ramp.percentPerSecond;
-      if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
-        stepConfig.ramp.percentPerSecond = rate;
-      } else {
-        console.warn('Invalid ramp.percentPerSecond in ErAudio.json; using the default.');
+      if (config?.ramp?.percentPerSecond !== undefined) {
+        const rate = config.ramp.percentPerSecond;
+        if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+          stepConfig.ramp.percentPerSecond = rate;
+        } else {
+          console.warn('Invalid ramp.percentPerSecond in ErAudio.json; using the default.');
+        }
       }
     }
   } catch {
     // Missing or invalid file: keep the defaults.
   }
+  stepGroups.forEach((group) => { stepDefaults[group] = { ...stepConfig[group] }; });
+  try {
+    applyStepOverrides(readStepOverrides());
+  } catch (error) {
+    stepError('Could not read saved speed steps from browser storage.', error);
+  }
 }
 const stepConfigReady = loadStepConfig();
+
+window.addEventListener('storage', async (event) => {
+  if (event.key !== stepStorageKey && event.key !== null) return;
+  await stepConfigReady;
+  try {
+    applyStepOverrides(readStepOverrides());
+    stepMessage.textContent = '';
+  } catch (error) {
+    stepError('Could not read saved speed steps from browser storage.', error);
+  }
+});
 
 const speedRampMessage = document.querySelector('#speed-ramp-message');
 const speedRampButtons = {
@@ -1494,23 +1557,32 @@ document.querySelectorAll('.pf-left [data-step-size]').forEach((button) => {
   });
 });
 
-function bindMomentarySpeed(button, pressedSpeed) {
+function bindMomentarySpeed(button, pressedSpeed, ready = null) {
   let restoreValue = null;
   let pressedBy = null;
   const press = (source, id) => {
-    if (restoreValue !== null) return;
-    restoreValue = controls.speed.value;
-    pressedBy = { source, id };
-    updateControl('speed', pressedSpeed(Number(restoreValue)));
+    if (pressedBy) return;
+    const currentPress = { source, id };
+    pressedBy = currentPress;
+    const apply = () => {
+      if (pressedBy !== currentPress) return;
+      restoreValue = controls.speed.value;
+      updateControl('speed', pressedSpeed(Number(restoreValue)));
+    };
+    if (ready) ready.then(apply);
+    else apply();
   };
   const release = (source, id) => {
-    if (restoreValue === null || (source && (pressedBy.source !== source || pressedBy.id !== id))) return;
+    if (!pressedBy || (source && (pressedBy.source !== source || pressedBy.id !== id))) return;
+    pressedBy = null;
+    if (restoreValue === null) return;
     const previous = restoreValue;
     restoreValue = null;
-    pressedBy = null;
     updateControl('speed', previous);
   };
-  button.addEventListener('pointerdown', (event) => press('pointer', event.pointerId));
+  button.addEventListener('pointerdown', (event) => {
+    if (event.button === 0) press('pointer', event.pointerId);
+  });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => {
     button.addEventListener(type, (event) => release('pointer', event.pointerId));
   });
@@ -1529,10 +1601,82 @@ function bindMomentarySpeed(button, pressedSpeed) {
 
 // Right-side buttons apply their steps only while held.
 document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
-  bindMomentarySpeed(button, (base) => steppedSpeed(button, base, 'temporary'));
+  bindMomentarySpeed(button, (base) => steppedSpeed(button, base, 'temporary'), stepConfigReady);
 });
 
 bindMomentarySpeed(document.querySelector('[data-pf="="]'), () => '1.00');
+
+let stepEditor = null;
+document.querySelectorAll('[data-step-size]').forEach((button) => {
+  button.setAttribute('aria-label', `${button.textContent} ${button.closest('.pf-left') ? 'permanent' : 'temporary'} speed step. Right-click or press Shift+F10 to edit.`);
+  button.addEventListener('contextmenu', async (event) => {
+    event.preventDefault();
+    await stepConfigReady;
+    if (stepEditor) {
+      stepError('Save or cancel the current speed step edit first.');
+      stepEditor.focus();
+      return;
+    }
+    const group = button.closest('.pf-left') ? 'permanent' : 'temporary';
+    const size = button.dataset.stepSize;
+    const editor = document.createElement('input');
+    editor.type = 'number';
+    editor.min = '0';
+    editor.step = 'any';
+    editor.inputMode = 'decimal';
+    editor.className = `pf-step-editor${group === 'temporary' ? ` ${button.classList.contains('pf-r-plus2') ? 'pf-r-plus2' : 'pf-r-plus'}` : ''}`;
+    editor.setAttribute('aria-label', `Edit ${group} ${size} speed step in percentage points`);
+    editor.setAttribute('aria-describedby', 'step-message');
+    editor.value = String(stepConfig[group][size]);
+    stepEditor = editor;
+    button.after(editor);
+    button.hidden = true;
+    stepMessage.textContent = 'Enter a nonnegative percentage-point step. Press Enter to save or Escape to cancel.';
+    editor.focus();
+    editor.select();
+
+    function closeEditor(restoreFocus) {
+      stepEditor = null;
+      editor.remove();
+      button.hidden = false;
+      if (restoreFocus) button.focus();
+    }
+
+    function saveEditor(restoreFocus) {
+      if (stepEditor !== editor) return;
+      const value = editor.valueAsNumber;
+      if (!Number.isFinite(value) || value < 0) {
+        editor.setAttribute('aria-invalid', 'true');
+        stepError('Enter a nonnegative speed step in percentage points.');
+        return;
+      }
+      try {
+        const overrides = readStepOverrides();
+        overrides[group] = { ...overrides[group], [size]: value };
+        localStorage.setItem(stepStorageKey, JSON.stringify(overrides));
+        applyStepOverrides(overrides);
+      } catch (error) {
+        stepError('Could not save speed steps in browser storage. No step was changed.', error);
+        return;
+      }
+      closeEditor(restoreFocus);
+      stepMessage.textContent = `Saved ${group} ${size} speed step: ${value} percentage points.`;
+      announceEvent({ type: 'speed-step', name: `${group} ${size}`, value });
+    }
+
+    editor.addEventListener('keydown', (keyEvent) => {
+      if (keyEvent.key === 'Enter') {
+        keyEvent.preventDefault();
+        saveEditor(true);
+      } else if (keyEvent.key === 'Escape') {
+        keyEvent.preventDefault();
+        closeEditor(true);
+        stepMessage.textContent = '';
+      }
+    });
+    editor.addEventListener('blur', () => saveEditor(false));
+  });
+});
 
 const bpmValues = new Map();
 const bpmTaps = new Map();
