@@ -1082,6 +1082,30 @@ function locationEditInvalid(message) {
   locationTimeInput.focus();
 }
 
+function updateSavedLocation(selection, position) {
+  if (!loadSavedLocations()) return false;
+  const locations = savedLocations.get(selection.videoId);
+  if (playingTrack?.videoId !== selection.videoId || locations?.[selection.index] !== selection.position) {
+    renderSavedLocations();
+    updateSelectedLocation();
+    memoryError('The saved location changed. Select it and try again.');
+    return false;
+  }
+  const updated = new Map(savedLocations);
+  const editedLocations = [...locations];
+  editedLocations[selection.index] = position;
+  updated.set(selection.videoId, editedLocations);
+  try {
+    localStorage.setItem(savedLocationsStorageKey, JSON.stringify(Object.fromEntries(updated)));
+  } catch (error) {
+    memoryError('Could not update the location in browser storage. No location was changed.', error);
+    return false;
+  }
+  savedLocations = updated;
+  selectedLocation = { videoId: selection.videoId, index: selection.index, position };
+  return true;
+}
+
 locationEditor.addEventListener('submit', (event) => {
   event.preventDefault();
   const edit = editingLocation;
@@ -1113,26 +1137,7 @@ locationEditor.addEventListener('submit', (event) => {
     locationEditInvalid('The location cannot be beyond the video duration.');
     return;
   }
-  if (!loadSavedLocations()) return;
-  const locations = savedLocations.get(edit.videoId);
-  if (playingTrack?.videoId !== edit.videoId || locations?.[edit.index] !== edit.position) {
-    closeLocationEditor(false);
-    renderSavedLocations();
-    memoryError('The saved location changed. Select it and try again.');
-    return;
-  }
-  const updated = new Map(savedLocations);
-  const editedLocations = [...locations];
-  editedLocations[edit.index] = position;
-  updated.set(edit.videoId, editedLocations);
-  try {
-    localStorage.setItem(savedLocationsStorageKey, JSON.stringify(Object.fromEntries(updated)));
-  } catch (error) {
-    memoryError('Could not update the location in browser storage. No location was changed.', error);
-    return;
-  }
-  savedLocations = updated;
-  selectedLocation = { videoId: edit.videoId, index: edit.index, position };
+  if (!updateSavedLocation(edit, position)) return;
   closeLocationEditor(false);
   renderSavedLocations();
   recallSavedLocation(edit.index);
@@ -1603,7 +1608,12 @@ function nudgePosition(direction) {
     nudgeError('Play or pause a loaded video before nudging.');
     return;
   }
-  const position = nudgePreview?.target ?? ytPlayer.getCurrentTime();
+  const selection = selectedLocation;
+  if (selection && editingLocation) {
+    nudgeError('Save or cancel the location edit before nudging.');
+    return;
+  }
+  const position = selection?.position ?? nudgePreview?.target ?? ytPlayer.getCurrentTime();
   const step = 60 / bpm / 16;
   if (!Number.isFinite(position) || position < 0 || position > duration || !Number.isFinite(step) || step <= 0) {
     nudgeError('The playback position or left BPM cannot be used for nudging.');
@@ -1613,6 +1623,14 @@ function nudgePosition(direction) {
   if (target === position) {
     nudgeError('The playback position cannot be nudged farther in that direction.');
     return;
+  }
+  if (selection) {
+    if (!updateSavedLocation(selection, target)) {
+      nudgeMessage.textContent = 'The saved location was not changed. See the location message for details.';
+      return;
+    }
+    renderSavedLocations();
+    memoryMessage.textContent = `Updated saved location to ${formatLocationTime(target)}.`;
   }
   cancelNudgePreview(true);
   const preview = { target, phase: 'pausing', timer: null, watchdog: null };
