@@ -649,6 +649,21 @@ body {
   border: 2px solid var(--accent-gold);
 }
 
+.transport-btn.play.pulsing {
+  animation: play-border-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes play-border-pulse {
+  0%, 100% { border-color: var(--accent-gold); }
+  50% { border-color: #806600; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transport-btn.play.pulsing {
+    animation: none;
+  }
+}
+
 /* ==========================================================================
    PITCHFORK / PACEMAKER PLUGIN WINDOW
    ========================================================================== */

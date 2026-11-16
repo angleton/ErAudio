@@ -415,6 +415,7 @@ function updatePlayButton(isPlaying, active) {
   playButton.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
   playButton.classList.toggle('active', active);
   playButton.classList.toggle('playing', isPlaying);
+  playButton.classList.toggle('pulsing', isPlaying);
   playbackIndicator.hidden = !isPlaying;
 }
 
@@ -603,6 +604,7 @@ function onPlayerStateChange(event) {
     const isPlaying = event.data === YT.PlayerState.PLAYING;
     updatePlayButton(isPlaying, isPlaying || event.data === YT.PlayerState.PAUSED);
   } else {
+    playButton.classList.remove('pulsing');
     playbackIndicator.hidden = true;
   }
   pauseButtons.forEach((button) => {
