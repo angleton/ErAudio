@@ -407,13 +407,12 @@ function applyControl(name, value) {
 function resetTransportDisplay() {
   timeDisplay.textContent = '00:00';
   controls.scrubber.value = 0;
-  updatePlayButton(false, false);
+  updatePlayButton(false);
 }
 
-function updatePlayButton(isPlaying, active) {
+function updatePlayButton(isPlaying) {
   playButton.textContent = isPlaying ? '⏸' : '▶';
   playButton.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
-  playButton.classList.toggle('active', active);
   playButton.classList.toggle('playing', isPlaying);
   playButton.classList.toggle('pulsing', isPlaying);
   playbackIndicator.hidden = !isPlaying;
@@ -602,7 +601,7 @@ function setTrackTitle(track, title) {
 function onPlayerStateChange(event) {
   if (event.data !== YT.PlayerState.BUFFERING) {
     const isPlaying = event.data === YT.PlayerState.PLAYING;
-    updatePlayButton(isPlaying, isPlaying || event.data === YT.PlayerState.PAUSED);
+    updatePlayButton(isPlaying);
   } else {
     playButton.classList.remove('pulsing');
     playbackIndicator.hidden = true;
@@ -628,7 +627,7 @@ function onPlayerStateChange(event) {
 }
 
 function onPlayerError() {
-  updatePlayButton(false, false);
+  updatePlayButton(false);
   if (nudgePreview) {
     cancelNudgePreview(true);
     nudgeError('The nudge preview failed because the video could not be played.');
