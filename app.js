@@ -106,6 +106,7 @@ const playbackIndicator = document.querySelector('#playback-indicator');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
 const markerInfo = document.querySelector('#marker-info');
+const markerSourceToggle = document.querySelector('#marker-source-toggle');
 const markerViewToggle = document.querySelector('#marker-view-toggle');
 const timeDisplay = document.querySelector('#time-display');
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
@@ -115,6 +116,7 @@ let playingTrack = defaultTrack;
 let playingList = favoriteLists[0];
 let scrubbing = false;
 let savedLocations = new Map();
+let savedLocationsReadError = false;
 let savedLocationsRenderKey = '';
 let locationsListRenderKey = '';
 let selectedLocation = null;
@@ -603,8 +605,15 @@ function parseDescriptionMarkers(description, duration) {
 
 let markerRenderKey = '';
 let activeMarkerIndex = -1;
+let markerSource = 'video';
 
 function currentMarkerEntries() {
+  if (markerSource === 'user') {
+    if (savedLocationsReadError) return [];
+    return (savedLocations.get(playingTrack?.videoId) || [])
+      .map((start, locationIndex) => ({ start, locationIndex }))
+      .sort((a, b) => a.start - b.start || a.locationIndex - b.locationIndex);
+  }
   const markers = playingTrack?.markers;
   if (!markers) return [];
   return playingTrack.markerView === 'timestamps' || !markers.chapters.length
@@ -616,11 +625,15 @@ function renderMarkers() {
   const state = markers ? 'ready' : playingTrack?.markersLoading ? 'loading'
     : playingTrack?.markerError ? 'error' : (youtubeApiKey || youtubeAccessToken) ? 'loading'
       : googleClientId ? 'signin' : 'setup';
-  const key = `${playingTrack?.videoId || ''}|${state}|${playingTrack?.markerView || ''}`;
+  const key = JSON.stringify([playingTrack?.videoId, markerSource, state, playingTrack?.markerView,
+    markerSource === 'user' ? savedLocations.get(playingTrack?.videoId) : null, savedLocationsReadError]);
   if (key === markerRenderKey) return;
   markerRenderKey = key;
   activeMarkerIndex = -1;
   markerViewToggle.hidden = true;
+  markerSourceToggle.textContent = markerSource === 'user' ? 'SHOW VIDEO MARKERS' : 'SHOW MY LOCATIONS';
+  markerList.setAttribute('aria-label', markerSource === 'user'
+    ? 'Saved locations of the active video' : 'Chapters and timestamps of the active video');
 
   const placeholder = (text) => {
     const empty = document.createElement('div');
@@ -630,8 +643,29 @@ function renderMarkers() {
   };
 
   if (!playingTrack) {
-    placeholder('Open a video to see its chapters or timestamps.');
+    placeholder('Open a video to see its markers.');
     markerInfo.textContent = 'NO VIDEO';
+  } else if (markerSource === 'user') {
+    const entries = currentMarkerEntries();
+    if (savedLocationsReadError) {
+      placeholder('Could not read saved locations from browser storage.');
+      markerInfo.textContent = 'STORAGE ERROR';
+    } else if (!entries.length) {
+      placeholder('No saved locations for this video. Press M+ to add one.');
+      markerInfo.textContent = 'MY LOCATIONS / 0 ENTRIES';
+    } else {
+      markerList.replaceChildren(...entries.map((entry, index) => {
+        const item = document.createElement('button');
+        item.className = 'playlist-item';
+        item.type = 'button';
+        item.dataset.marker = String(index);
+        item.dataset.userLocation = String(entry.locationIndex);
+        item.textContent = `${index + 1}. [${formatLocationTime(entry.start)}]`;
+        item.setAttribute('aria-label', `Seek to saved location ${formatLocationTime(entry.start)}`);
+        return item;
+      }));
+      markerInfo.textContent = `MY LOCATIONS / ${entries.length} ENTRIES`;
+    }
   } else if (state === 'error') {
     placeholder(playingTrack.markerError);
     markerInfo.textContent = 'ERROR';
@@ -959,9 +993,12 @@ function loadSavedLocations() {
   try {
     const raw = localStorage.getItem(savedLocationsStorageKey);
     savedLocations = parseSavedLocations(raw === null ? {} : JSON.parse(raw));
+    savedLocationsReadError = false;
     return true;
   } catch (error) {
+    savedLocationsReadError = true;
     memoryError('Could not read saved locations from browser storage. No locations were changed.', error);
+    if (markerSource === 'user') renderMarkers();
     return false;
   }
 }
@@ -1053,6 +1090,7 @@ function renderSavedLocations() {
     }
     updateSelectedLocation();
   }
+  if (markerSource === 'user') renderMarkers();
 }
 
 function addSavedLocation() {
@@ -1096,6 +1134,7 @@ function clearSavedLocations() {
     return;
   }
   savedLocations.clear();
+  savedLocationsReadError = false;
   memoryMessage.textContent = '';
   renderSavedLocations();
 }
@@ -1575,9 +1614,6 @@ document.addEventListener('click', (event) => {
       'toggle-playlist': 'playlist-window',
     }[button.dataset.action] || 'pitchfork-window';
     document.getElementById(targetId).hidden = !isActive;
-    if (button.dataset.action === 'toggle-playlist' && isActive && !youtubeApiKey && !youtubeAccessToken && !googleClientId) {
-      showCredentialsDialog('chapters');
-    }
   }
 
   if (button.dataset.action === 'open') showInputDialog('open');
@@ -1592,13 +1628,24 @@ document.addEventListener('click', (event) => {
   });
 });
 
+markerSourceToggle.addEventListener('click', () => {
+  markerSource = markerSource === 'video' ? 'user' : 'video';
+  renderMarkers();
+});
+
 markerViewToggle.addEventListener('click', () => {
   if (!playingTrack?.markers) return;
   playingTrack.markerView = currentMarkerEntries() === playingTrack.markers.chapters ? 'timestamps' : 'chapters';
   renderMarkers();
 });
 
+markerList.addEventListener('click', (event) => {
+  const item = event.target.closest('[data-user-location]');
+  if (item) recallSavedLocation(Number(item.dataset.userLocation));
+});
+
 markerList.addEventListener('dblclick', (event) => {
+  if (markerSource !== 'video') return;
   const item = event.target.closest('[data-marker]');
   if (item) seekToMarker(Number(item.dataset.marker));
 });
