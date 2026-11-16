@@ -27,10 +27,10 @@ Pasting links works this way. YOUTUBE LOGIN only works if the maintainer has reg
 
 This project aims to preserve the compact retro-audio-player aesthetic that inspired it while establishing ErAudio as its own product identity.
 
-### Current UI Prototype
+### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
+The main title bar displays the current version, **v1.0**. The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
 ![ErAudio player showing saved locations, Pitchfork controls, and the Videos window](screenshot-ui.png)
 <br>
@@ -40,12 +40,12 @@ The optional **PITCH** window contains playback-speed adjustments, two independe
 
 ## 🚀 Project Overview & Architecture
 
-### Current Stage: Interactive HTML5 UI Prototype
+### Current Stage: Version 1.0
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
 * **Granular Controls:** Speed slider configured for high-precision steps (`0.0025x` increments, minimum `0.0625x` to match YouTube's `playbackRate` limit).
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.
-* **Open Input:** The Open control accepts an 11-character video ID or a YouTube watch, short, embed, Shorts, or live URL. It validates the ID format and emits an `eraudio:control` event with the input, normalized URL, video ID, query parameters, and fragment. This validates syntax only; it does not verify that a video exists or start playback.
+* **Open Input:** The Open control accepts an 11-character video ID or a YouTube watch, short, embed, Shorts, or live URL. It validates the ID format, adds the video, and starts playback through the YouTube player; a valid ID does not guarantee that the video exists or is playable. It also emits an `eraudio:control` event with the video ID.
 * **Event Hooks:** Controls dispatch an `eraudio:control` `CustomEvent` on `document`. The interface can be opened directly as a local file; if browser storage is unavailable, other preferences fall back to in-memory values for that page session.
 * **BPM buttons:** The two independent tap counters have stable IDs `bpm-left` and `bpm-right`; their control events use those IDs as their names even when the displayed BPM changes. Right-click a BPM button (or press Shift+F10 while it is focused) to enter a positive value. Press Enter or move focus away to save, or Escape to cancel. **AC** resets both counters and playback speed.
 * **BPM matching:** After measuring both BPM values, **M2=M** sets the speed to right BPM divided by left BPM; **M-M2** uses left BPM divided by right BPM. Values outside the slider's range are limited to its nearest endpoint. The YouTube player may not support the requested rate.
@@ -136,8 +136,8 @@ Open the local URL printed by `serve`. Press `Ctrl+C` in the terminal to stop ei
 eraudio/
 ├── index.html        # HTML5 layout of ErAudio & Pitchfork UI
 ├── styles.css        # Retro ErAudio classic skin stylesheet
-├── app.js             # Interactive control events and display-only state
+├── app.js            # Player, controls, and saved locations
 ├── config.js         # Google OAuth client ID for YOUTUBE LOGIN
-├── screenshot-ui.png # Screenshot of the current UI prototype
+├── screenshot-ui.png # Screenshot of the player UI
 └── README.md         # Project documentation & reference images
 ```
