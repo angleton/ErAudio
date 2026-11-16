@@ -14,6 +14,7 @@ const memoryMessage = document.querySelector('#memory-message');
 const locationsToggle = document.querySelector('#toggle-locations');
 const locationsPanel = document.querySelector('#locations-panel');
 const locationsList = document.querySelector('#locations-list');
+const removeLocationButton = document.querySelector('#remove-location');
 const locationsFile = document.querySelector('#locations-file');
 const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
@@ -742,6 +743,7 @@ function formatLocationTime(position) {
 }
 
 function updateSelectedLocation() {
+  removeLocationButton.disabled = !selectedLocation;
   locationsList.querySelectorAll('[data-location-index]').forEach((item) => {
     item.setAttribute('aria-current', String(Number(item.dataset.locationIndex) === selectedLocation?.index));
   });
@@ -846,6 +848,36 @@ function clearSavedLocations() {
   renderSavedLocations();
 }
 
+function removeSelectedLocation() {
+  const selection = selectedLocation;
+  if (!selection || !loadSavedLocations()) return;
+  const locations = savedLocations.get(selection.videoId);
+  if (selection.videoId !== playingTrack?.videoId || locations?.[selection.index] !== selection.position) {
+    selectedLocation = null;
+    renderSavedLocations();
+    updateSelectedLocation();
+    memoryError('The selected location has changed. Select a location and try again.');
+    return;
+  }
+  const updated = new Map(savedLocations);
+  const remaining = locations.filter((_, index) => index !== selection.index);
+  if (remaining.length) updated.set(selection.videoId, remaining);
+  else updated.delete(selection.videoId);
+  try {
+    localStorage.setItem(savedLocationsStorageKey, JSON.stringify(Object.fromEntries(updated)));
+  } catch (error) {
+    memoryError('Could not remove the location from browser storage. No location was removed.', error);
+    return;
+  }
+  savedLocations = updated;
+  selectedLocation = null;
+  if (document.activeElement === removeLocationButton) document.querySelector('#close-locations').focus();
+  renderSavedLocations();
+  updateSelectedLocation();
+  memoryMessage.textContent = `Removed saved location ${formatLocationTime(selection.position)}.`;
+  announceEvent({ type: 'memory', name: 'removed location', videoId: selection.videoId, value: selection.position });
+}
+
 document.querySelector('#export-locations').addEventListener('click', () => {
   if (!loadSavedLocations()) return;
   renderSavedLocations();
@@ -918,10 +950,14 @@ locationsFile.addEventListener('change', async () => {
   announceEvent({ type: 'memory', name: 'imported locations', value: added });
 });
 
-function recallSavedLocation(index) {
+function recallSavedLocation(index, { allowUnavailableSelection = false } = {}) {
   const duration = activeVideoDuration();
   const position = savedLocations.get(playingTrack?.videoId)?.[index];
   if (!duration || !Number.isFinite(position) || position > duration) {
+    if (allowUnavailableSelection && Number.isFinite(position)) {
+      selectedLocation = { videoId: playingTrack.videoId, index, position };
+      updateSelectedLocation();
+    }
     memoryError('This saved location is not available for the current video.');
     return;
   }
@@ -949,8 +985,10 @@ document.querySelector('#close-locations').addEventListener('click', () => {
 
 locationsList.addEventListener('click', (event) => {
   const item = event.target.closest('[data-location-index]');
-  if (item) recallSavedLocation(Number(item.dataset.locationIndex));
+  if (item) recallSavedLocation(Number(item.dataset.locationIndex), { allowUnavailableSelection: true });
 });
+
+removeLocationButton.addEventListener('click', removeSelectedLocation);
 
 savedLocationsLayer.addEventListener('click', (event) => {
   const marker = event.target.closest('[data-saved-location]');

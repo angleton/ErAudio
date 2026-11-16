@@ -442,6 +442,15 @@ body {
   padding: 4px;
 }
 
+.locations-actions {
+  padding: 4px 6px;
+}
+
+.locations-actions .pl-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .locations-entry {
   border: 0;
   background: transparent;
