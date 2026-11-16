@@ -15,6 +15,7 @@ const locationsToggle = document.querySelector('#toggle-locations');
 const locationsPanel = document.querySelector('#locations-panel');
 const locationsList = document.querySelector('#locations-list');
 const locationsFile = document.querySelector('#locations-file');
+const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
 const maxSavedLocations = 50;
 const favoritesSelect = document.querySelector('#favorites-select');
@@ -65,6 +66,7 @@ let savedLocations = new Map();
 let savedLocationsRenderKey = '';
 let locationsListRenderKey = '';
 let selectedLocation = null;
+let nudgePreview = null;
 
 function readStoredValue(key) {
   try {
@@ -495,11 +497,13 @@ function highlightActiveMarker(position) {
 function seekToMarker(index) {
   const entry = playingTrack?.markers?.entries[index];
   if (!entry || !ytReady) return;
+  cancelNudgePreview(true);
   ytPlayer.seekTo(entry.start, true);
   ytPlayer.playVideo();
 }
 
 function playTrack(list, track) {
+  cancelNudgePreview(true);
   if (track !== playingTrack) stopSpeedRamp();
   playingList = list;
   playingTrack = track;
@@ -513,6 +517,7 @@ function playTrack(list, track) {
 // Makes the track active; keeps playing if already playing, otherwise just cues it.
 function loadTrackIntoPlayer(list, track) {
   if (track === playingTrack) return;
+  cancelNudgePreview(true);
   stopSpeedRamp();
   const wasPlaying = ytReady && playingTrack
     && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
@@ -530,6 +535,7 @@ function loadTrackIntoPlayer(list, track) {
 }
 
 function stopPlayback() {
+  cancelNudgePreview(true);
   if (ytReady) ytPlayer.stopVideo();
   resetTransportDisplay();
 }
@@ -548,6 +554,7 @@ function stepTrack(step, { wrap = true } = {}) {
 }
 
 function startPlayback() {
+  cancelNudgePreview(true);
   if (playingTrack) {
     if (ytReady) ytPlayer.playVideo();
     return;
@@ -576,6 +583,7 @@ function onPlayerStateChange(event) {
   });
   renderSavedLocations();
   if (!playingTrack) return;
+  if (handleNudgeStateChange(event.data)) return;
   if (event.data === YT.PlayerState.PLAYING) {
     applyControl('speed', controls.speed.value);
     const duration = ytPlayer.getDuration();
@@ -590,6 +598,10 @@ function onPlayerStateChange(event) {
 }
 
 function onPlayerError() {
+  if (nudgePreview) {
+    cancelNudgePreview(true);
+    nudgeError('The nudge preview failed because the video could not be played.');
+  }
   announceEvent({ type: 'error', name: 'This video cannot be played (it may be private or not embeddable)' });
   trackTitleDisplay.textContent = `Unable to play: ${playingTrack?.title || 'video'}`;
 }
@@ -608,6 +620,11 @@ function initYouTubePlayer() {
         },
         onStateChange: onPlayerStateChange,
         onError: onPlayerError,
+        onAutoplayBlocked: () => {
+          if (!nudgePreview) return;
+          cancelNudgePreview(true);
+          nudgeError('The browser blocked the nudge preview. Check playback permissions and try again.');
+        },
       },
     });
   };
@@ -908,6 +925,7 @@ function recallSavedLocation(index) {
     memoryError('This saved location is not available for the current video.');
     return;
   }
+  cancelNudgePreview(true);
   ytPlayer.seekTo(position, true);
   controls.scrubber.value = (position / duration) * 100;
   timeDisplay.textContent = formatClock(position);
@@ -964,6 +982,7 @@ document.querySelectorAll('[data-control]').forEach((control) => {
   control.addEventListener('input', () => {
     const controlName = control.dataset.control;
     if (controlName === 'scrubber') {
+      cancelNudgePreview(true);
       scrubbing = true;
       timeDisplay.textContent = formatClock((Number(control.value) / 100) * currentDuration());
     } else {
@@ -1055,6 +1074,7 @@ document.addEventListener('click', (event) => {
 
   if (button.dataset.action === 'play') startPlayback();
   if (button.dataset.action === 'pause' && ytReady && playingTrack) {
+    cancelNudgePreview(true);
     if (ytPlayer.getPlayerState() === YT.PlayerState.PAUSED) ytPlayer.playVideo();
     else ytPlayer.pauseVideo();
   }
@@ -1253,6 +1273,98 @@ const bpmTaps = new Map();
 const bpmEditors = new Map();
 const bpmMessage = document.querySelector('#bpm-message');
 
+function nudgeError(message) {
+  nudgeMessage.textContent = message;
+  announceEvent({ type: 'error', name: message });
+}
+
+function cancelNudgePreview(pause = false) {
+  if (!nudgePreview) return;
+  clearTimeout(nudgePreview.timer);
+  clearTimeout(nudgePreview.watchdog);
+  nudgePreview = null;
+  if (pause && ytReady) ytPlayer.pauseVideo();
+  nudgeMessage.textContent = '';
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden || !nudgePreview) return;
+  cancelNudgePreview(true);
+  nudgeError('The nudge preview was stopped because the page was hidden.');
+});
+
+function startNudgePreview(preview) {
+  if (nudgePreview !== preview) return;
+  preview.phase = 'starting';
+  ytPlayer.seekTo(preview.target, true);
+  ytPlayer.playVideo();
+}
+
+function handleNudgeStateChange(state) {
+  const preview = nudgePreview;
+  if (!preview) return false;
+  if (state === YT.PlayerState.ENDED) {
+    cancelNudgePreview();
+    nudgeError('The video ended during the nudge preview. Seek back to continue.');
+    return true;
+  }
+  if (state === YT.PlayerState.PAUSED && preview.phase === 'pausing') {
+    startNudgePreview(preview);
+  } else if (state === YT.PlayerState.PLAYING && preview.phase === 'starting') {
+    preview.phase = 'playing';
+    preview.timer = setTimeout(() => {
+      if (nudgePreview !== preview) return;
+      preview.phase = 'finishing';
+      ytPlayer.pauseVideo();
+    }, 100);
+  } else if (state === YT.PlayerState.PAUSED && preview.phase === 'finishing') {
+    const target = preview.target;
+    cancelNudgePreview();
+    ytPlayer.seekTo(target, true);
+    controls.scrubber.value = (target / activeVideoDuration()) * 100;
+    timeDisplay.textContent = formatClock(target);
+    highlightActiveMarker(target);
+    nudgeMessage.textContent = `Requested ${formatLocationTime(target)}. YouTube seek and preview timing are approximate.`;
+  }
+  return false;
+}
+
+function nudgePosition(direction) {
+  const bpm = bpmValues.get('bpm-left');
+  if (!Number.isFinite(bpm) || bpm <= 0) {
+    nudgeError('Measure or enter the left BPM before nudging.');
+    return;
+  }
+  const duration = activeVideoDuration();
+  const state = ytReady ? ytPlayer.getPlayerState() : null;
+  if (!duration || (!nudgePreview && state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED)) {
+    nudgeError('Play or pause a loaded video before nudging.');
+    return;
+  }
+  const position = nudgePreview?.target ?? ytPlayer.getCurrentTime();
+  const step = 60 / bpm / 16;
+  if (!Number.isFinite(position) || position < 0 || position > duration || !Number.isFinite(step) || step <= 0) {
+    nudgeError('The playback position or left BPM cannot be used for nudging.');
+    return;
+  }
+  const target = Math.max(0, Math.min(duration, position + direction * step));
+  if (target === position) {
+    nudgeError('The playback position cannot be nudged farther in that direction.');
+    return;
+  }
+  cancelNudgePreview(true);
+  const preview = { target, phase: 'pausing', timer: null, watchdog: null };
+  nudgePreview = preview;
+  nudgeMessage.textContent = 'Preparing nudge preview; YouTube timing is approximate.';
+  preview.watchdog = setTimeout(() => {
+    if (nudgePreview !== preview) return;
+    cancelNudgePreview(true);
+    nudgeError('The nudge preview did not complete. Check the video and try again.');
+  }, 5000);
+  if (ytPlayer.getPlayerState() === YT.PlayerState.PAUSED) startNudgePreview(preview);
+  else ytPlayer.pauseVideo();
+}
+
 function displayBpm(button, value) {
   button.textContent = value === undefined ? 'BPM' : String(value);
   const side = button.id === 'bpm-left' ? 'Left' : 'Right';
@@ -1290,6 +1402,7 @@ function matchBpm(sourceId, targetId) {
 document.querySelectorAll('[data-pf]').forEach((button) => {
   button.addEventListener('click', () => {
     if (button.dataset.pf === 'AC') {
+      cancelNudgePreview(true);
       resetPitch();
       resetBpm();
       clearSavedLocations();
@@ -1299,6 +1412,8 @@ document.querySelectorAll('[data-pf]').forEach((button) => {
     if (button.dataset.pf === 'M-M2') matchBpm('bpm-right', 'bpm-left');
     if (button.dataset.pf === 'Pitch Up') startSpeedRamp('up');
     if (button.dataset.pf === 'Pitch Down') startSpeedRamp('down');
+    if (button.dataset.pf === 'Previous N') nudgePosition(-1);
+    if (button.dataset.pf === 'Next N') nudgePosition(1);
     announceEvent({ type: 'button', name: button.dataset.pf });
   });
 });
