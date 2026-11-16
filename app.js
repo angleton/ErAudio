@@ -1508,6 +1508,7 @@ const bpmValues = new Map();
 const bpmTaps = new Map();
 const bpmEditors = new Map();
 const bpmMessage = document.querySelector('#bpm-message');
+const defaultNudgeBpm = 130;
 
 function nudgeError(message) {
   nudgeMessage.textContent = message;
@@ -1566,7 +1567,7 @@ function handleNudgeStateChange(state) {
 }
 
 function nudgePosition(direction) {
-  const bpm = bpmValues.get('bpm-left');
+  const bpm = bpmValues.get('bpm-left') ?? defaultNudgeBpm;
   if (!Number.isFinite(bpm) || bpm <= 0) {
     nudgeError('Measure or enter the left BPM before nudging.');
     return;
