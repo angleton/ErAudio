@@ -11,6 +11,7 @@ const valueDisplays = {
 const eventStatus = document.querySelector('#event-status');
 const savedLocationsLayer = document.querySelector('#saved-locations');
 const memoryMessage = document.querySelector('#memory-message');
+const locationsFile = document.querySelector('#locations-file');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
 const maxSavedLocations = 50;
 const favoritesSelect = document.querySelector('#favorites-select');
@@ -682,20 +683,23 @@ function memoryError(message, error) {
   announceEvent({ type: 'error', name: message });
 }
 
+function parseSavedLocations(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Invalid saved locations.');
+  }
+  const entries = Object.entries(data);
+  if (entries.some(([videoId, locations]) => !/^[A-Za-z0-9_-]{11}$/.test(videoId)
+    || !Array.isArray(locations) || locations.length > maxSavedLocations
+    || locations.some((position) => typeof position !== 'number' || !Number.isFinite(position) || position < 0))) {
+    throw new Error('Invalid saved locations.');
+  }
+  return new Map(entries);
+}
+
 function loadSavedLocations() {
   try {
     const raw = localStorage.getItem(savedLocationsStorageKey);
-    const data = raw === null ? {} : JSON.parse(raw);
-    if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      throw new Error('Invalid saved locations.');
-    }
-    const entries = Object.entries(data);
-    if (entries.some(([videoId, locations]) => !/^[A-Za-z0-9_-]{11}$/.test(videoId)
-      || !Array.isArray(locations) || locations.length > maxSavedLocations
-      || locations.some((position) => typeof position !== 'number' || !Number.isFinite(position) || position < 0))) {
-      throw new Error('Invalid saved locations.');
-    }
-    savedLocations = new Map(entries);
+    savedLocations = parseSavedLocations(raw === null ? {} : JSON.parse(raw));
     return true;
   } catch (error) {
     memoryError('Could not read saved locations from browser storage. No locations were changed.', error);
@@ -774,6 +778,78 @@ function clearSavedLocations() {
   memoryMessage.textContent = '';
   renderSavedLocations();
 }
+
+document.querySelector('#export-locations').addEventListener('click', () => {
+  if (!loadSavedLocations()) return;
+  renderSavedLocations();
+  const data = {
+    format: 'ErAudio saved locations',
+    version: 1,
+    videos: Object.fromEntries(savedLocations),
+  };
+  let url;
+  try {
+    url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ErAudio-locations.json';
+    link.click();
+    memoryMessage.textContent = 'Export started for saved locations from all videos.';
+  } catch (error) {
+    memoryError('Could not export saved locations.', error);
+  } finally {
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+});
+
+document.querySelector('#import-locations').addEventListener('click', () => locationsFile.click());
+locationsFile.addEventListener('change', async () => {
+  const file = locationsFile.files[0];
+  locationsFile.value = '';
+  if (!file) return;
+
+  let imported;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data || data.format !== 'ErAudio saved locations' || data.version !== 1) {
+      throw new Error('Unrecognized saved locations file.');
+    }
+    imported = parseSavedLocations(data.videos);
+  } catch (error) {
+    memoryError('Could not read the locations file. No locations were changed.', error);
+    return;
+  }
+
+  if (!loadSavedLocations()) return;
+  const updated = new Map(savedLocations);
+  let added = 0;
+  for (const [videoId, locations] of imported) {
+    const merged = [...(updated.get(videoId) || [])];
+    for (const position of locations) {
+      if (!merged.includes(position)) {
+        merged.push(position);
+        added++;
+      }
+    }
+    if (merged.length > maxSavedLocations) {
+      memoryError(`Import would exceed the 50-location limit for video ${videoId}. No locations were changed.`);
+      return;
+    }
+    if (merged.length) updated.set(videoId, merged);
+  }
+  if (added) {
+    try {
+      localStorage.setItem(savedLocationsStorageKey, JSON.stringify(Object.fromEntries(updated)));
+    } catch (error) {
+      memoryError('Could not save imported locations in browser storage. No locations were changed.', error);
+      return;
+    }
+    savedLocations = updated;
+  }
+  renderSavedLocations();
+  memoryMessage.textContent = `Imported ${added} new saved location${added === 1 ? '' : 's'}.`;
+  announceEvent({ type: 'memory', name: 'imported locations', value: added });
+});
 
 savedLocationsLayer.addEventListener('click', (event) => {
   const marker = event.target.closest('[data-saved-location]');

@@ -45,6 +45,11 @@
         </div>
       </div>
       <p class="memory-message" id="memory-message" role="status" aria-live="polite"></p>
+      <div class="memory-actions" aria-label="Share saved playback locations">
+        <button class="pl-btn" id="import-locations" type="button">IMPORT LOCATIONS</button>
+        <button class="pl-btn" id="export-locations" type="button">EXPORT LOCATIONS</button>
+        <input id="locations-file" type="file" accept=".json,application/json" hidden>
+      </div>
 
       <!-- Control Panel -->
       <div class="control-panel">

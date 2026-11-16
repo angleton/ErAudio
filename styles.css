@@ -410,6 +410,11 @@ body {
   font: 11px/1.4 var(--font-mono);
 }
 
+.memory-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* CONTROL PANEL */
 .control-panel {
   display: flex;
