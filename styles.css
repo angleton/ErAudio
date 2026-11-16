@@ -375,6 +375,41 @@ body {
   padding: 2px 0;
 }
 
+.scrubber-track {
+  position: relative;
+  padding-top: 12px;
+}
+
+.scrubber-track .scrubber {
+  display: block;
+}
+
+.saved-locations {
+  position: absolute;
+  inset: 0 6px auto;
+  height: 8px;
+  pointer-events: none;
+}
+
+.saved-location {
+  position: absolute;
+  top: 0;
+  width: 7px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid #111;
+  background: var(--accent-gold);
+  transform: translateX(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.memory-message:not(:empty) {
+  padding: 4px 6px;
+  color: #ffffff;
+  font: 11px/1.4 var(--font-mono);
+}
+
 /* CONTROL PANEL */
 .control-panel {
   display: flex;

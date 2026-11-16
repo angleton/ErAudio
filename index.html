@@ -39,8 +39,12 @@
       <!-- Position / Track Scrubber -->
       <div class="scrubber-panel">
         <label class="sr-only" for="scrubber">Track position</label>
-        <input type="range" class="winamp-slider scrubber" id="scrubber" data-control="scrubber" min="0" max="100" value="0">
+        <div class="scrubber-track">
+          <input type="range" class="winamp-slider scrubber" id="scrubber" data-control="scrubber" min="0" max="100" value="0">
+          <div class="saved-locations" id="saved-locations" aria-label="Saved playback locations"></div>
+        </div>
       </div>
+      <p class="memory-message" id="memory-message" role="status" aria-live="polite"></p>
 
       <!-- Control Panel -->
       <div class="control-panel">

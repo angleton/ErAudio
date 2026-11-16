@@ -9,6 +9,10 @@ const valueDisplays = {
 };
 
 const eventStatus = document.querySelector('#event-status');
+const savedLocationsLayer = document.querySelector('#saved-locations');
+const memoryMessage = document.querySelector('#memory-message');
+const savedLocationsStorageKey = 'eraudio:saved-locations';
+const maxSavedLocations = 50;
 const favoritesSelect = document.querySelector('#favorites-select');
 const playlistSourceRow = document.querySelector('#playlist-source-row');
 const playlistList = document.querySelector('#playlist-list');
@@ -53,6 +57,8 @@ let ytReady = false;
 let playingTrack = defaultTrack;
 let playingList = favoriteLists[0];
 let scrubbing = false;
+let savedLocations = new Map();
+let savedLocationsRenderKey = '';
 
 function readStoredValue(key) {
   try {
@@ -367,6 +373,7 @@ function formatClock(totalSeconds) {
 
 function updateNowPlaying() {
   renderMarkers();
+  renderSavedLocations();
   if (!playingTrack) {
     trackTitleDisplay.textContent = idleTitle;
     return;
@@ -561,6 +568,7 @@ function onPlayerStateChange(event) {
     button.classList.toggle('paused', event.data === YT.PlayerState.PAUSED);
     button.setAttribute('aria-pressed', String(event.data === YT.PlayerState.PAUSED));
   });
+  renderSavedLocations();
   if (!playingTrack) return;
   if (event.data === YT.PlayerState.PLAYING) {
     applyControl('speed', controls.speed.value);
@@ -603,6 +611,7 @@ function initYouTubePlayer() {
 
   setInterval(() => {
     if (!ytReady || !playingTrack) return;
+    renderSavedLocations();
     const state = ytPlayer.getPlayerState();
     if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED) return;
     const duration = ytPlayer.getDuration();
@@ -666,6 +675,130 @@ function currentDuration() {
   const [minutes, seconds] = String(playingTrack?.duration || '').split(':').map(Number);
   return Number.isFinite(minutes) && Number.isFinite(seconds) ? (minutes * 60) + seconds : 0;
 }
+
+function memoryError(message, error) {
+  memoryMessage.textContent = message;
+  if (error) console.error(message, error);
+  announceEvent({ type: 'error', name: message });
+}
+
+function loadSavedLocations() {
+  try {
+    const raw = localStorage.getItem(savedLocationsStorageKey);
+    const data = raw === null ? {} : JSON.parse(raw);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('Invalid saved locations.');
+    }
+    const entries = Object.entries(data);
+    if (entries.some(([videoId, locations]) => !/^[A-Za-z0-9_-]{11}$/.test(videoId)
+      || !Array.isArray(locations) || locations.length > maxSavedLocations
+      || locations.some((position) => typeof position !== 'number' || !Number.isFinite(position) || position < 0))) {
+      throw new Error('Invalid saved locations.');
+    }
+    savedLocations = new Map(entries);
+    return true;
+  } catch (error) {
+    memoryError('Could not read saved locations from browser storage. No locations were changed.', error);
+    return false;
+  }
+}
+
+function activeVideoDuration() {
+  if (!ytReady || !playingTrack || ytPlayer.getVideoData?.()?.video_id !== playingTrack.videoId) return 0;
+  const duration = ytPlayer.getDuration();
+  return Number.isFinite(duration) && duration > 0 ? duration : 0;
+}
+
+function renderSavedLocations() {
+  const duration = activeVideoDuration();
+  const locations = duration ? savedLocations.get(playingTrack.videoId) || [] : [];
+  const key = JSON.stringify([playingTrack?.videoId, locations]);
+  if (key !== savedLocationsRenderKey) {
+    savedLocationsRenderKey = key;
+    savedLocationsLayer.replaceChildren(...locations.map((position, index) => {
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = 'saved-location';
+      marker.dataset.savedLocation = String(index);
+      marker.title = `Saved location ${index + 1}: ${formatClock(position)}`;
+      marker.setAttribute('aria-label', `Seek to ${marker.title.toLowerCase()}`);
+      return marker;
+    }));
+  }
+  locations.forEach((position, index) => {
+    savedLocationsLayer.children[index].style.left = `${Math.min(100, (position / duration) * 100)}%`;
+  });
+}
+
+function addSavedLocation() {
+  const duration = activeVideoDuration();
+  const state = ytReady ? ytPlayer.getPlayerState() : null;
+  if (!duration || (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED)) {
+    memoryError('Play or pause a loaded video with a known duration before saving a location.');
+    return;
+  }
+  const position = ytPlayer.getCurrentTime();
+  if (!Number.isFinite(position) || position < 0 || position > duration) {
+    memoryError('The current playback position is unavailable. Try again.');
+    return;
+  }
+  if (!loadSavedLocations()) return;
+  renderSavedLocations();
+  const locations = savedLocations.get(playingTrack.videoId) || [];
+  if (locations.length >= maxSavedLocations) {
+    memoryError('The maximum of 50 saved locations for this video has been reached.');
+    return;
+  }
+  const updated = new Map(savedLocations);
+  updated.set(playingTrack.videoId, [...locations, position]);
+  try {
+    localStorage.setItem(savedLocationsStorageKey, JSON.stringify(Object.fromEntries(updated)));
+  } catch (error) {
+    memoryError('Could not save the location in browser storage. No location was added.', error);
+    return;
+  }
+  savedLocations = updated;
+  memoryMessage.textContent = '';
+  renderSavedLocations();
+  announceEvent({ type: 'memory', name: 'saved location', videoId: playingTrack.videoId, value: position });
+}
+
+function clearSavedLocations() {
+  try {
+    localStorage.removeItem(savedLocationsStorageKey);
+  } catch (error) {
+    memoryError('Could not clear saved locations from browser storage.', error);
+    return;
+  }
+  savedLocations.clear();
+  memoryMessage.textContent = '';
+  renderSavedLocations();
+}
+
+savedLocationsLayer.addEventListener('click', (event) => {
+  const marker = event.target.closest('[data-saved-location]');
+  if (!marker) return;
+  const duration = activeVideoDuration();
+  const position = savedLocations.get(playingTrack?.videoId)?.[Number(marker.dataset.savedLocation)];
+  if (!duration || !Number.isFinite(position) || position > duration) {
+    memoryError('This saved location is not available for the current video.');
+    return;
+  }
+  ytPlayer.seekTo(position, true);
+  controls.scrubber.value = (position / duration) * 100;
+  timeDisplay.textContent = formatClock(position);
+  highlightActiveMarker(position);
+  memoryMessage.textContent = '';
+  announceEvent({ type: 'memory', name: 'recalled location', videoId: playingTrack.videoId, value: position });
+});
+
+window.addEventListener('storage', (event) => {
+  if (event.key !== savedLocationsStorageKey && event.key !== null) return;
+  if (loadSavedLocations()) {
+    memoryMessage.textContent = '';
+    renderSavedLocations();
+  }
+});
 
 function updateControl(controlName, value, { fromRamp = false } = {}) {
   const control = controls[controlName];
@@ -1012,7 +1145,9 @@ document.querySelectorAll('[data-pf]').forEach((button) => {
     if (button.dataset.pf === 'AC') {
       resetPitch();
       resetBpm();
+      clearSavedLocations();
     }
+    if (button.dataset.pf === 'M+') addSavedLocation();
     if (button.dataset.pf === 'M2=M') matchBpm('bpm-left', 'bpm-right');
     if (button.dataset.pf === 'M-M2') matchBpm('bpm-right', 'bpm-left');
     if (button.dataset.pf === 'Pitch Up') startSpeedRamp('up');
@@ -1108,6 +1243,7 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
   });
 });
 
+loadSavedLocations();
 initializeFavorites();
 initYouTubePlayer();
 updateNowPlaying();
