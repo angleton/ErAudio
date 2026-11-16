@@ -7,9 +7,9 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 ## ▶️ Quick Start (no install needed)
 
 1. **Open the player:** <https://angleton.github.io/ErAudio/>
-2. **Start listening:** ErAudio initially loads **Bedrock - Heaven Scent (Original Mix) (1999)**. Click **Open** to switch to another YouTube link or video ID; no account needed.
-3. **Optional, load your own playlists:** click **YOUTUBE LOGIN** at the top, choose the Google account you already use for YouTube, and approve access. Your Liked videos and playlists then appear in the playlist window.
-4. **Show more windows:** the **PL** button shows or hides the playlist, and **PITCH** shows or hides the speed control. Only the main player is visible at first.
+2. **Start listening:** Click **Open** to switch to another YouTube link or video ID; no account needed.
+3. **Optional, load your own playlists:** if sign-in is configured, click **YOUTUBE LOGIN**, choose your Google account, and approve access. Your Liked videos and playlists then appear in the Videos window.
+4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, and **PITCH** opens the speed control. Only the main player is visible at first.
 
 > If Google says "this app isn't verified", click **Advanced**, then **Continue**. ErAudio only asks to *view* your YouTube account and never changes anything.
 
@@ -30,7 +30,7 @@ This project aims to preserve the compact retro-audio-player aesthetic that insp
 ### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The main title bar displays the current version, **v1.1**. The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
+The main title bar displays the current version, **v1.22**. The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
 ![ErAudio player showing saved locations, Pitchfork controls, and the Videos window](screenshot-ui.png)
 <br>
@@ -40,13 +40,14 @@ The main title bar displays the current version, **v1.1**. The optional **PITCH*
 
 ## 🚀 Project Overview & Architecture
 
-### Current Stage: Version 1.1
+### Current Stage: Version 1.22
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
 * **Granular Controls:** Speed slider configured for high-precision steps (`0.0025x` increments, minimum `0.0625x` to match YouTube's `playbackRate` limit).
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.
 * **Play control:** Press **Play** to start or resume playback. While playing, a green triangle appears beside the time and the button changes to **Pause** with a slowly pulsing yellow border; press it to pause. The border remains static when reduced motion is requested. While paused, the button looks the same as when stopped.
 * **Open Input:** The Open control accepts an 11-character video ID or a YouTube watch, short, embed, Shorts, or live URL. It validates the ID format, adds the video, and starts playback through the YouTube player; a valid ID does not guarantee that the video exists or is playable. It also emits an `eraudio:control` event with the video ID.
+* **Chapters and timestamps:** The PLAYLIST window detects timestamp lines in the current video's description. It infers chapters from the first contiguous group that starts at 0:00, has at least three ascending entries at least 10 seconds apart, and has a final chapter at least 10 seconds long. Entries at or beyond the video's duration are excluded from the inference but remain visible, disabled, in the timestamps view. If the two lists differ, use the button in the PLAYLIST footer to switch between them; identical lists are shown once. A missing duration prevents chapter inference. These are estimates, not YouTube's actual chapter data, and automatically generated chapters not present in the description are not detected. For public videos this works without signing in when a YouTube Data API key is configured; otherwise a configured YouTube login can provide access.
 * **Event Hooks:** Controls dispatch an `eraudio:control` `CustomEvent` on `document`. The interface can be opened directly as a local file; if browser storage is unavailable, other preferences fall back to in-memory values for that page session.
 * **BPM buttons:** The two independent tap counters have stable IDs `bpm-left` and `bpm-right`; their control events use those IDs as their names even when the displayed BPM changes. Right-click a BPM button (or press Shift+F10 while it is focused) to enter a positive value. Press Enter or move focus away to save, or Escape to cancel. **AC** resets both counters and playback speed.
 * **BPM matching:** After measuring both BPM values, **M2=M** sets the speed to right BPM divided by left BPM; **M-M2** uses left BPM divided by right BPM. Values outside the slider's range are limited to its nearest endpoint. The YouTube player may not support the requested rate.
@@ -85,9 +86,20 @@ This is a static HTML/CSS/JavaScript project. No build step, dependencies, datab
 
 Open `index.html` in a modern browser, for example by double-clicking it in File Explorer. The URL will start with `file://`. The player interface and YouTube URL/ID parsing work locally; if the browser blocks local storage, saved preferences last only for the current page session.
 
+### For maintainers: enabling public video chapters
+
+Public video descriptions can be retrieved without sign-in using a YouTube Data API key:
+
+1. In [Google Cloud Console](https://console.cloud.google.com), create or select a project and enable **YouTube Data API v3** under **APIs & Services → Library**.
+2. Under **APIs & Services → Credentials**, create an API key. Restrict its API access to **YouTube Data API v3** and its website access to your serving sites, such as `https://angleton.github.io/*` and `http://localhost:8000/*`.
+3. Set `youtubeApiKey` in [config.js](config.js) in the deployed or local copy. Do not commit the key to the repository. A key used in a browser is visible to visitors, so website and API restrictions are important; monitor your Google Cloud quota and usage. For GitHub Pages, publishing a key without committing it requires a deployment workflow that supplies it when generating the deployed configuration; this project does not provide such a workflow.
+4. Serve the app over HTTP or HTTPS from an allowed website and reload it. Direct `file://` use may not supply a referrer accepted by a restricted key.
+
+The YouTube Data API has a quota; a request can also fail because of key restrictions, network errors, or video availability. The PLAYLIST window reports failures. Reopen the video or reload the page to retry.
+
 ### For maintainers: enabling YOUTUBE LOGIN for everyone
 
-Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and lets the PLAYLIST window read a video's description to detect chapters and timestamps. If the browser already has a Google session that previously approved ErAudio, sign-in happens automatically on page load. End users never need Google Cloud access; the maintainer does this setup **once**.
+Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and can also retrieve video descriptions. If the browser already has a Google session that previously approved ErAudio, sign-in happens automatically on page load. End users never need Google Cloud access; the maintainer does this setup **once**.
 
 Until `googleClientId` in [config.js](config.js) is set, the login button displays a notice that sign-in is not configured, with a link to these setup instructions.
 
@@ -111,7 +123,7 @@ Troubleshooting:
 - `access_denied`: the account is not a test user (step 3) and the app is not yet verified.
 - "YouTube sign-in is not configured": step 5 is missing.
 
-Without a client ID, pasting a YouTube link still works; only account playlists and chapter/timestamp detection are unavailable.
+Without a client ID, pasting a YouTube link still works, but account playlists are unavailable. Chapter/timestamp detection still works for public videos if an API key is configured.
 
 ### Option 2: Use a local HTTP server
 
@@ -139,7 +151,7 @@ eraudio/
 ├── index.html        # HTML5 layout of ErAudio & Pitchfork UI
 ├── styles.css        # Retro ErAudio classic skin stylesheet
 ├── app.js            # Player, controls, and saved locations
-├── config.js         # Google OAuth client ID for YOUTUBE LOGIN
+├── config.js         # YouTube API key and Google OAuth client ID configuration
 ├── screenshot-ui.png # Screenshot of the player UI
 └── README.md         # Project documentation & reference images
 ```

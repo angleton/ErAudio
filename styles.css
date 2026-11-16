@@ -941,6 +941,11 @@ body {
   background: #002200;
 }
 
+#marker-list .playlist-item:disabled {
+  color: #777777;
+  cursor: not-allowed;
+}
+
 .playlist-item.active {
   background: #004400;
   color: #ffffff;

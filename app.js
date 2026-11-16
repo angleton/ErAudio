@@ -44,6 +44,7 @@ const youtubeInput = document.querySelector('#youtube-input');
 const youtubeInputError = document.querySelector('#youtube-input-error');
 const fallbackStorage = new Map();
 const googleClientId = window.ERAUDIO_CONFIG?.googleClientId || '';
+const youtubeApiKey = window.ERAUDIO_CONFIG?.youtubeApiKey || '';
 const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
 
@@ -61,6 +62,7 @@ const playbackIndicator = document.querySelector('#playback-indicator');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
 const markerInfo = document.querySelector('#marker-info');
+const markerViewToggle = document.querySelector('#marker-view-toggle');
 const timeDisplay = document.querySelector('#time-display');
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
@@ -217,17 +219,25 @@ function setYouTubeAccount(accountName) {
   youtubeLoginButton.setAttribute('aria-label', `YouTube account: ${normalizedName}`);
 }
 
+function parseIsoDurationSeconds(value) {
+  const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(value || '');
+  if (!match || !match.slice(1).some(Boolean)) return null;
+  const totalSeconds = (Number(match[1] || 0) * 86400) + (Number(match[2] || 0) * 3600)
+    + (Number(match[3] || 0) * 60) + Number(match[4] || 0);
+  return Number.isSafeInteger(totalSeconds) && totalSeconds > 0 ? totalSeconds : null;
+}
+
 function parseIsoDuration(value) {
-  const match = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(value || '');
-  if (!match) return '00:00';
-  const totalSeconds = (Number(match[1] || 0) * 3600) + (Number(match[2] || 0) * 60) + Number(match[3] || 0);
+  const totalSeconds = parseIsoDurationSeconds(value) || 0;
   return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
-async function youtubeApi(path, params) {
+async function youtubeApi(path, params, { apiKey = '' } = {}) {
   const url = new URL(`https://www.googleapis.com/youtube/v3/${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${youtubeAccessToken}` } });
+  if (apiKey) url.searchParams.set('key', apiKey);
+  const headers = apiKey ? {} : { Authorization: `Bearer ${youtubeAccessToken}` };
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`YouTube API ${path} failed (${response.status})`);
   return response.json();
 }
@@ -422,37 +432,62 @@ function parseClockToSeconds(value) {
   return value.split(':').map(Number).reduce((total, part) => (total * 60) + part, 0);
 }
 
-// Extracts timestamp lines from a video description. If they satisfy YouTube's chapter
-// rules (start at 0:00, at least 3 entries, each at least 10s long) they are chapters.
-function parseDescriptionMarkers(description) {
+function parseDescriptionMarkers(description, duration) {
   const timestampPattern = /(?:^|[\s(\[])((?:\d{1,2}:)?\d{1,2}:\d{2})(?=$|[\s)\]\-–—:.,|])/;
   const trimPattern = /^[\s\-–—:.,|()[\]]+|[\s\-–—:.,|()[\]]+$/g;
-  const byStart = new Map();
+  const timestamps = [];
+  const groups = [];
+  let group = [];
   String(description || '').split(/\r?\n/).forEach((line) => {
     const match = timestampPattern.exec(line);
-    if (!match) return;
+    if (!match) {
+      if (group.length) groups.push(group);
+      group = [];
+      return;
+    }
+    const parts = match[1].split(':').map(Number);
+    if (parts[parts.length - 1] >= 60 || (parts.length === 3 && parts[1] >= 60)) {
+      if (group.length) groups.push(group);
+      group = [];
+      return;
+    }
     const start = parseClockToSeconds(match[1]);
-    if (byStart.has(start)) return;
     const title = line.replace(match[1], '').replace(trimPattern, '');
-    byStart.set(start, { start, title });
+    const entry = { start, title };
+    timestamps.push(entry);
+    group.push(entry);
   });
-  const entries = [...byStart.values()].sort((a, b) => a.start - b.start);
-  if (entries.length < 2) return { kind: 'none', entries: [] };
-  entries.forEach((entry, index) => { entry.title ||= `Part ${index + 1}`; });
-  const isChapters = entries.length >= 3 && entries[0].start === 0
-    && entries.every((entry, index) => index === 0 || entry.start - entries[index - 1].start >= 10);
-  return { kind: isChapters ? 'chapters' : 'timestamps', entries };
+  if (group.length) groups.push(group);
+  timestamps.sort((a, b) => a.start - b.start);
+  timestamps.forEach((entry, index) => { entry.title ||= `Part ${index + 1}`; });
+
+  const chapters = duration ? groups.map((entries) => entries.filter((entry) => entry.start < duration))
+    .find((entries) => entries.length >= 3 && entries[0].start === 0
+      && entries.every((entry, index) => index === 0 || entry.start - entries[index - 1].start >= 10)
+      && duration - entries[entries.length - 1].start >= 10) || [] : [];
+  return { chapters, timestamps, duration };
 }
 
 let markerRenderKey = '';
 let activeMarkerIndex = -1;
 
+function currentMarkerEntries() {
+  const markers = playingTrack?.markers;
+  if (!markers) return [];
+  return playingTrack.markerView === 'timestamps' || !markers.chapters.length
+    ? markers.timestamps : markers.chapters;
+}
+
 function renderMarkers() {
   const markers = playingTrack?.markers;
-  const key = `${playingTrack?.videoId || ''}|${markers ? markers.kind : (youtubeAccessToken ? 'loading' : 'signin')}`;
+  const state = markers ? 'ready' : playingTrack?.markersLoading ? 'loading'
+    : playingTrack?.markerError ? 'error' : (youtubeApiKey || youtubeAccessToken) ? 'loading'
+      : googleClientId ? 'signin' : 'setup';
+  const key = `${playingTrack?.videoId || ''}|${state}|${playingTrack?.markerView || ''}`;
   if (key === markerRenderKey) return;
   markerRenderKey = key;
   activeMarkerIndex = -1;
+  markerViewToggle.hidden = true;
 
   const placeholder = (text) => {
     const empty = document.createElement('div');
@@ -464,44 +499,78 @@ function renderMarkers() {
   if (!playingTrack) {
     placeholder('Open a video to see its chapters or timestamps.');
     markerInfo.textContent = 'NO VIDEO';
+  } else if (state === 'error') {
+    placeholder(playingTrack.markerError);
+    markerInfo.textContent = 'ERROR';
   } else if (!markers) {
-    placeholder(youtubeAccessToken ? 'Looking for chapters / timestamps...' : 'Sign in to YouTube to detect chapters / timestamps.');
-    markerInfo.textContent = youtubeAccessToken ? 'LOADING' : 'SIGN IN REQUIRED';
-  } else if (!markers.entries.length) {
+    placeholder(state === 'loading' ? 'Looking for chapters / timestamps...'
+      : state === 'signin' ? 'Sign in to YouTube to detect chapters / timestamps.'
+        : 'Configure a YouTube API key or sign-in to detect chapters / timestamps.');
+    markerInfo.textContent = state === 'loading' ? 'LOADING' : state === 'signin' ? 'SIGN IN REQUIRED' : 'SETUP REQUIRED';
+  } else if (!markers.timestamps.length) {
     placeholder('No chapters or timestamps found in this video\'s description.');
     markerInfo.textContent = 'NONE FOUND';
   } else {
-    markerList.replaceChildren(...markers.entries.map((entry, index) => {
+    const entries = currentMarkerEntries();
+    const sameEntries = markers.chapters.length === markers.timestamps.length
+      && markers.chapters.every((entry, index) => entry === markers.timestamps[index]);
+    const showingChapters = entries === markers.chapters;
+    if (markers.chapters.length && !sameEntries) {
+      markerViewToggle.hidden = false;
+      markerViewToggle.textContent = showingChapters ? 'SHOW TIMESTAMPS' : 'SHOW CHAPTERS';
+      markerViewToggle.setAttribute('aria-label', showingChapters ? 'Show description timestamps' : 'Show inferred chapters');
+    }
+    markerList.replaceChildren(...entries.map((entry, index) => {
       const item = document.createElement('button');
       item.className = 'playlist-item';
       item.type = 'button';
       item.dataset.marker = String(index);
       item.textContent = `${index + 1}. ${entry.title} [${formatClock(entry.start)}]`;
+      if (markers.duration && entry.start >= markers.duration) {
+        item.textContent = `${index + 1}. [OUT OF RANGE] ${entry.title} [${formatClock(entry.start)}]`;
+        item.disabled = true;
+        item.title = 'This timestamp is beyond the video duration and cannot be played.';
+        item.setAttribute('aria-label', `${item.textContent}. Beyond video duration; cannot be played.`);
+      }
       return item;
     }));
-    markerInfo.textContent = `${markers.kind.toUpperCase()} / ${markers.entries.length} ENTRIES`;
+    const label = sameEntries && showingChapters ? 'INFERRED CHAPTERS & TIMESTAMPS'
+      : showingChapters ? 'INFERRED CHAPTERS' : 'TIMESTAMPS';
+    markerInfo.textContent = `${label} / ${entries.length} ENTRIES${markers.duration ? '' : ' / CHAPTERS UNAVAILABLE'}`;
   }
 }
 
 async function ensureMarkers(track) {
-  if (!track || track.markers || track.markersLoading || !youtubeAccessToken) return;
+  if (!track || track.markers || track.markersLoading || (!youtubeAccessToken && !youtubeApiKey)) return;
+  const accessToken = youtubeAccessToken;
+  let retryWithToken = false;
   track.markersLoading = true;
+  delete track.markerError;
+  if (track === playingTrack) renderMarkers();
   try {
-    const data = await youtubeApi('videos', { part: 'snippet', id: track.videoId });
+    const data = await youtubeApi('videos', { part: 'snippet,contentDetails', id: track.videoId }, {
+      apiKey: accessToken ? '' : youtubeApiKey,
+    });
     const description = data.items?.[0]?.snippet?.description;
-    if (description === undefined) return;
-    track.markers = parseDescriptionMarkers(description);
+    if (typeof description !== 'string') throw new Error('Video description unavailable');
+    const duration = parseIsoDurationSeconds(data.items[0].contentDetails?.duration);
+    track.markers = parseDescriptionMarkers(description, duration);
   } catch {
-    // Leave unresolved so a later attempt (e.g. after re-login) can retry.
+    retryWithToken = !accessToken && Boolean(youtubeAccessToken);
+    if (!retryWithToken) {
+      track.markerError = 'Could not load chapters / timestamps. Check the connection, API configuration, and video availability; reopen the video or reload to retry.';
+      announceEvent({ type: 'error', name: track.markerError });
+    }
   } finally {
     track.markersLoading = false;
-    if (track === playingTrack) renderMarkers();
+    if (retryWithToken) ensureMarkers(track);
+    else if (track === playingTrack) renderMarkers();
   }
 }
 
 function highlightActiveMarker(position) {
-  const entries = playingTrack?.markers?.entries;
-  if (!entries?.length) return;
+  const entries = currentMarkerEntries();
+  if (!entries.length) return;
   let index = -1;
   entries.forEach((entry, i) => { if (position >= entry.start) index = i; });
   if (index === activeMarkerIndex) return;
@@ -512,8 +581,8 @@ function highlightActiveMarker(position) {
 }
 
 function seekToMarker(index) {
-  const entry = playingTrack?.markers?.entries[index];
-  if (!entry || !ytReady) return;
+  const entry = currentMarkerEntries()[index];
+  if (!entry || !ytReady || (playingTrack.markers.duration && entry.start >= playingTrack.markers.duration)) return;
   cancelNudgePreview(true);
   ytPlayer.seekTo(entry.start, true);
   ytPlayer.playVideo();
@@ -1352,6 +1421,12 @@ document.addEventListener('click', (event) => {
   });
 });
 
+markerViewToggle.addEventListener('click', () => {
+  if (!playingTrack?.markers) return;
+  playingTrack.markerView = currentMarkerEntries() === playingTrack.markers.chapters ? 'timestamps' : 'chapters';
+  renderMarkers();
+});
+
 markerList.addEventListener('dblclick', (event) => {
   const item = event.target.closest('[data-marker]');
   if (item) seekToMarker(Number(item.dataset.marker));
@@ -1946,6 +2021,7 @@ loadSavedLocations();
 initializeFavorites();
 initYouTubePlayer();
 updateNowPlaying();
+ensureMarkers(playingTrack);
 setYouTubeAccount(readStoredValue(youtubeAccountStorageKey));
 
 // Application code can react here without coupling the controls to playback yet.
