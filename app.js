@@ -29,8 +29,8 @@ const playlistInfo = document.querySelector('#playlist-info');
 const favoritesStorageKey = 'eraudio:selected-favorites-list';
 const addedTracksStorageKey = 'eraudio:added-tracks';
 const defaultTrack = {
-  title: 'Bedrock - Heaven Scent (Original Mix) (1999)',
-  videoId: '5scF4Rx9uP0',
+  title: 'Rooftop Party in the French Riviera | Settow',
+  videoId: 'aXedWClewDU',
   duration: '--:--',
 };
 const youtubeLoginButton = document.querySelector('#youtube-login');
