@@ -487,6 +487,7 @@ function seekToMarker(index) {
 }
 
 function playTrack(list, track) {
+  if (track !== playingTrack) stopSpeedRamp();
   playingList = list;
   playingTrack = track;
   updateNowPlaying();
@@ -499,6 +500,7 @@ function playTrack(list, track) {
 // Makes the track active; keeps playing if already playing, otherwise just cues it.
 function loadTrackIntoPlayer(list, track) {
   if (track === playingTrack) return;
+  stopSpeedRamp();
   const wasPlaying = ytReady && playingTrack
     && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
   if (wasPlaying) {
@@ -665,10 +667,11 @@ function currentDuration() {
   return Number.isFinite(minutes) && Number.isFinite(seconds) ? (minutes * 60) + seconds : 0;
 }
 
-function updateControl(controlName, value) {
+function updateControl(controlName, value, { fromRamp = false } = {}) {
   const control = controls[controlName];
   if (!control) return;
 
+  if (controlName === 'speed' && !fromRamp) stopSpeedRamp();
   control.value = value;
   applyControl(controlName, value);
   if (valueDisplays[controlName]) {
@@ -684,6 +687,7 @@ document.querySelectorAll('[data-control]').forEach((control) => {
       scrubbing = true;
       timeDisplay.textContent = formatClock((Number(control.value) / 100) * currentDuration());
     } else {
+      if (controlName === 'speed') stopSpeedRamp();
       applyControl(controlName, control.value);
     }
     if (valueDisplays[controlName]) {
@@ -796,7 +800,7 @@ document.addEventListener('click', (event) => {
 
   announceEvent({
     type: 'click',
-    name: button.dataset.action || button.dataset.track || button.textContent.trim(),
+    name: button.dataset.action || button.dataset.track || (button.hasAttribute('data-bpm') ? button.id : button.textContent.trim()),
   });
 });
 
@@ -838,6 +842,7 @@ document.querySelector('[data-pf-reset]').addEventListener('click', resetPitch);
 const stepConfig = {
   permanent: { large: 0.10, small: 0.01 },
   temporary: { large: 0.10, small: 0.01 },
+  ramp: { percentPerSecond: 1 },
 };
 
 async function loadStepConfig() {
@@ -851,11 +856,79 @@ async function loadStepConfig() {
         if (Number.isFinite(value) && value >= 0) stepConfig[group][key] = value;
       });
     });
+    if (config?.ramp?.percentPerSecond !== undefined) {
+      const rate = config.ramp.percentPerSecond;
+      if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+        stepConfig.ramp.percentPerSecond = rate;
+      } else {
+        console.warn('Invalid ramp.percentPerSecond in ErAudio.json; using the default.');
+      }
+    }
   } catch {
     // Missing or invalid file: keep the defaults.
   }
 }
 const stepConfigReady = loadStepConfig();
+
+const speedRampMessage = document.querySelector('#speed-ramp-message');
+const speedRampButtons = {
+  up: document.querySelector('[data-pf="Pitch Up"]'),
+  down: document.querySelector('[data-pf="Pitch Down"]'),
+};
+let speedRamp = null;
+
+function stopSpeedRamp() {
+  if (!speedRamp) return;
+  clearInterval(speedRamp.timer);
+  speedRamp = null;
+  Object.values(speedRampButtons).forEach((button) => button.setAttribute('aria-pressed', 'false'));
+  speedRampMessage.textContent = '';
+}
+
+async function startSpeedRamp(direction) {
+  const wasSameDirection = speedRamp?.direction === direction;
+  stopSpeedRamp();
+  if (wasSameDirection) return;
+
+  const ramp = { direction, timer: null };
+  speedRamp = ramp;
+  speedRampButtons[direction].setAttribute('aria-pressed', 'true');
+  await stepConfigReady;
+  if (speedRamp !== ramp) return;
+
+  const availableRates = ytReady && playingTrack ? ytPlayer.getAvailablePlaybackRates() : [];
+  const rates = availableRates.filter((rate) => Number.isFinite(rate) && rate > 0);
+  if (!rates.length) {
+    stopSpeedRamp();
+    speedRampMessage.textContent = 'Load a YouTube video before starting a speed ramp.';
+    announceEvent({ type: 'error', name: speedRampMessage.textContent });
+    return;
+  }
+
+  const min = Math.max(Number(controls.speed.min), Math.min(...rates));
+  const max = Math.min(Number(controls.speed.max), Math.max(...rates));
+  const start = Number(controls.speed.value);
+  const normal = Math.min(max, Math.max(min, 1));
+  const target = direction === 'up'
+    ? (start < normal ? normal : max)
+    : (start > normal ? normal : min);
+
+  if ((direction === 'up' && start >= target) || (direction === 'down' && start <= target)) {
+    stopSpeedRamp();
+    speedRampMessage.textContent = 'The speed is already at the supported limit.';
+    return;
+  }
+
+  speedRampMessage.textContent = 'YouTube playback changes in supported rate steps, not continuously.';
+  const startedAt = performance.now();
+  const ratePerMs = stepConfig.ramp.percentPerSecond / 100 / 1000;
+  ramp.timer = setInterval(() => {
+    const change = (performance.now() - startedAt) * ratePerMs;
+    const next = direction === 'up' ? Math.min(target, start + change) : Math.max(target, start - change);
+    updateControl('speed', next.toFixed(4), { fromRamp: true });
+    if (next === target) stopSpeedRamp();
+  }, 250);
+}
 
 function steppedSpeed(button, base, group) {
   const slider = controls.speed;
@@ -895,9 +968,55 @@ document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
   });
 });
 
+const bpmValues = new Map();
+const bpmTaps = new Map();
+const bpmEditors = new Map();
+const bpmMessage = document.querySelector('#bpm-message');
+
+function displayBpm(button, value) {
+  button.textContent = value === undefined ? 'BPM' : String(value);
+  const side = button.id === 'bpm-left' ? 'Left' : 'Right';
+  const description = value === undefined ? 'not measured' : String(value);
+  button.setAttribute('aria-label', `${side} BPM: ${description}. Tap to measure; press Shift+F10 to enter manually.`);
+}
+
+function resetBpm() {
+  bpmEditors.forEach((close) => close(false));
+  bpmValues.clear();
+  bpmTaps.forEach((taps) => { taps.length = 0; });
+  document.querySelectorAll('[data-bpm]').forEach((button) => displayBpm(button));
+  bpmMessage.textContent = '';
+}
+
+function matchBpm(sourceId, targetId) {
+  const source = bpmValues.get(sourceId);
+  const target = bpmValues.get(targetId);
+  if (!Number.isFinite(source) || source <= 0 || !Number.isFinite(target) || target <= 0) {
+    bpmMessage.textContent = 'Tap each BPM button at least twice to measure both tempos first.';
+    announceEvent({ type: 'error', name: bpmMessage.textContent });
+    return;
+  }
+
+  const rate = target / source;
+  const min = Number(controls.speed.min);
+  const max = Number(controls.speed.max);
+  const boundedRate = Math.min(max, Math.max(min, rate));
+  bpmMessage.textContent = rate !== boundedRate
+    ? 'The required speed is outside the slider range; the nearest limit was selected.'
+    : '';
+  updateControl('speed', boundedRate.toFixed(4));
+}
+
 document.querySelectorAll('[data-pf]').forEach((button) => {
   button.addEventListener('click', () => {
-    if (button.dataset.pf === 'AC') resetPitch();
+    if (button.dataset.pf === 'AC') {
+      resetPitch();
+      resetBpm();
+    }
+    if (button.dataset.pf === 'M2=M') matchBpm('bpm-left', 'bpm-right');
+    if (button.dataset.pf === 'M-M2') matchBpm('bpm-right', 'bpm-left');
+    if (button.dataset.pf === 'Pitch Up') startSpeedRamp('up');
+    if (button.dataset.pf === 'Pitch Down') startSpeedRamp('down');
     announceEvent({ type: 'button', name: button.dataset.pf });
   });
 });
@@ -906,19 +1025,86 @@ document.querySelectorAll('[data-pf]').forEach((button) => {
 const bpmMaxGapMs = 2500;
 const bpmMaxTaps = 8;
 document.querySelectorAll('[data-bpm]').forEach((button) => {
-  let taps = [];
+  const taps = [];
+  let editor = null;
+  bpmTaps.set(button.id, taps);
+
+  function closeEditor(restoreFocus) {
+    if (!editor) return;
+    const activeEditor = editor;
+    editor = null;
+    activeEditor.remove();
+    button.hidden = false;
+    if (restoreFocus) button.focus();
+  }
+  bpmEditors.set(button.id, closeEditor);
+
+  function saveEditor(restoreFocus) {
+    if (!editor) return;
+    const bpm = editor.valueAsNumber;
+    if (!Number.isFinite(bpm) || bpm <= 0) {
+      bpmMessage.textContent = 'Enter a BPM greater than zero.';
+      announceEvent({ type: 'error', name: bpmMessage.textContent });
+      if (!restoreFocus) closeEditor(false);
+      return;
+    }
+    bpmValues.set(button.id, bpm);
+    taps.length = 0;
+    displayBpm(button, bpm);
+    bpmMessage.textContent = '';
+    announceEvent({ type: 'bpm', name: button.id, value: String(bpm) });
+    closeEditor(restoreFocus);
+  }
+
+  button.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (editor) return;
+    editor = document.createElement('input');
+    editor.type = 'number';
+    editor.step = 'any';
+    editor.inputMode = 'decimal';
+    editor.className = 'pf-bpm-editor';
+    editor.setAttribute('aria-label', `Enter ${button.id === 'bpm-left' ? 'left' : 'right'} BPM`);
+    const value = bpmValues.get(button.id);
+    if (value !== undefined) editor.value = String(value);
+    editor.addEventListener('keydown', (keyEvent) => {
+      if (keyEvent.key === 'Enter') {
+        keyEvent.preventDefault();
+        saveEditor(true);
+      } else if (keyEvent.key === 'Escape') {
+        keyEvent.preventDefault();
+        bpmMessage.textContent = '';
+        closeEditor(true);
+      }
+    });
+    editor.addEventListener('blur', () => saveEditor(false));
+    button.after(editor);
+    button.hidden = true;
+    bpmMessage.textContent = '';
+    editor.focus();
+    editor.select();
+  });
+
   button.addEventListener('click', () => {
     const now = performance.now();
-    if (taps.length && now - taps[taps.length - 1] > bpmMaxGapMs) taps = [];
+    if (taps.length && now - taps[taps.length - 1] > bpmMaxGapMs) taps.length = 0;
     taps.push(now);
-    taps = taps.slice(-bpmMaxTaps);
+    if (taps.length > bpmMaxTaps) taps.shift();
     if (taps.length < 2) {
-      announceEvent({ type: 'button', name: 'BPM tap' });
+      announceEvent({ type: 'button', name: button.id });
       return;
     }
     const bpm = 60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1));
-    button.textContent = String(Math.round(bpm));
-    announceEvent({ type: 'bpm', name: 'BPM', value: bpm.toFixed(1) });
+    const displayedBpm = Math.round(bpm);
+    if (!Number.isFinite(displayedBpm) || displayedBpm <= 0) {
+      bpmMessage.textContent = 'Could not measure BPM. Tap the button again.';
+      announceEvent({ type: 'error', name: bpmMessage.textContent });
+      return;
+    }
+    bpmValues.set(button.id, displayedBpm);
+    bpmMessage.textContent = '';
+    displayBpm(button, displayedBpm);
+    announceEvent({ type: 'bpm', name: button.id, value: bpm.toFixed(1) });
   });
 });
 

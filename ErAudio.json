@@ -1,4 +1,5 @@
 {
   "permanent": { "large": 0.10, "small": 0.01 },
-  "temporary": { "large": 0.10, "small": 0.01 }
+  "temporary": { "large": 0.10, "small": 0.01 },
+  "ramp": { "percentPerSecond": 1 }
 }

@@ -603,7 +603,8 @@ body {
 }
 
 .pf-btn:active,
-.pf-btn.paused {
+.pf-btn.paused,
+.pf-btn[aria-pressed="true"] {
   background: linear-gradient(180deg, #9a9bb0 0%, #c2c3d2 100%);
   border-color: #4a4a5e #f2f2fa #f2f2fa #4a4a5e;
 }
@@ -615,6 +616,22 @@ body {
 
 .pf-bpm {
   font-size: 13px;
+}
+
+.pf-bpm-editor {
+  min-width: 0;
+  width: 100%;
+  color: #1a1a28;
+  background: #e6e7f0;
+  border: 1px solid #4a4a5e;
+  font: bold 13px var(--font-mono);
+  user-select: text;
+}
+
+.pf-message:not(:empty) {
+  padding: 4px 6px;
+  color: #ffffff;
+  font: 11px/1.4 var(--font-mono);
 }
 
 .pf-r-plus { grid-column: 1 / 5; }
