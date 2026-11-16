@@ -4,6 +4,27 @@ const controls = {
   volume: document.querySelector('#volume'),
 };
 
+const speedLimits = { min: 0.0625, max: 4 };
+const speedPositionLimit = 30000;
+
+// Map each half separately so normal speed stays centered despite asymmetric limits.
+function currentSpeedRate() {
+  const position = Number(controls.speed.value);
+  const span = position < 0 ? 1 - speedLimits.min : speedLimits.max - 1;
+  return Number((1 + (position / speedPositionLimit) * span).toFixed(4));
+}
+
+function setSpeedRate(value) {
+  const rate = Math.max(speedLimits.min, Math.min(speedLimits.max, Number(value)));
+  const span = rate < 1 ? 1 - speedLimits.min : speedLimits.max - 1;
+  controls.speed.value = String(Math.round(((rate - 1) / span) * speedPositionLimit));
+  return currentSpeedRate();
+}
+
+function updateSpeedAccessibility(rate) {
+  controls.speed.setAttribute('aria-valuetext', `${formatValue('speed', rate)} (${rate.toFixed(4)}x)`);
+}
+
 const valueDisplays = {
   speed: document.querySelector('#val-speed'),
 };
@@ -800,7 +821,7 @@ function onPlayerStateChange(event) {
   if (!playingTrack) return;
   if (handleNudgeStateChange(event.data)) return;
   if (event.data === YT.PlayerState.PLAYING) {
-    applyControl('speed', controls.speed.value);
+    applyControl('speed', currentSpeedRate());
     const duration = ytPlayer.getDuration();
     if (duration > 0 && playingTrack.duration === '--:--') {
       playingTrack.duration = formatClock(duration);
@@ -1404,29 +1425,35 @@ function updateControl(controlName, value, { fromRamp = false } = {}) {
   if (!control) return;
 
   if (controlName === 'speed' && !fromRamp) stopSpeedRamp();
-  control.value = value;
-  applyControl(controlName, value);
+  const appliedValue = controlName === 'speed' ? setSpeedRate(value) : value;
+  if (controlName !== 'speed') control.value = value;
+  else updateSpeedAccessibility(appliedValue);
+  applyControl(controlName, appliedValue);
   if (valueDisplays[controlName]) {
-    valueDisplays[controlName].textContent = formatValue(controlName, value);
+    valueDisplays[controlName].textContent = formatValue(controlName, appliedValue);
   }
-  announceEvent({ type: 'input', name: controlName, value: control.value });
+  announceEvent({ type: 'input', name: controlName, value: controlName === 'speed' ? String(appliedValue) : control.value });
 }
 
 document.querySelectorAll('[data-control]').forEach((control) => {
   control.addEventListener('input', () => {
     const controlName = control.dataset.control;
+    const value = controlName === 'speed' ? currentSpeedRate() : control.value;
     if (controlName === 'scrubber') {
       cancelNudgePreview(true);
       scrubbing = true;
       timeDisplay.textContent = formatClock((Number(control.value) / 100) * currentDuration());
     } else {
-      if (controlName === 'speed') stopSpeedRamp();
-      applyControl(controlName, control.value);
+      if (controlName === 'speed') {
+        stopSpeedRamp();
+        updateSpeedAccessibility(value);
+      }
+      applyControl(controlName, value);
     }
     if (valueDisplays[controlName]) {
-      valueDisplays[controlName].textContent = formatValue(controlName, control.value);
+      valueDisplays[controlName].textContent = formatValue(controlName, value);
     }
-    announceEvent({ type: 'input', name: controlName, value: control.value });
+    announceEvent({ type: 'input', name: controlName, value: String(value) });
   });
 
   control.addEventListener('change', () => {
@@ -1436,9 +1463,33 @@ document.querySelectorAll('[data-control]').forEach((control) => {
       timeDisplay.textContent = formatClock(target);
       if (ytReady && playingTrack) ytPlayer.seekTo(target, true);
     }
-    announceEvent({ type: 'change', name: control.dataset.control, value: control.value });
+    const value = control.dataset.control === 'speed' ? String(currentSpeedRate()) : control.value;
+    announceEvent({ type: 'change', name: control.dataset.control, value });
   });
 });
+
+let speedKeyChanged = false;
+controls.speed.addEventListener('keydown', (event) => {
+  const direction = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[event.key];
+  if (!direction) return;
+  event.preventDefault();
+  const previous = currentSpeedRate();
+  const next = setSpeedRate((previous + direction * 0.0001).toFixed(4));
+  if (next === previous) return;
+  speedKeyChanged = true;
+  controls.speed.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
+function finishSpeedKeyChange() {
+  if (!speedKeyChanged) return;
+  speedKeyChanged = false;
+  controls.speed.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+controls.speed.addEventListener('keyup', (event) => {
+  if (['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(event.key)) finishSpeedKeyChange();
+});
+controls.speed.addEventListener('blur', finishSpeedKeyChange);
 
 favoritesSelect.addEventListener('change', () => {
   selectFavoritesList(favoritesSelect.value);
@@ -1726,9 +1777,9 @@ async function startSpeedRamp(direction) {
     return;
   }
 
-  const min = Math.max(Number(controls.speed.min), Math.min(...rates));
-  const max = Math.min(Number(controls.speed.max), Math.max(...rates));
-  const start = Number(controls.speed.value);
+  const min = Math.max(speedLimits.min, Math.min(...rates));
+  const max = Math.min(speedLimits.max, Math.max(...rates));
+  const start = currentSpeedRate();
   const normal = Math.min(max, Math.max(min, 1));
   const target = direction === 'up'
     ? (start < normal ? normal : max)
@@ -1752,17 +1803,16 @@ async function startSpeedRamp(direction) {
 }
 
 function steppedSpeed(button, base, group) {
-  const slider = controls.speed;
   const sign = button.dataset.stepDir === 'down' ? -1 : 1;
   const next = base + (sign * stepConfig[group][button.dataset.stepSize] / 100);
-  return Math.min(Number(slider.max), Math.max(Number(slider.min), next)).toFixed(4);
+  return Math.min(speedLimits.max, Math.max(speedLimits.min, next)).toFixed(4);
 }
 
 // Left-side buttons change the speed permanently.
 document.querySelectorAll('.pf-left [data-step-size]').forEach((button) => {
   button.addEventListener('click', async () => {
     await stepConfigReady;
-    updateControl('speed', steppedSpeed(button, Number(controls.speed.value), 'permanent'));
+    updateControl('speed', steppedSpeed(button, currentSpeedRate(), 'permanent'));
   });
 });
 
@@ -1775,7 +1825,7 @@ function bindMomentarySpeed(button, pressedSpeed, ready = null) {
     pressedBy = currentPress;
     const apply = () => {
       if (pressedBy !== currentPress) return;
-      restoreValue = controls.speed.value;
+      restoreValue = currentSpeedRate();
       updateControl('speed', pressedSpeed(Number(restoreValue)));
     };
     if (ready) ready.then(apply);
@@ -2022,8 +2072,8 @@ function matchBpm(sourceId, targetId) {
   }
 
   const rate = target / source;
-  const min = Number(controls.speed.min);
-  const max = Number(controls.speed.max);
+  const min = speedLimits.min;
+  const max = speedLimits.max;
   const boundedRate = Math.min(max, Math.max(min, rate));
   bpmMessage.textContent = rate !== boundedRate
     ? 'The required speed is outside the slider range; the nearest limit was selected.'

@@ -30,7 +30,7 @@ This project aims to preserve the compact retro-audio-player aesthetic that insp
 ### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The main title bar displays the current version, **v1.33**. The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
+The main title bar displays the current version, **v2.0**. The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
 ![ErAudio player showing saved locations, Pitchfork controls, and the Videos window](screenshot-ui.png)
 <br>
@@ -40,10 +40,10 @@ The main title bar displays the current version, **v1.33**. The optional **PITCH
 
 ## 🚀 Project Overview & Architecture
 
-### Current Stage: Version 1.33
+### Current Stage: Version 2.0
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
-* **Granular Controls:** Speed slider configured for high-precision steps (`0.0025x` increments, minimum `0.0625x` to match YouTube's `playbackRate` limit).
+* **Granular Controls:** The horizontal speed slider spans the bottom of Pitchfork, with normal speed (0%) at its midpoint. Its left half covers `0.0625x` to `1x` and its right half covers `1x` to `4x`, so the two sides have different scales. Values are rounded to `0.0001x`, and the arrow keys adjust by that amount; YouTube playback uses the rates supported by the video.
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.
 * **Play control:** Press **Play** to start or resume playback. While playing, a green triangle appears beside the time and the button changes to **Pause** with a slowly pulsing yellow border; press it to pause. The border remains static when reduced motion is requested. While paused, the button looks the same as when stopped.
 * **Open Input:** The Open control accepts an 11-character video ID or a YouTube watch, short, embed, Shorts, or live URL. It validates the ID format, adds the video, and starts playback through the YouTube player; a valid ID does not guarantee that the video exists or is playable. It also emits an `eraudio:control` event with the video ID.

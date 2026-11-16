@@ -19,7 +19,7 @@
       <div class="title-bar">
         <button class="title-bar-text title-bar-login tooltip-target" id="youtube-login" type="button" data-tooltip="Sign in to YouTube" aria-label="Sign in to YouTube"><span id="youtube-login-label">YOUTUBE LOGIN</span></button>
         <button class="title-bar-text title-bar-login" id="youtube-settings" type="button">API SETUP</button>
-        <span class="title-bar-text" aria-label="Version 1.33">v1.33</span>
+        <span class="title-bar-text" aria-label="Version 2.0">v2.0</span>
       </div>
 
       <!-- Main Display Screen (Green/Yellow LCD) -->
@@ -114,11 +114,6 @@
       </div>
 
       <div class="plugin-body">
-        <div class="pf-slider-col">
-          <label class="sr-only" for="speed-slider">Playback speed</label>
-          <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="0.0625" max="4.00" step="0.0001" value="1.00">
-        </div>
-
         <div class="pf-left">
           <button class="pf-btn" type="button" data-step-size="large" data-step-dir="up">++</button>
           <button class="pf-btn" type="button" data-step-size="small" data-step-dir="up">+</button>
@@ -151,6 +146,11 @@
           <button class="pf-btn pf-prev" type="button" data-pf="Previous N" aria-label="Nudge playback position backward">◄N</button>
           <button class="pf-btn pf-next" type="button" data-pf="Next N" aria-label="Nudge playback position forward">N►</button>
         </div>
+      </div>
+      <div class="pf-slider-row">
+        <div class="pf-slider-scale" aria-hidden="true"><span>-93.75%</span><span>0%</span><span>+300%</span></div>
+        <label class="sr-only" for="speed-slider">Playback speed</label>
+        <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="-30000" max="30000" step="1" value="0" aria-valuetext="0.00% (1.0000x)">
       </div>
       <p class="pf-message" id="bpm-message" role="status" aria-live="polite"></p>
       <p class="pf-message" id="step-message" role="status" aria-live="polite"></p>
