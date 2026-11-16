@@ -57,6 +57,7 @@ const favoriteLists = [
 
 const trackTitleDisplay = document.querySelector('#track-title');
 const playButton = document.querySelector('.main-window [data-action="play"]');
+const playbackIndicator = document.querySelector('#playback-indicator');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
 const markerInfo = document.querySelector('#marker-info');
@@ -413,6 +414,8 @@ function updatePlayButton(isPlaying, active) {
   playButton.textContent = isPlaying ? '⏸' : '▶';
   playButton.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
   playButton.classList.toggle('active', active);
+  playButton.classList.toggle('playing', isPlaying);
+  playbackIndicator.hidden = !isPlaying;
 }
 
 function parseClockToSeconds(value) {
@@ -599,6 +602,8 @@ function onPlayerStateChange(event) {
   if (event.data !== YT.PlayerState.BUFFERING) {
     const isPlaying = event.data === YT.PlayerState.PLAYING;
     updatePlayButton(isPlaying, isPlaying || event.data === YT.PlayerState.PAUSED);
+  } else {
+    playbackIndicator.hidden = true;
   }
   pauseButtons.forEach((button) => {
     button.classList.toggle('paused', event.data === YT.PlayerState.PAUSED);

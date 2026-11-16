@@ -280,12 +280,24 @@ body {
 
 .display-left {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 150px;
+  flex: 0 0 168px;
+  gap: 4px;
+}
+
+.playback-indicator-slot {
+  align-items: center;
+  color: var(--lcd-green);
+  display: flex;
+  flex: 0 0 14px;
+  font-size: 13px;
+  height: 38px;
+  text-shadow: 0 0 6px var(--lcd-green-glow);
 }
 
 .timer-display {
+  align-self: flex-start;
+  flex: 1;
+  min-width: 0;
   font-family: var(--font-digital);
   font-size: 38px;
   color: var(--lcd-green);
@@ -627,10 +639,14 @@ body {
   text-shadow: 0 0 3px #ffcc0088;
 }
 
-.transport-btn.play.active {
+.transport-btn.play.active:not(.playing) {
   background: var(--accent-gold);
   border-color: var(--accent-gold);
   color: #000;
+}
+
+.transport-btn.play.playing {
+  border: 2px solid var(--accent-gold);
 }
 
 /* ==========================================================================
