@@ -559,10 +559,15 @@ function stepTrack(step, { wrap = true } = {}) {
   return true;
 }
 
-function startPlayback() {
+function togglePlayback() {
+  const wasPlaying = ytReady && playingTrack && !nudgePreview
+    && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
   cancelNudgePreview(true);
   if (playingTrack) {
-    if (ytReady) ytPlayer.playVideo();
+    if (ytReady) {
+      if (wasPlaying) ytPlayer.pauseVideo();
+      else ytPlayer.playVideo();
+    }
     return;
   }
   const list = currentList();
@@ -1291,7 +1296,7 @@ document.addEventListener('click', (event) => {
 
   if (button.dataset.action === 'add-url') showInputDialog('add');
 
-  if (button.dataset.action === 'play') startPlayback();
+  if (button.dataset.action === 'play') togglePlayback();
   if (button.dataset.action === 'pause' && ytReady && playingTrack) {
     cancelNudgePreview(true);
     if (ytPlayer.getPlayerState() === YT.PlayerState.PAUSED) ytPlayer.playVideo();
