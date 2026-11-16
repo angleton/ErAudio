@@ -637,9 +637,9 @@ function renderMarkers() {
       item.className = 'playlist-item';
       item.type = 'button';
       item.dataset.marker = String(index);
-      item.textContent = `${index + 1}. ${entry.title} [${formatClock(entry.start)}]`;
+      item.textContent = `${index + 1}. [${formatClock(entry.start)}] ${entry.title}`;
       if (markers.duration && entry.start >= markers.duration) {
-        item.textContent = `${index + 1}. [OUT OF RANGE] ${entry.title} [${formatClock(entry.start)}]`;
+        item.textContent = `${index + 1}. [${formatClock(entry.start)}] [OUT OF RANGE] ${entry.title}`;
         item.disabled = true;
         item.title = 'This timestamp is beyond the video duration and cannot be played.';
         item.setAttribute('aria-label', `${item.textContent}. Beyond video duration; cannot be played.`);

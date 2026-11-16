@@ -905,6 +905,8 @@ body {
 
 .playlist-item {
   width: 100%;
+  flex: 0 0 auto;
+  background: transparent;
   border: 0;
   text-align: left;
   font: inherit;
@@ -915,6 +917,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   border-radius: 1px;
+}
+
+#marker-list .playlist-item {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .event-status {
