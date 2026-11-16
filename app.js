@@ -56,6 +56,7 @@ const favoriteLists = [
 ];
 
 const trackTitleDisplay = document.querySelector('#track-title');
+const playButton = document.querySelector('.main-window [data-action="play"]');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
 const markerInfo = document.querySelector('#marker-info');
@@ -405,6 +406,13 @@ function applyControl(name, value) {
 function resetTransportDisplay() {
   timeDisplay.textContent = '00:00';
   controls.scrubber.value = 0;
+  updatePlayButton(false, false);
+}
+
+function updatePlayButton(isPlaying, active) {
+  playButton.textContent = isPlaying ? '⏸' : '▶';
+  playButton.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+  playButton.classList.toggle('active', active);
 }
 
 function parseClockToSeconds(value) {
@@ -588,6 +596,10 @@ function setTrackTitle(track, title) {
 }
 
 function onPlayerStateChange(event) {
+  if (event.data !== YT.PlayerState.BUFFERING) {
+    const isPlaying = event.data === YT.PlayerState.PLAYING;
+    updatePlayButton(isPlaying, isPlaying || event.data === YT.PlayerState.PAUSED);
+  }
   pauseButtons.forEach((button) => {
     button.classList.toggle('paused', event.data === YT.PlayerState.PAUSED);
     button.setAttribute('aria-pressed', String(event.data === YT.PlayerState.PAUSED));
@@ -609,6 +621,7 @@ function onPlayerStateChange(event) {
 }
 
 function onPlayerError() {
+  updatePlayButton(false, false);
   if (nudgePreview) {
     cancelNudgePreview(true);
     nudgeError('The nudge preview failed because the video could not be played.');
