@@ -1397,6 +1397,18 @@ const stepSizes = ['large', 'small'];
 const stepStorageKey = 'eraudio:speed-steps';
 const stepMessage = document.querySelector('#step-message');
 const stepDefaults = {};
+const stepButtons = document.querySelectorAll('[data-step-size]');
+
+function renderSpeedSteps() {
+  stepButtons.forEach((button) => {
+    const group = button.closest('.pf-left') ? 'permanent' : 'temporary';
+    const value = stepConfig[group][button.dataset.stepSize];
+    button.dataset.stepValue = String(value);
+    const description = `${button.textContent} ${group} speed step: ${value} percentage points. Right-click or press Shift+F10 to edit.`;
+    button.setAttribute('aria-label', description);
+    button.title = description;
+  });
+}
 
 function readStepOverrides() {
   const raw = localStorage.getItem(stepStorageKey);
@@ -1430,6 +1442,7 @@ function applyStepOverrides(overrides) {
       stepConfig[group][size] = overrides[group]?.[size] ?? stepDefaults[group][size];
     });
   });
+  renderSpeedSteps();
 }
 
 function stepError(message, error) {
@@ -1466,8 +1479,10 @@ async function loadStepConfig() {
     applyStepOverrides(readStepOverrides());
   } catch (error) {
     stepError('Could not read saved speed steps from browser storage.', error);
+    renderSpeedSteps();
   }
 }
+renderSpeedSteps();
 const stepConfigReady = loadStepConfig();
 
 window.addEventListener('storage', async (event) => {
@@ -1606,8 +1621,7 @@ document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
 bindMomentarySpeed(document.querySelector('[data-pf="="]'), () => '1.00');
 
 let stepEditor = null;
-document.querySelectorAll('[data-step-size]').forEach((button) => {
-  button.setAttribute('aria-label', `${button.textContent} ${button.closest('.pf-left') ? 'permanent' : 'temporary'} speed step. Right-click or press Shift+F10 to edit.`);
+stepButtons.forEach((button) => {
   button.addEventListener('contextmenu', async (event) => {
     event.preventDefault();
     await stepConfigReady;

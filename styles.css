@@ -752,6 +752,21 @@ body {
   white-space: nowrap;
 }
 
+.pf-btn[data-step-size] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-btn[data-step-size]::after {
+  content: " " attr(data-step-value);
+}
+
+@media (max-width: 360px) {
+  .pf-btn[data-step-size] {
+    font-size: 8px;
+  }
+}
+
 .pf-btn:hover {
   background: linear-gradient(180deg, #e6e7f0 0%, #b0b1c4 100%);
 }
