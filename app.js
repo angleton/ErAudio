@@ -34,19 +34,42 @@ const defaultTrack = {
   duration: '--:--',
 };
 const youtubeLoginButton = document.querySelector('#youtube-login');
+const youtubeLoginLabel = document.querySelector('#youtube-login-label');
+const youtubeSettingsButton = document.querySelector('#youtube-settings');
 const loginNotice = document.querySelector('#login-notice');
 const loginNoticeMessage = document.querySelector('#login-notice-message');
 const youtubeAccountStorageKey = 'eraudio:youtube-account-name';
+const credentialsStorageKey = 'eraudio:youtube-credentials';
+const credentialsDialog = document.querySelector('#credentials-dialog');
+const credentialsForm = document.querySelector('#credentials-form');
+const credentialsError = document.querySelector('#credentials-error');
+const apiKeyInput = document.querySelector('#api-key-input');
+const clientIdInput = document.querySelector('#client-id-input');
 const openDialog = document.querySelector('#open-dialog');
 const openForm = document.querySelector('#open-form');
 const openDialogTitle = document.querySelector('#open-dialog-title');
 const youtubeInput = document.querySelector('#youtube-input');
 const youtubeInputError = document.querySelector('#youtube-input-error');
 const fallbackStorage = new Map();
-const googleClientId = window.ERAUDIO_CONFIG?.googleClientId || '';
-const youtubeApiKey = window.ERAUDIO_CONFIG?.youtubeApiKey || '';
+let googleClientId = '';
+let youtubeApiKey = '';
+let credentialsLoadError = '';
+try {
+  const savedCredentials = localStorage.getItem(credentialsStorageKey);
+  if (savedCredentials !== null) {
+    const parsed = JSON.parse(savedCredentials);
+    if (!parsed || typeof parsed.googleClientId !== 'string' || typeof parsed.youtubeApiKey !== 'string') {
+      throw new Error('Invalid stored credentials');
+    }
+    googleClientId = parsed.googleClientId;
+    youtubeApiKey = parsed.youtubeApiKey;
+  }
+} catch {
+  credentialsLoadError = 'Could not read YouTube settings from browser storage. Open API SETUP to check or replace them.';
+}
 const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
+let youtubeAuthGeneration = 0;
 
 const favoriteLists = [
   {
@@ -214,7 +237,7 @@ function setYouTubeAccount(accountName) {
   if (!normalizedName) return;
 
   writeStoredValue(youtubeAccountStorageKey, normalizedName);
-  youtubeLoginButton.textContent = `${normalizedName} ErAudio`;
+  youtubeLoginLabel.textContent = `${normalizedName} ErAudio`;
   youtubeLoginButton.dataset.tooltip = `Signed in as ${normalizedName}`;
   youtubeLoginButton.setAttribute('aria-label', `YouTube account: ${normalizedName}`);
 }
@@ -286,13 +309,15 @@ async function selectFavoritesList(listId) {
   renderFavoritesList(list.id);
 }
 
-async function loadAccountPlaylists() {
+async function loadAccountPlaylists(generation) {
   const channels = await youtubeApi('channels', { part: 'snippet,contentDetails', mine: 'true' });
+  if (generation !== youtubeAuthGeneration) return;
   const channel = channels.items?.[0];
   if (!channel) throw new Error('No YouTube channel found for this account.');
   setYouTubeAccount(channel.snippet.title);
 
   const playlists = await fetchAllPages('playlists', { part: 'snippet', mine: 'true', maxResults: '50' });
+  if (generation !== youtubeAuthGeneration) return;
   const accountLists = [];
   const related = channel.contentDetails.relatedPlaylists;
   const addedTracks = favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added));
@@ -328,10 +353,12 @@ function getTokenClient() {
   if (tokenClient) return tokenClient;
   if (!googleClientId || !window.google?.accounts?.oauth2) return null;
 
+  const generation = youtubeAuthGeneration;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: googleClientId,
     scope: youtubeScope,
     callback: async (tokenResponse) => {
+      if (generation !== youtubeAuthGeneration) return;
       const wasSilent = silentAttempt;
       silentAttempt = false;
       if (tokenResponse.error) {
@@ -342,12 +369,13 @@ function getTokenClient() {
       youtubeAccessToken = tokenResponse.access_token;
       ensureMarkers(playingTrack);
       try {
-        await loadAccountPlaylists();
+        await loadAccountPlaylists(generation);
       } catch (error) {
         announceEvent({ type: 'error', name: error.message });
       }
     },
     error_callback: (error) => {
+      if (generation !== youtubeAuthGeneration) return;
       const wasSilent = silentAttempt;
       silentAttempt = false;
       if (!wasSilent) showLoginError(`YouTube sign-in failed: ${error.message || error.type}. Try again or check the setup instructions.`);
@@ -370,7 +398,7 @@ function requestYouTubeLogin({ silent = false } = {}) {
     return;
   }
   if (!googleClientId) {
-    if (!silent) showLoginError('YouTube sign-in is not configured for this copy of ErAudio. The maintainer must set a Google OAuth client ID. You can still play YouTube links.');
+    if (!silent) showCredentialsDialog('login');
     return;
   }
   const client = getTokenClient();
@@ -391,6 +419,90 @@ function trySilentLogin(attemptsLeft = 20) {
     setTimeout(() => trySilentLogin(attemptsLeft - 1), 250);
   }
 }
+
+function showCredentialsDialog(purpose = 'settings') {
+  if (credentialsDialog.open) return;
+  credentialsDialog.dataset.purpose = purpose;
+  apiKeyInput.value = youtubeApiKey;
+  clientIdInput.value = googleClientId;
+  credentialsError.textContent = '';
+  credentialsDialog.showModal();
+  (purpose === 'login' ? clientIdInput : apiKeyInput).focus();
+}
+
+function resetAccountSession() {
+  youtubeAuthGeneration += 1;
+  tokenClient = null;
+  silentAttempt = false;
+  const wasSignedIn = Boolean(youtubeAccessToken);
+  youtubeAccessToken = '';
+  writeStoredValue(youtubeAccountStorageKey, '');
+  youtubeLoginLabel.textContent = 'YOUTUBE LOGIN';
+  youtubeLoginButton.dataset.tooltip = 'Sign in to YouTube';
+  youtubeLoginButton.setAttribute('aria-label', 'Sign in to YouTube');
+  if (!wasSignedIn) return;
+
+  const tracks = [defaultTrack, ...favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added))];
+  if (playingTrack && !tracks.includes(playingTrack)) tracks.push(playingTrack);
+  const list = { id: 'favorites', name: 'Favorites', tracks };
+  favoriteLists.splice(0, favoriteLists.length, list);
+  playingList = playingTrack ? list : null;
+  favoritesSelect.replaceChildren(new Option(list.name, list.id));
+  playlistSourceRow.hidden = true;
+  renderFavoritesList(list.id);
+  updateNowPlaying();
+}
+
+youtubeSettingsButton.addEventListener('click', () => showCredentialsDialog());
+document.querySelector('#credentials-cancel').addEventListener('click', () => credentialsDialog.close());
+credentialsDialog.addEventListener('close', () => {
+  apiKeyInput.value = '';
+  clientIdInput.value = '';
+});
+credentialsForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const nextApiKey = apiKeyInput.value.trim();
+  const nextClientId = clientIdInput.value.trim();
+  if (nextClientId && !/^[^\s]+\.apps\.googleusercontent\.com$/.test(nextClientId)) {
+    credentialsError.textContent = 'Enter a Google OAuth client ID ending in .apps.googleusercontent.com, not a client secret.';
+    clientIdInput.focus();
+    return;
+  }
+  if (nextApiKey.startsWith('GOCSPX-')) {
+    credentialsError.textContent = 'Enter a YouTube Data API key, not an OAuth client secret.';
+    apiKeyInput.focus();
+    return;
+  }
+  if (credentialsDialog.dataset.purpose === 'login' && !nextClientId) {
+    credentialsError.textContent = 'Enter a Google OAuth client ID to sign in, or cancel.';
+    clientIdInput.focus();
+    return;
+  }
+  try {
+    if (nextApiKey || nextClientId) {
+      localStorage.setItem(credentialsStorageKey, JSON.stringify({ youtubeApiKey: nextApiKey, googleClientId: nextClientId }));
+    } else {
+      localStorage.removeItem(credentialsStorageKey);
+    }
+  } catch {
+    credentialsError.textContent = 'Could not save YouTube settings in browser storage. No settings were changed.';
+    return;
+  }
+  const clientChanged = nextClientId !== googleClientId;
+  const apiKeyChanged = nextApiKey !== youtubeApiKey;
+  googleClientId = nextClientId;
+  youtubeApiKey = nextApiKey;
+  if (clientChanged) resetAccountSession();
+  const purpose = credentialsDialog.dataset.purpose;
+  credentialsDialog.close();
+  loginNotice.hidden = true;
+  if (apiKeyChanged || clientChanged) {
+    if (playingTrack) delete playingTrack.markerError;
+    renderMarkers();
+    ensureMarkers(playingTrack);
+  }
+  if (purpose === 'login') requestYouTubeLogin();
+});
 
 function formatClock(totalSeconds) {
   const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -505,7 +617,7 @@ function renderMarkers() {
   } else if (!markers) {
     placeholder(state === 'loading' ? 'Looking for chapters / timestamps...'
       : state === 'signin' ? 'Sign in to YouTube to detect chapters / timestamps.'
-        : 'Configure a YouTube API key or sign-in to detect chapters / timestamps.');
+        : 'Use API SETUP to enter a YouTube API key or sign in to detect chapters / timestamps.');
     markerInfo.textContent = state === 'loading' ? 'LOADING' : state === 'signin' ? 'SIGN IN REQUIRED' : 'SETUP REQUIRED';
   } else if (!markers.timestamps.length) {
     placeholder('No chapters or timestamps found in this video\'s description.');
@@ -543,27 +655,32 @@ function renderMarkers() {
 async function ensureMarkers(track) {
   if (!track || track.markers || track.markersLoading || (!youtubeAccessToken && !youtubeApiKey)) return;
   const accessToken = youtubeAccessToken;
-  let retryWithToken = false;
+  const apiKey = youtubeApiKey;
+  let retryWithCredentials = false;
   track.markersLoading = true;
   delete track.markerError;
   if (track === playingTrack) renderMarkers();
   try {
     const data = await youtubeApi('videos', { part: 'snippet,contentDetails', id: track.videoId }, {
-      apiKey: accessToken ? '' : youtubeApiKey,
+      apiKey: accessToken ? '' : apiKey,
     });
+    if (accessToken !== youtubeAccessToken || (!accessToken && apiKey !== youtubeApiKey)) {
+      retryWithCredentials = true;
+      return;
+    }
     const description = data.items?.[0]?.snippet?.description;
     if (typeof description !== 'string') throw new Error('Video description unavailable');
     const duration = parseIsoDurationSeconds(data.items[0].contentDetails?.duration);
     track.markers = parseDescriptionMarkers(description, duration);
   } catch {
-    retryWithToken = !accessToken && Boolean(youtubeAccessToken);
-    if (!retryWithToken) {
+    retryWithCredentials = accessToken !== youtubeAccessToken || (!accessToken && apiKey !== youtubeApiKey);
+    if (!retryWithCredentials) {
       track.markerError = 'Could not load chapters / timestamps. Check the connection, API configuration, and video availability; reopen the video or reload to retry.';
       announceEvent({ type: 'error', name: track.markerError });
     }
   } finally {
     track.markersLoading = false;
-    if (retryWithToken) ensureMarkers(track);
+    if (retryWithCredentials && (youtubeAccessToken || youtubeApiKey)) ensureMarkers(track);
     else if (track === playingTrack) renderMarkers();
   }
 }
@@ -1407,6 +1524,9 @@ document.addEventListener('click', (event) => {
       'toggle-playlist': 'playlist-window',
     }[button.dataset.action] || 'pitchfork-window';
     document.getElementById(targetId).hidden = !isActive;
+    if (button.dataset.action === 'toggle-playlist' && isActive && !youtubeApiKey && !youtubeAccessToken && !googleClientId) {
+      showCredentialsDialog('chapters');
+    }
   }
 
   if (button.dataset.action === 'open') showInputDialog('open');
@@ -2023,6 +2143,7 @@ initYouTubePlayer();
 updateNowPlaying();
 ensureMarkers(playingTrack);
 setYouTubeAccount(readStoredValue(youtubeAccountStorageKey));
+if (credentialsLoadError) showLoginError(credentialsLoadError);
 
 // Application code can react here without coupling the controls to playback yet.
 document.addEventListener('eraudio:control', (event) => {

@@ -147,6 +147,10 @@ input:focus-visible {
   user-select: text;
 }
 
+.open-dialog-body a {
+  color: var(--accent-gold);
+}
+
 .open-dialog-error {
   min-height: 14px;
   color: #ff7777;
@@ -253,6 +257,24 @@ body {
 
 .title-bar-login:hover {
   color: #ffffff;
+}
+
+#youtube-login {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: left;
+}
+
+#youtube-login-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#youtube-settings {
+  flex-shrink: 0;
+  margin: 0 8px;
 }
 
 /* ==========================================================================

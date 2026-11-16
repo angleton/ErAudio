@@ -8,7 +8,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 
 1. **Open the player:** <https://angleton.github.io/ErAudio/>
 2. **Start listening:** Click **Open** to switch to another YouTube link or video ID; no account needed.
-3. **Optional, load your own playlists:** if sign-in is configured, click **YOUTUBE LOGIN**, choose your Google account, and approve access. Your Liked videos and playlists then appear in the Videos window.
+3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. See [YouTube API setup](#youtube-api-setup).
 4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, and **PITCH** opens the speed control. Only the main player is visible at first.
 
 > If Google says "this app isn't verified", click **Advanced**, then **Continue**. ErAudio only asks to *view* your YouTube account and never changes anything.
@@ -19,7 +19,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 2. Open a terminal in the unzipped folder and run `py -m http.server 8000` (Windows; needs [Python](https://www.python.org/downloads/)).
 3. Visit <http://localhost:8000> in your browser.
 
-Pasting links works this way. YOUTUBE LOGIN only works if the maintainer has registered `http://localhost:8000` (see below), so the hosted link above is the easiest option.
+Pasting links works this way. For YouTube API features, configure your own credentials and authorize `http://localhost:8000` as described below.
 
 ---
 
@@ -86,22 +86,28 @@ This is a static HTML/CSS/JavaScript project. No build step, dependencies, datab
 
 Open `index.html` in a modern browser, for example by double-clicking it in File Explorer. The URL will start with `file://`. The player interface and YouTube URL/ID parsing work locally; if the browser blocks local storage, saved preferences last only for the current page session.
 
-### For maintainers: enabling public video chapters
+### YouTube API setup
 
-Public video descriptions can be retrieved without sign-in using a YouTube Data API key:
+The app does not ship credentials or read `config.js`. Each user can enter credentials through **API SETUP**; opening **PL** without either credential or choosing **YOUTUBE LOGIN** without a client ID also opens the setup dialog. Both fields are optional except that login requires a client ID. Use **API SETUP** again to change a value or clear a field and save to remove it. Changing or removing the client ID ends the current app session's YouTube sign-in.
+
+The values are stored unencrypted in the browser's local storage for this site and browser profile, not in project files or GitHub. They are accessible to scripts running on the same origin, browser extensions, and people with access to the profile. Clearing browser site data removes them. The API key is sent to Google for API requests and the client ID is sent to Google for sign-in; use website and API restrictions, and do not enter a client secret. Saving requires browser storage; if it is blocked, the app reports the failure and does not change the settings.
+
+If you previously created a local `config.js`, it is no longer used. It remains on your computer and may still be served by a local web server until you remove it yourself.
+
+#### Public video chapters
+
+Public video descriptions can be retrieved without sign-in using your own YouTube Data API key:
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create or select a project and enable **YouTube Data API v3** under **APIs & Services → Library**.
-2. Under **APIs & Services → Credentials**, create an API key. Restrict its API access to **YouTube Data API v3** and its website access to your serving sites, such as `https://angleton.github.io/*` and `http://localhost:8000/*`.
-3. Set `youtubeApiKey` in [config.js](config.js) in the deployed or local copy. Do not commit the key to the repository. A key used in a browser is visible to visitors, so website and API restrictions are important; monitor your Google Cloud quota and usage. For GitHub Pages, publishing a key without committing it requires a deployment workflow that supplies it when generating the deployed configuration; this project does not provide such a workflow.
-4. Serve the app over HTTP or HTTPS from an allowed website and reload it. Direct `file://` use may not supply a referrer accepted by a restricted key.
+2. Under **APIs & Services → Credentials**, create an API key. Restrict its API access to **YouTube Data API v3** and its website access to the sites you use, such as `https://angleton.github.io/*` and `http://localhost:8000/*`.
+3. Open **API SETUP** in ErAudio, enter the key and save. Monitor your Google Cloud quota and usage.
+4. Use the app over HTTP or HTTPS from an allowed website. Direct `file://` use may not supply a referrer accepted by a restricted key.
 
 The YouTube Data API has a quota; a request can also fail because of key restrictions, network errors, or video availability. The PLAYLIST window reports failures. Reopen the video or reload the page to retry.
 
-### For maintainers: enabling YOUTUBE LOGIN for everyone
+#### YouTube account playlists
 
-Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and can also retrieve video descriptions. If the browser already has a Google session that previously approved ErAudio, sign-in happens automatically on page load. End users never need Google Cloud access; the maintainer does this setup **once**.
-
-Until `googleClientId` in [config.js](config.js) is set, the login button displays a notice that sign-in is not configured, with a link to these setup instructions.
+An OAuth client ID is needed only for **YOUTUBE LOGIN** and account playlists, not for public chapters when you use an API key. Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and can also retrieve video descriptions. If the browser already has a Google session that previously approved your OAuth client, sign-in is attempted automatically on page load.
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or choose an existing one).
 2. Under **APIs & Services → Library**, enable **YouTube Data API v3**.
@@ -114,14 +120,13 @@ Until `googleClientId` in [config.js](config.js) is set, the login button displa
    - `http://localhost:8000` for local runs (Option 2 below)
 
    Google sign-in does not work from `file://`, and no redirect URI is needed. Origin changes can take a few minutes to apply.
-5. Copy the client ID (it ends in `.apps.googleusercontent.com`) into [config.js](config.js) as `googleClientId`. The client ID is public, not a secret, so it is safe to commit.
-6. Publish with **GitHub Pages**: repository **Settings → Pages → Deploy from a branch → `main` / root**.
-7. To let **anyone's** Google account sign in, not just test users, set the consent screen's publishing status to **In production** and submit the app for **OAuth verification**. The `youtube.readonly` scope is sensitive, so Google requires a privacy policy and a short demo video. Until it is approved, users see an "unverified app" warning (choose **Advanced → Continue**) and only test users can sign in.
+5. In **API SETUP**, enter the client ID (ending in `.apps.googleusercontent.com`) and save. Do not enter the client secret. Click **YOUTUBE LOGIN** to authorize your account.
+6. If other accounts need access to your OAuth client, add them as test users or complete Google's publishing and verification process. The `youtube.readonly` scope is sensitive; Google's verification requirements apply.
 
 Troubleshooting:
 - `origin_mismatch` / `redirect_uri_mismatch`: the page's origin is not in step 4 exactly as written.
 - `access_denied`: the account is not a test user (step 3) and the app is not yet verified.
-- "YouTube sign-in is not configured": step 5 is missing.
+- If settings cannot be saved, check that browser storage is enabled for the site.
 
 Without a client ID, pasting a YouTube link still works, but account playlists are unavailable. Chapter/timestamp detection still works for public videos if an API key is configured.
 
@@ -151,7 +156,6 @@ eraudio/
 ├── index.html        # HTML5 layout of ErAudio & Pitchfork UI
 ├── styles.css        # Retro ErAudio classic skin stylesheet
 ├── app.js            # Player, controls, and saved locations
-├── config.js         # YouTube API key and Google OAuth client ID configuration
 ├── screenshot-ui.png # Screenshot of the player UI
 └── README.md         # Project documentation & reference images
 ```

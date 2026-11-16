@@ -6,7 +6,6 @@
   <title>ErAudio Web Player (with Pitchfork Plugin UI)</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="config.js" defer></script>
   <script src="app.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +17,8 @@
     <div class="winamp-window main-window">
       <!-- Title Bar -->
       <div class="title-bar">
-        <button class="title-bar-text title-bar-login tooltip-target" id="youtube-login" type="button" data-tooltip="Sign in to YouTube" aria-label="Sign in to YouTube">YOUTUBE LOGIN</button>
+        <button class="title-bar-text title-bar-login tooltip-target" id="youtube-login" type="button" data-tooltip="Sign in to YouTube" aria-label="Sign in to YouTube"><span id="youtube-login-label">YOUTUBE LOGIN</span></button>
+        <button class="title-bar-text title-bar-login" id="youtube-settings" type="button">API SETUP</button>
         <span class="title-bar-text" aria-label="Version 1.22">v1.22</span>
       </div>
 
@@ -104,7 +104,7 @@
 
     <div class="login-notice" id="login-notice" role="alert" hidden>
       <span id="login-notice-message"></span>
-      <a href="https://github.com/angleton/ErAudio#for-maintainers-enabling-youtube-login-for-everyone" target="_blank" rel="noopener noreferrer">Sign-in setup instructions</a>
+      <a href="https://github.com/angleton/ErAudio#youtube-api-setup" target="_blank" rel="noopener noreferrer">YouTube setup instructions</a>
     </div>
 
     <!-- PITCHFORK PLUGIN WINDOW -->
@@ -199,6 +199,27 @@
 
   </div>
   <div class="yt-host" aria-hidden="true"><div id="yt-player"></div></div>
+  <dialog class="open-dialog" id="credentials-dialog" aria-labelledby="credentials-title">
+    <form class="open-dialog-form" id="credentials-form" novalidate>
+      <div class="title-bar">
+        <h2 class="title-bar-text" id="credentials-title">YOUTUBE API SETUP</h2>
+      </div>
+      <div class="open-dialog-body">
+        <p>Enter only what you need. Values are saved in this browser, not in project files. Clear a field to remove it.</p>
+        <label for="api-key-input">YOUTUBE DATA API KEY (PUBLIC VIDEO CHAPTERS)</label>
+        <input id="api-key-input" type="password" autocomplete="off" spellcheck="false">
+        <label for="client-id-input">GOOGLE OAUTH CLIENT ID (YOUTUBE LOGIN)</label>
+        <input id="client-id-input" type="password" autocomplete="off" spellcheck="false">
+        <p>Restrict your key to YouTube Data API v3 and this website. Do not enter a client secret.</p>
+        <a href="https://github.com/angleton/ErAudio#youtube-api-setup" target="_blank" rel="noopener noreferrer">Setup instructions</a>
+        <p class="open-dialog-error" id="credentials-error" role="alert"></p>
+      </div>
+      <div class="open-dialog-actions">
+        <button class="pl-btn" id="credentials-cancel" type="button">CANCEL</button>
+        <button class="pl-btn open-submit" type="submit">SAVE</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="open-dialog" id="open-dialog" aria-labelledby="open-dialog-title">
     <form class="open-dialog-form" id="open-form" novalidate>
       <div class="title-bar">
