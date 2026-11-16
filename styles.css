@@ -434,6 +434,12 @@ body {
   font: inherit;
 }
 
+.locations-hint {
+  color: #aabb99;
+  font: 10px var(--font-mono);
+  padding: 0 6px;
+}
+
 .locations-list {
   display: flex;
   flex-direction: column;
@@ -449,6 +455,27 @@ body {
 .locations-actions .pl-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.location-editor:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  color: #cccccc;
+  font: 11px var(--font-mono);
+}
+
+.location-editor input {
+  background: #101810;
+  border: 1px solid #557755;
+  color: var(--lcd-green);
+  padding: 4px;
+  user-select: text;
+}
+
+.location-edit-error:not(:empty) {
+  color: #ff9999;
 }
 
 .locations-entry {

@@ -56,7 +56,17 @@
           <h2 id="locations-title">SAVED LOCATIONS</h2>
           <button class="pl-btn" id="close-locations" type="button" aria-label="Close saved locations">✕</button>
         </div>
+        <p class="locations-hint">DOUBLE-CLICK OR PRESS F2 TO EDIT</p>
         <div class="locations-list" id="locations-list"></div>
+        <form class="location-editor" id="location-editor" hidden>
+          <label for="location-time">EDIT LOCATION (MM:SS.sss)</label>
+          <input id="location-time" type="text" autocomplete="off" spellcheck="false" aria-describedby="location-edit-error">
+          <p class="location-edit-error" id="location-edit-error" role="alert"></p>
+          <div class="locations-actions">
+            <button class="pl-btn" type="submit">SAVE</button>
+            <button class="pl-btn" id="cancel-location-edit" type="button">CANCEL</button>
+          </div>
+        </form>
         <div class="locations-actions">
           <button class="pl-btn" id="remove-location" type="button" disabled>REMOVE SELECTED</button>
         </div>
@@ -124,7 +134,7 @@
           <button class="pf-btn" type="button" data-pf="Pitch Up" aria-label="Increase speed gradually" aria-pressed="false">▲▲</button>
           <button class="pf-btn" type="button" data-pf="Pitch Down" aria-label="Decrease speed gradually" aria-pressed="false">▼▼</button>
           <div class="pf-readout-row">
-            <button class="pf-btn" type="button" data-pf="=">=</button>
+            <button class="pf-btn" type="button" data-pf="=" aria-label="Hold for normal playback speed">=</button>
             <span class="pf-readout" id="val-speed">0.00%</span>
           </div>
         </div>

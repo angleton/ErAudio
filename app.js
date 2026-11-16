@@ -15,6 +15,9 @@ const locationsToggle = document.querySelector('#toggle-locations');
 const locationsPanel = document.querySelector('#locations-panel');
 const locationsList = document.querySelector('#locations-list');
 const removeLocationButton = document.querySelector('#remove-location');
+const locationEditor = document.querySelector('#location-editor');
+const locationTimeInput = document.querySelector('#location-time');
+const locationEditError = document.querySelector('#location-edit-error');
 const locationsFile = document.querySelector('#locations-file');
 const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
@@ -67,6 +70,8 @@ let savedLocations = new Map();
 let savedLocationsRenderKey = '';
 let locationsListRenderKey = '';
 let selectedLocation = null;
+let editingLocation = null;
+let lastLocationClick = null;
 let nudgePreview = null;
 
 function readStoredValue(key) {
@@ -742,6 +747,15 @@ function formatLocationTime(position) {
   return `${formatClock(wholeSeconds + Math.floor(milliseconds / 1000))}.${String(milliseconds % 1000).padStart(3, '0')}`;
 }
 
+function formatLocationEditTime(position) {
+  const [mantissa, exponent = '0'] = String(position).split('e');
+  const [integer, decimals = ''] = mantissa.split('.');
+  const digits = integer + decimals;
+  const split = integer.length + Number(exponent);
+  const fraction = split <= 0 ? '0'.repeat(-split) + digits : digits.slice(split);
+  return `${formatClock(Math.floor(position))}.${fraction.padEnd(3, '0')}`;
+}
+
 function updateSelectedLocation() {
   removeLocationButton.disabled = !selectedLocation;
   locationsList.querySelectorAll('[data-location-index]').forEach((item) => {
@@ -771,6 +785,13 @@ function renderSavedLocations() {
 
   const videoId = playingTrack?.videoId;
   const saved = savedLocations.get(videoId) || [];
+  if (editingLocation && (editingLocation.videoId !== videoId
+    || saved[editingLocation.index] !== editingLocation.position)) {
+    const editorHasFocus = locationEditor.contains(document.activeElement);
+    closeLocationEditor(false);
+    if (editorHasFocus) locationsToggle.focus();
+    memoryError('Saved locations changed; the unfinished edit was canceled.');
+  }
   if (selectedLocation && (selectedLocation.videoId !== videoId
     || saved[selectedLocation.index] !== selectedLocation.position)) selectedLocation = null;
   const listKey = JSON.stringify([videoId, saved]);
@@ -795,7 +816,7 @@ function renderSavedLocations() {
         item.className = 'locations-entry';
         item.dataset.locationIndex = String(index);
         item.textContent = distinctByTime.get(time).size > 1 ? `${time} (${position}s)` : time;
-        item.setAttribute('aria-label', `Seek to saved location ${index + 1}: ${item.textContent}`);
+        item.setAttribute('aria-label', `Seek to saved location ${index + 1}: ${item.textContent}. Double-click or press F2 to edit.`);
         return item;
       }));
     }
@@ -995,12 +1016,122 @@ function recallSavedLocation(index, { allowUnavailableSelection = false } = {}) 
   announceEvent({ type: 'memory', name: 'recalled location', videoId: playingTrack.videoId, value: position });
 }
 
+function closeLocationEditor(restoreFocus) {
+  const previous = editingLocation;
+  editingLocation = null;
+  locationEditor.hidden = true;
+  locationEditError.textContent = '';
+  locationTimeInput.removeAttribute('aria-invalid');
+  if (restoreFocus && previous) {
+    const item = locationsList.querySelector(`[data-location-index="${previous.index}"]`);
+    (item || locationsToggle).focus();
+  }
+}
+
+function openLocationEditor(index) {
+  if (editingLocation) {
+    if (editingLocation.index !== index) {
+      locationEditError.textContent = 'Save or cancel the current edit first.';
+    }
+    locationTimeInput.focus();
+    return;
+  }
+  const position = savedLocations.get(playingTrack?.videoId)?.[index];
+  if (!Number.isFinite(position)) {
+    memoryError('This saved location is no longer available.');
+    return;
+  }
+  const initialValue = formatLocationEditTime(position);
+  editingLocation = { videoId: playingTrack.videoId, index, position, initialValue };
+  locationTimeInput.value = initialValue;
+  locationEditError.textContent = '';
+  locationTimeInput.removeAttribute('aria-invalid');
+  locationEditor.hidden = false;
+  locationTimeInput.focus();
+  locationTimeInput.select();
+}
+
+function locationEditInvalid(message) {
+  locationEditError.textContent = message;
+  locationTimeInput.setAttribute('aria-invalid', 'true');
+  locationTimeInput.focus();
+}
+
+locationEditor.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const edit = editingLocation;
+  if (!edit) return;
+  const value = locationTimeInput.value.trim();
+  if (value === edit.initialValue) {
+    closeLocationEditor(true);
+    return;
+  }
+  const match = /^(\d+):([0-5]\d)(?:\.(\d+))?$/.exec(value);
+  const wholeSeconds = match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+  const position = Number.isSafeInteger(wholeSeconds)
+    ? Number(`${wholeSeconds}.${match[3] || '0'}`)
+    : NaN;
+  if (!Number.isFinite(position)) {
+    locationEditInvalid('Enter a nonnegative time as MM:SS or MM:SS.sss.');
+    return;
+  }
+  if (position === edit.position) {
+    closeLocationEditor(true);
+    return;
+  }
+  const duration = activeVideoDuration();
+  if (!duration) {
+    locationEditInvalid('Load the current video and wait for its duration before saving.');
+    return;
+  }
+  if (position > duration) {
+    locationEditInvalid('The location cannot be beyond the video duration.');
+    return;
+  }
+  if (!loadSavedLocations()) return;
+  const locations = savedLocations.get(edit.videoId);
+  if (playingTrack?.videoId !== edit.videoId || locations?.[edit.index] !== edit.position) {
+    closeLocationEditor(false);
+    renderSavedLocations();
+    memoryError('The saved location changed. Select it and try again.');
+    return;
+  }
+  const updated = new Map(savedLocations);
+  const editedLocations = [...locations];
+  editedLocations[edit.index] = position;
+  updated.set(edit.videoId, editedLocations);
+  try {
+    localStorage.setItem(savedLocationsStorageKey, JSON.stringify(Object.fromEntries(updated)));
+  } catch (error) {
+    memoryError('Could not update the location in browser storage. No location was changed.', error);
+    return;
+  }
+  savedLocations = updated;
+  selectedLocation = { videoId: edit.videoId, index: edit.index, position };
+  closeLocationEditor(false);
+  renderSavedLocations();
+  recallSavedLocation(edit.index);
+  const item = locationsList.querySelector(`[data-location-index="${edit.index}"]`);
+  if (item) item.focus();
+  memoryMessage.textContent = `Updated saved location to ${formatLocationTime(position)}.`;
+});
+
+document.querySelector('#cancel-location-edit').addEventListener('click', () => closeLocationEditor(true));
+locationEditor.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeLocationEditor(true);
+  }
+});
+
 locationsToggle.addEventListener('click', () => {
+  if (!locationsPanel.hidden) closeLocationEditor(false);
   locationsPanel.hidden = !locationsPanel.hidden;
   locationsToggle.setAttribute('aria-expanded', String(!locationsPanel.hidden));
 });
 
 document.querySelector('#close-locations').addEventListener('click', () => {
+  closeLocationEditor(false);
   locationsPanel.hidden = true;
   locationsToggle.setAttribute('aria-expanded', 'false');
   locationsToggle.focus();
@@ -1008,7 +1139,34 @@ document.querySelector('#close-locations').addEventListener('click', () => {
 
 locationsList.addEventListener('click', (event) => {
   const item = event.target.closest('[data-location-index]');
-  if (item) recallSavedLocation(Number(item.dataset.locationIndex), { allowUnavailableSelection: true });
+  if (event.detail <= 1) {
+    lastLocationClick = null;
+    if (!item) return;
+    const index = Number(item.dataset.locationIndex);
+    const videoId = playingTrack?.videoId;
+    lastLocationClick = { index, videoId, position: savedLocations.get(videoId)?.[index] };
+    recallSavedLocation(index, { allowUnavailableSelection: true });
+  }
+});
+
+locationsList.addEventListener('dblclick', () => {
+  const clicked = lastLocationClick;
+  lastLocationClick = null;
+  if (!clicked) return;
+  if (playingTrack?.videoId !== clicked.videoId
+    || savedLocations.get(clicked.videoId)?.[clicked.index] !== clicked.position) {
+    memoryError('The saved location changed. Select it and try again.');
+    return;
+  }
+  openLocationEditor(clicked.index);
+});
+
+locationsList.addEventListener('keydown', (event) => {
+  const item = event.target.closest('[data-location-index]');
+  if (item && event.key === 'F2') {
+    event.preventDefault();
+    openLocationEditor(Number(item.dataset.locationIndex));
+  }
 });
 
 removeLocationButton.addEventListener('click', removeSelectedLocation);
@@ -1306,28 +1464,45 @@ document.querySelectorAll('.pf-left [data-step-size]').forEach((button) => {
   });
 });
 
-// Right-side buttons are momentary: the step applies only while held, then the prior speed is restored.
-document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
+function bindMomentarySpeed(button, pressedSpeed) {
   let restoreValue = null;
-  const press = () => {
+  let pressedBy = null;
+  const press = (source, id) => {
     if (restoreValue !== null) return;
     restoreValue = controls.speed.value;
-    updateControl('speed', steppedSpeed(button, Number(restoreValue), 'temporary'));
+    pressedBy = { source, id };
+    updateControl('speed', pressedSpeed(Number(restoreValue)));
   };
-  const release = () => {
-    if (restoreValue === null) return;
-    updateControl('speed', restoreValue);
+  const release = (source, id) => {
+    if (restoreValue === null || (source && (pressedBy.source !== source || pressedBy.id !== id))) return;
+    const previous = restoreValue;
     restoreValue = null;
+    pressedBy = null;
+    updateControl('speed', previous);
   };
-  button.addEventListener('pointerdown', press);
-  ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((type) => button.addEventListener(type, release));
+  button.addEventListener('pointerdown', (event) => press('pointer', event.pointerId));
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => {
+    button.addEventListener(type, (event) => release('pointer', event.pointerId));
+  });
+  button.addEventListener('blur', () => release());
+  window.addEventListener('blur', () => release());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) release();
+  });
   button.addEventListener('keydown', (event) => {
-    if (event.key === ' ' || event.key === 'Enter') press();
+    if (event.key === ' ' || event.key === 'Enter') press('key', event.key);
   });
   button.addEventListener('keyup', (event) => {
-    if (event.key === ' ' || event.key === 'Enter') release();
+    if (event.key === ' ' || event.key === 'Enter') release('key', event.key);
   });
+}
+
+// Right-side buttons apply their steps only while held.
+document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
+  bindMomentarySpeed(button, (base) => steppedSpeed(button, base, 'temporary'));
 });
+
+bindMomentarySpeed(document.querySelector('[data-pf="="]'), () => '1.00');
 
 const bpmValues = new Map();
 const bpmTaps = new Map();
