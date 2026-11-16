@@ -95,14 +95,14 @@
           <button class="pf-btn" type="button" data-step-size="small" data-step-dir="down">-</button>
           <button class="pf-btn" type="button" data-pf="M2=M">M2=M</button>
           <button class="pf-btn" type="button" data-pf="M-M2">M-M2</button>
-          <button class="pf-btn pf-bpm" type="button" data-bpm>BPM</button>
-          <button class="pf-btn pf-bpm" type="button" data-bpm>BPM</button>
+          <button class="pf-btn pf-bpm" id="bpm-left" type="button" data-bpm aria-label="Left BPM: not measured. Tap to measure; press Shift+F10 to enter manually.">BPM</button>
+          <button class="pf-btn pf-bpm" id="bpm-right" type="button" data-bpm aria-label="Right BPM: not measured. Tap to measure; press Shift+F10 to enter manually.">BPM</button>
         </div>
 
         <div class="pf-center">
           <button class="pf-btn" type="button" data-pf-reset>=0=</button>
-          <button class="pf-btn" type="button" data-pf="Pitch Up">▲▲</button>
-          <button class="pf-btn" type="button" data-pf="Pitch Down">▼▼</button>
+          <button class="pf-btn" type="button" data-pf="Pitch Up" aria-label="Increase speed gradually" aria-pressed="false">▲▲</button>
+          <button class="pf-btn" type="button" data-pf="Pitch Down" aria-label="Decrease speed gradually" aria-pressed="false">▼▼</button>
           <div class="pf-readout-row">
             <button class="pf-btn" type="button" data-pf="=">=</button>
             <span class="pf-readout" id="val-speed">0.00%</span>
@@ -122,6 +122,8 @@
           <button class="pf-btn pf-next" type="button" data-pf="Next N">N►</button>
         </div>
       </div>
+      <p class="pf-message" id="bpm-message" role="status" aria-live="polite"></p>
+      <p class="pf-message" id="speed-ramp-message" role="status" aria-live="polite"></p>
     </div>
 
     <!-- VIDEOS WINDOW -->
