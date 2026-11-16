@@ -412,7 +412,60 @@ body {
 
 .memory-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.locations-panel {
+  border: 1px solid var(--panel-border-dark);
+  background: #080f08;
+}
+
+.locations-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  color: var(--accent-gold);
+  font: 10px var(--font-mono);
+}
+
+.locations-heading h2 {
+  font: inherit;
+}
+
+.locations-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.locations-entry {
+  border: 0;
+  background: transparent;
+  color: var(--lcd-green);
+  cursor: pointer;
+  font: 14px var(--font-mono);
+  padding: 3px 4px;
+  text-align: left;
+}
+
+.locations-entry::before {
+  content: '▶';
+  display: inline-block;
+  visibility: hidden;
+  width: 1.4em;
+}
+
+.locations-entry[aria-current="true"]::before {
+  visibility: visible;
+}
+
+.locations-entry:hover,
+.locations-entry[aria-current="true"] {
+  background: #004400;
 }
 
 /* CONTROL PANEL */
