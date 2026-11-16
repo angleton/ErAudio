@@ -878,22 +878,45 @@ function removeSelectedLocation() {
   announceEvent({ type: 'memory', name: 'removed location', videoId: selection.videoId, value: selection.position });
 }
 
+function locationsExportFilename(track) {
+  const title = (track.title || '').replace(/[^\p{L}\p{M}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
+  const encoder = new TextEncoder();
+  let name = '';
+  let bytes = 0;
+  for (const character of title) {
+    const size = encoder.encode(character).length;
+    if (bytes + size > 180) break;
+    name += character;
+    bytes += size;
+  }
+  return `ErAudio - ${name.trim() || track.videoId}.json`;
+}
+
 document.querySelector('#export-locations').addEventListener('click', () => {
+  if (!playingTrack?.videoId) {
+    memoryError('Select a video before exporting saved locations.');
+    return;
+  }
   if (!loadSavedLocations()) return;
   renderSavedLocations();
+  const locations = savedLocations.get(playingTrack.videoId);
+  if (!locations?.length) {
+    memoryError('There are no saved locations for the current video to export.');
+    return;
+  }
   const data = {
     format: 'ErAudio saved locations',
     version: 1,
-    videos: Object.fromEntries(savedLocations),
+    videos: { [playingTrack.videoId]: locations },
   };
   let url;
   try {
     url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'ErAudio-locations.json';
+    link.download = locationsExportFilename(playingTrack);
     link.click();
-    memoryMessage.textContent = 'Export started for saved locations from all videos.';
+    memoryMessage.textContent = "Export started for the current video's saved locations.";
   } catch (error) {
     memoryError('Could not export saved locations.', error);
   } finally {

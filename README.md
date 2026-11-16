@@ -28,11 +28,13 @@ Pasting links works this way. YOUTUBE LOGIN only works if the maintainer has reg
 This project aims to preserve the compact retro-audio-player aesthetic that inspired it while establishing ErAudio as its own product identity.
 
 ### Current UI Prototype
-The prototype recreates a classic retro player window (dark metallic panels, bevelled buttons, green/yellow LED matrix display) alongside a Pitchfork-style plugin window with a high-precision Speed slider and presets, plus a dedicated playlist window (pure audio playback, no video screen display in this iteration).
+The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-![ErAudio YouTube Player UI Prototype](screenshot-ui.png)
+The optional **PITCH** window contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
+
+![ErAudio player showing saved locations, Pitchfork controls, and the Videos window](screenshot-ui.png)
 <br>
-*(Live screenshot of the current HTML5/CSS prototype in this repo)*
+*Current interface with example BPM and saved-location values; YouTube playback is simulated for this screenshot.*
 
 ---
 
@@ -49,7 +51,7 @@ The prototype recreates a classic retro player window (dark metallic panels, bev
 * **BPM matching:** After measuring both BPM values, **M2=M** sets the speed to right BPM divided by left BPM; **M-M2** uses left BPM divided by right BPM. Values outside the slider's range are limited to its nearest endpoint. The YouTube player may not support the requested rate.
 * **Nudging:** With the left BPM measured or entered, **◄N** and **N►** move the playback position backward or forward by one-sixteenth of a beat in video time. The player pauses, plays an approximately 100 ms preview, then returns to the requested position paused. Saved locations are not changed. YouTube may seek to an earlier keyframe when the target is not buffered, and buffering or browser scheduling can affect preview timing, so precise beat alignment is not guaranteed.
 * **Saved playback locations:** Press **M+** while a video is playing or paused to save its current position; select a marker on the position bar to seek back. **LOCATIONS** opens a chronological list for the current video with millisecond timestamps; select an entry to seek without changing play/pause state. An arrow marks the last location selected from the list or bar, until the video changes or the location is cleared. Use **REMOVE SELECTED** to delete that one location; even an unavailable location can be selected in the list for removal. Up to 50 locations per video are stored in browser storage across reloads. **AC** clears the saved locations for all videos as well as resetting speed and BPM. Browser storage must be available to save or clear locations.
-* **Sharing locations:** Use **EXPORT LOCATIONS** to download a JSON text file containing saved locations for all videos, then share it or keep it as a backup. **IMPORT LOCATIONS** merges such a file into local storage, skipping exact duplicates. If any video would exceed 50 locations, the entire import is rejected without changing existing locations. Importing and exporting require browser storage; exports are not automatically synchronized, and AC does not delete exported files.
+* **Sharing locations:** Use **EXPORT LOCATIONS** to download a JSON text file containing saved locations for the current video. The filename includes its title with special characters removed (or its video ID if the title has no usable characters). **IMPORT LOCATIONS** merges a file into local storage, skipping exact duplicates; it also accepts older exports containing multiple videos. If any video would exceed 50 locations, the entire import is rejected without changing existing locations. Importing and exporting require browser storage; exports are not automatically synchronized, and AC does not delete exported files.
 * **Automatic speed ramps:** The up/down triangle buttons change speed by 1 percentage point per second by default. Moving toward normal speed stops at 0%; otherwise the ramp stops at the current YouTube video's supported limit. Click the same button to stop, the opposite button to reverse, or use another speed control to stop the ramp. YouTube audio changes only at supported discrete rates. Set `ramp.percentPerSecond` to a positive number in `ErAudio.json` to change the rate; the file is loaded over HTTP at launch.
 
 ### Planned Stack & Capabilities
