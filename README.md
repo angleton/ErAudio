@@ -32,9 +32,9 @@ The main player combines YouTube playback and transport controls with a position
 
 The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v2.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
-![ErAudio player showing saved locations, Pitchfork controls, and the Videos window](screenshot-ui.png)
+![ErAudio player showing saved locations, Pitchfork controls, videos, and chapters](screenshot-ui.png)
 <br>
-*Current interface with example BPM and saved-location values; YouTube playback is simulated for this screenshot.*
+*Current interface with example videos, chapters, BPM, and saved locations; playback is simulated for this screenshot.*
 
 ---
 
