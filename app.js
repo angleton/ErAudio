@@ -43,11 +43,9 @@ const locationsFile = document.querySelector('#locations-file');
 const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
 const maxSavedLocations = 50;
-const favoritesSelect = document.querySelector('#favorites-select');
-const playlistSourceRow = document.querySelector('#playlist-source-row');
+const playlistSelect = document.querySelector('#playlist-select');
 const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
-const favoritesStorageKey = 'eraudio:selected-favorites-list';
 const addedTracksStorageKey = 'eraudio:added-tracks';
 const defaultTrack = {
   title: 'Rooftop Party in the French Riviera | Settow',
@@ -95,7 +93,7 @@ let youtubeAuthGeneration = 0;
 const favoriteLists = [
   {
     id: 'favorites',
-    name: 'Favorites',
+    name: 'Local videos',
     tracks: [defaultTrack],
   },
 ];
@@ -199,8 +197,6 @@ function currentList() {
 function renderFavoritesList(listId) {
   const selectedList = favoriteLists.find((list) => list.id === listId) || favoriteLists[0];
   currentListId = selectedList.id;
-  writeStoredValue(favoritesStorageKey, selectedList.id);
-  favoritesSelect.value = selectedList.id;
   playlistList.replaceChildren(...selectedList.tracks.map((track, index) => {
     const item = document.createElement('button');
     item.className = `playlist-item${track === playingTrack ? ' active' : ''}${track.selected ? ' selected' : ''}`;
@@ -244,15 +240,7 @@ function restoreAddedTracks() {
 
 function initializeFavorites() {
   restoreAddedTracks();
-  favoritesSelect.replaceChildren(...favoriteLists.map((list) => {
-    const option = document.createElement('option');
-    option.value = list.id;
-    option.textContent = list.name;
-    return option;
-  }));
-  playlistSourceRow.hidden = favoriteLists.length < 2;
-  const savedListId = readStoredValue(favoritesStorageKey);
-  renderFavoritesList(favoriteLists.some((list) => list.id === savedListId) ? savedListId : favoriteLists[0].id);
+  renderFavoritesList(favoriteLists[0].id);
 }
 
 function setYouTubeAccount(accountName) {
@@ -271,11 +259,6 @@ function parseIsoDurationSeconds(value) {
   const totalSeconds = (Number(match[1] || 0) * 86400) + (Number(match[2] || 0) * 3600)
     + (Number(match[3] || 0) * 60) + Number(match[4] || 0);
   return Number.isSafeInteger(totalSeconds) && totalSeconds > 0 ? totalSeconds : null;
-}
-
-function parseIsoDuration(value) {
-  const totalSeconds = parseIsoDurationSeconds(value) || 0;
-  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
 async function youtubeApi(path, params, { apiKey = '' } = {}) {
@@ -299,41 +282,14 @@ async function fetchAllPages(path, params) {
   return items;
 }
 
-async function loadPlaylistTracks(list) {
-  if (list.loaded || !list.playlistId) return;
-  const entries = await fetchAllPages('playlistItems', {
-    part: 'snippet,contentDetails',
-    playlistId: list.playlistId,
-    maxResults: '50',
-  });
-  const playable = entries.filter((entry) => entry.contentDetails?.videoId
-    && !['Private video', 'Deleted video'].includes(entry.snippet?.title));
-  const durations = new Map();
-  for (let start = 0; start < playable.length; start += 50) {
-    const ids = playable.slice(start, start + 50).map((entry) => entry.contentDetails.videoId);
-    const videos = await youtubeApi('videos', { part: 'contentDetails', id: ids.join(','), maxResults: '50' });
-    videos.items.forEach((video) => durations.set(video.id, parseIsoDuration(video.contentDetails.duration)));
-  }
-  list.tracks = playable.map((entry) => ({
-    title: entry.snippet.title,
-    videoId: entry.contentDetails.videoId,
-    duration: durations.get(entry.contentDetails.videoId) || '00:00',
-  }));
-  list.loaded = true;
-}
-
-async function selectFavoritesList(listId) {
-  const list = favoriteLists.find((candidate) => candidate.id === listId) || favoriteLists[0];
-  try {
-    await loadPlaylistTracks(list);
-  } catch (error) {
-    announceEvent({ type: 'error', name: error.message });
-  }
-  renderFavoritesList(list.id);
+function setPlaylistPlaceholder(message) {
+  playlistSelect.replaceChildren(new Option(message, ''));
+  playlistSelect.disabled = true;
 }
 
 async function loadAccountPlaylists(generation) {
-  const channels = await youtubeApi('channels', { part: 'snippet,contentDetails', mine: 'true' });
+  setPlaylistPlaceholder('Loading playlists...');
+  const channels = await youtubeApi('channels', { part: 'snippet', mine: 'true' });
   if (generation !== youtubeAuthGeneration) return;
   const channel = channels.items?.[0];
   if (!channel) throw new Error('No YouTube channel found for this account.');
@@ -341,26 +297,16 @@ async function loadAccountPlaylists(generation) {
 
   const playlists = await fetchAllPages('playlists', { part: 'snippet', mine: 'true', maxResults: '50' });
   if (generation !== youtubeAuthGeneration) return;
-  const accountLists = [];
-  const related = channel.contentDetails.relatedPlaylists;
-  const addedTracks = favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added));
-  if (related.likes) accountLists.push({ id: related.likes, playlistId: related.likes, name: 'Liked videos', tracks: [] });
-  playlists.forEach((playlist) => {
-    accountLists.push({ id: playlist.id, playlistId: playlist.id, name: playlist.snippet.title, tracks: [] });
-  });
-  if (addedTracks.length) accountLists.push({ id: 'added-videos', name: 'Added videos', tracks: addedTracks, loaded: true });
-  if (!accountLists.length) return;
-
-  favoriteLists.splice(0, favoriteLists.length, ...accountLists);
-  playingList = favoriteLists.find((list) => list.tracks.includes(playingTrack)) || playingList;
-  favoritesSelect.replaceChildren(...favoriteLists.map((list) => {
-    const option = document.createElement('option');
-    option.value = list.id;
-    option.textContent = list.name;
-    return option;
-  }));
-  playlistSourceRow.hidden = false;
-  await selectFavoritesList(favoriteLists[0].id);
+  if (!playlists.length) {
+    setPlaylistPlaceholder('No playlists found');
+    return;
+  }
+  const placeholder = new Option('Select a playlist', '', true, true);
+  placeholder.disabled = true;
+  playlistSelect.replaceChildren(placeholder, ...playlists.map((playlist) => (
+    new Option(playlist.snippet.title, playlist.id)
+  )));
+  playlistSelect.disabled = false;
 }
 
 let tokenClient = null;
@@ -394,7 +340,9 @@ function getTokenClient() {
       try {
         await loadAccountPlaylists(generation);
       } catch (error) {
-        announceEvent({ type: 'error', name: error.message });
+        if (generation !== youtubeAuthGeneration) return;
+        setPlaylistPlaceholder('Could not load playlists');
+        showLoginError(`Could not load YouTube playlists: ${error.message}`);
       }
     },
     error_callback: (error) => {
@@ -457,23 +405,12 @@ function resetAccountSession() {
   youtubeAuthGeneration += 1;
   tokenClient = null;
   silentAttempt = false;
-  const wasSignedIn = Boolean(youtubeAccessToken);
   youtubeAccessToken = '';
   writeStoredValue(youtubeAccountStorageKey, '');
   youtubeLoginLabel.textContent = 'YOUTUBE LOGIN';
   youtubeLoginButton.dataset.tooltip = 'Sign in to YouTube';
   youtubeLoginButton.setAttribute('aria-label', 'Sign in to YouTube');
-  if (!wasSignedIn) return;
-
-  const tracks = [defaultTrack, ...favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added))];
-  if (playingTrack && !tracks.includes(playingTrack)) tracks.push(playingTrack);
-  const list = { id: 'favorites', name: 'Favorites', tracks };
-  favoriteLists.splice(0, favoriteLists.length, list);
-  playingList = playingTrack ? list : null;
-  favoritesSelect.replaceChildren(new Option(list.name, list.id));
-  playlistSourceRow.hidden = true;
-  renderFavoritesList(list.id);
-  updateNowPlaying();
+  setPlaylistPlaceholder('Sign in to load playlists');
 }
 
 youtubeSettingsButton.addEventListener('click', () => showCredentialsDialog());
@@ -1529,10 +1466,6 @@ controls.speed.addEventListener('keyup', (event) => {
   if (['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(event.key)) finishSpeedKeyChange();
 });
 controls.speed.addEventListener('blur', finishSpeedKeyChange);
-
-favoritesSelect.addEventListener('change', () => {
-  selectFavoritesList(favoritesSelect.value);
-});
 
 youtubeLoginButton.addEventListener('click', () => requestYouTubeLogin());
 trySilentLogin();

@@ -166,19 +166,21 @@
       </div>
 
       <div class="playlist-body">
-        <div class="playlist-source" id="playlist-source-row" hidden>
-          <label for="favorites-select">FAVORITES</label>
-          <select id="favorites-select" aria-label="Select Favorites list"></select>
+        <div class="playlist-source">
+          <label for="playlist-select">PLAYLISTS</label>
+          <select id="playlist-select" disabled>
+            <option value="">Sign in to load playlists</option>
+          </select>
         </div>
         <!-- Playlist Tracks List -->
-        <div class="playlist-list" id="playlist-list" aria-label="Favorite videos"></div>
+        <div class="playlist-list" id="playlist-list" aria-label="Local videos"></div>
       </div>
 
       <div class="playlist-footer">
         <button class="pl-btn" type="button" data-action="add-url">+ ADD URL</button>
         <button class="pl-btn" type="button" data-action="remove-track">- REMOVE</button>
         <button class="pl-btn" type="button" data-action="select-all">SEL ALL</button>
-        <div class="pl-info" id="playlist-info">FAVORITES</div>
+        <div class="pl-info" id="playlist-info">LOCAL VIDEOS</div>
       </div>
     </div>
 

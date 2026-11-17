@@ -108,7 +108,7 @@ The YouTube Data API has a quota; a request can also fail because of key restric
 
 #### YouTube account playlists
 
-An OAuth client ID is needed only for **YOUTUBE LOGIN** and account playlists, not for public chapters when you use an API key. Clicking **YOUTUBE LOGIN** signs in with Google, replaces the sample list with the account's **Liked videos** and own playlists, and can also retrieve video descriptions. If the browser already has a Google session that previously approved your OAuth client, sign-in is attempted automatically on page load.
+An OAuth client ID is needed only for **YOUTUBE LOGIN** and account playlists, not for public chapters when you use an API key. After sign-in, the **PLAYLISTS** dropdown in the Videos window lists the account's own YouTube playlists by name. Selecting one does not load its videos yet; the local video list remains unchanged. Sign-in can also retrieve video descriptions. If the browser already has a Google session that previously approved your OAuth client, sign-in is attempted automatically on page load.
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create a project (or choose an existing one).
 2. Under **APIs & Services → Library**, enable **YouTube Data API v3**.
