@@ -944,6 +944,20 @@ body {
   text-align: center;
 }
 
+.copy-notice {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-gold);
+  background: #1e1e26;
+  color: var(--accent-gold);
+  font: 11px var(--font-mono);
+  pointer-events: none;
+}
+
 @media (max-width: 560px) {
   body {
     align-items: flex-start;

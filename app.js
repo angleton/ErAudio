@@ -1650,6 +1650,30 @@ markerList.addEventListener('dblclick', (event) => {
   if (item) seekToMarker(Number(item.dataset.marker));
 });
 
+const copyNotice = document.querySelector('#copy-notice');
+let copyNoticeTimer = null;
+
+[playlistList, markerList].forEach((list) => {
+  list.addEventListener('contextmenu', async (event) => {
+    const item = event.target.closest('.playlist-item');
+    if (!item || !list.contains(item)) return;
+    event.preventDefault();
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable.');
+      await navigator.clipboard.writeText(item.textContent.trim());
+      announceEvent({ type: 'copy', name: 'List item copied to clipboard' });
+      clearTimeout(copyNoticeTimer);
+      copyNotice.hidden = false;
+      copyNoticeTimer = setTimeout(() => { copyNotice.hidden = true; }, 2000);
+    } catch (error) {
+      clearTimeout(copyNoticeTimer);
+      copyNotice.hidden = true;
+      console.error('Could not copy the list item to the clipboard.', error);
+      announceEvent({ type: 'error', name: 'Could not copy the list item. Check clipboard permissions and use HTTPS or localhost.' });
+    }
+  });
+});
+
 openForm.addEventListener('submit', (event) => {
   event.preventDefault();
   try {
