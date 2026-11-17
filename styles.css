@@ -248,6 +248,11 @@ body {
   text-shadow: 1px 1px 0 #000000;
 }
 
+.title-bar-brand {
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
 .title-bar-login {
   background: transparent;
   border: 0;

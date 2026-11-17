@@ -260,7 +260,7 @@ function setYouTubeAccount(accountName) {
   if (!normalizedName) return;
 
   writeStoredValue(youtubeAccountStorageKey, normalizedName);
-  youtubeLoginLabel.textContent = `${normalizedName} ErAudio`;
+  youtubeLoginLabel.textContent = normalizedName;
   youtubeLoginButton.dataset.tooltip = `Signed in as ${normalizedName}`;
   youtubeLoginButton.setAttribute('aria-label', `YouTube account: ${normalizedName}`);
 }
