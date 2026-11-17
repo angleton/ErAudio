@@ -958,6 +958,31 @@ body {
   pointer-events: none;
 }
 
+.copy-menu {
+  position: fixed;
+  z-index: 30;
+  padding: 3px;
+  border: 1px solid var(--accent-gold);
+  background: #1e1e26;
+}
+
+.copy-menu button {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-gold);
+  font: 11px var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.copy-menu button:hover,
+.copy-menu button:focus-visible {
+  background: #334433;
+}
+
 @media (max-width: 560px) {
   body {
     align-items: flex-start;

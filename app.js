@@ -1651,27 +1651,103 @@ markerList.addEventListener('dblclick', (event) => {
 });
 
 const copyNotice = document.querySelector('#copy-notice');
+const copyMenu = document.querySelector('#copy-menu');
+const copyMenuItems = [...copyMenu.querySelectorAll('[role="menuitem"]')];
 let copyNoticeTimer = null;
+let copySelection = null;
+
+function closeCopyMenu(restoreFocus = false) {
+  const item = copySelection?.item;
+  copyMenu.hidden = true;
+  copySelection = null;
+  if (restoreFocus && item?.isConnected && !item.disabled) item.focus();
+}
 
 [playlistList, markerList].forEach((list) => {
-  list.addEventListener('contextmenu', async (event) => {
+  list.addEventListener('contextmenu', (event) => {
     const item = event.target.closest('.playlist-item');
     if (!item || !list.contains(item)) return;
     event.preventDefault();
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable.');
-      await navigator.clipboard.writeText(item.textContent.trim());
-      announceEvent({ type: 'copy', name: 'List item copied to clipboard' });
-      clearTimeout(copyNoticeTimer);
-      copyNotice.hidden = false;
-      copyNoticeTimer = setTimeout(() => { copyNotice.hidden = true; }, 2000);
-    } catch (error) {
-      clearTimeout(copyNoticeTimer);
-      copyNotice.hidden = true;
-      console.error('Could not copy the list item to the clipboard.', error);
-      announceEvent({ type: 'error', name: 'Could not copy the list item. Check clipboard permissions and use HTTPS or localhost.' });
-    }
+    copySelection = {
+      item,
+      text: item.textContent.trim(),
+      videoId: list === playlistList ? item.dataset.videoId : playingTrack?.videoId,
+      position: list === markerList ? currentMarkerEntries()[Number(item.dataset.marker)]?.start : null,
+    };
+    copyMenu.hidden = false;
+    const itemRect = item.getBoundingClientRect();
+    const x = event.clientX || itemRect.left;
+    const y = event.clientY || itemRect.bottom;
+    const menuRect = copyMenu.getBoundingClientRect();
+    copyMenu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - menuRect.width))}px`;
+    copyMenu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - menuRect.height))}px`;
+    copyMenuItems[0].focus();
   });
+});
+
+copyMenu.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeCopyMenu(true);
+  } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const index = copyMenuItems.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? copyMenuItems.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + copyMenuItems.length) % copyMenuItems.length;
+    copyMenuItems[next].focus();
+  }
+});
+
+copyMenu.addEventListener('focusout', (event) => {
+  if (!copyMenu.contains(event.relatedTarget)) closeCopyMenu();
+});
+
+document.addEventListener('pointerdown', (event) => {
+  if (!copyMenu.hidden && !copyMenu.contains(event.target)) closeCopyMenu();
+});
+
+copyMenu.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-copy]');
+  if (!button || !copySelection) return;
+  event.stopPropagation();
+  const selection = copySelection;
+  closeCopyMenu(true);
+  clearTimeout(copyNoticeTimer);
+  copyNotice.hidden = true;
+
+  let value = selection.text;
+  if (button.dataset.copy === 'link') {
+    let videoId;
+    try {
+      videoId = parseYouTubeInput(selection.videoId).videoId;
+    } catch (error) {
+      console.error('Could not create a YouTube link for this item.', error);
+      announceEvent({ type: 'error', name: 'Could not create a YouTube link: the video ID is unavailable.' });
+      return;
+    }
+    if (selection.position !== null && (!Number.isFinite(selection.position) || selection.position < 0)) {
+      announceEvent({ type: 'error', name: 'Could not create a YouTube link: the timestamp is unavailable.' });
+      return;
+    }
+    const url = new URL('https://www.youtube.com/watch');
+    url.searchParams.set('v', videoId);
+    if (selection.position !== null) url.searchParams.set('t', `${Math.floor(selection.position)}s`);
+    value = url.toString();
+  }
+
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable.');
+    await navigator.clipboard.writeText(value);
+    announceEvent({ type: 'copy', name: 'List item copied to clipboard' });
+    clearTimeout(copyNoticeTimer);
+    copyNotice.hidden = false;
+    copyNoticeTimer = setTimeout(() => { copyNotice.hidden = true; }, 2000);
+  } catch (error) {
+    clearTimeout(copyNoticeTimer);
+    copyNotice.hidden = true;
+    console.error('Could not copy the list item to the clipboard.', error);
+    announceEvent({ type: 'error', name: 'Could not copy the list item. Check clipboard permissions and use HTTPS or localhost.' });
+  }
 });
 
 openForm.addEventListener('submit', (event) => {
