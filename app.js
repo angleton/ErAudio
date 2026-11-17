@@ -57,7 +57,6 @@ const youtubeLoginLabel = document.querySelector('#youtube-login-label');
 const youtubeSettingsButton = document.querySelector('#youtube-settings');
 const loginNotice = document.querySelector('#login-notice');
 const loginNoticeMessage = document.querySelector('#login-notice-message');
-const youtubeAccountStorageKey = 'eraudio:youtube-account-name';
 const credentialsStorageKey = 'eraudio:youtube-credentials';
 const credentialsDialog = document.querySelector('#credentials-dialog');
 const credentialsForm = document.querySelector('#credentials-form');
@@ -245,9 +244,8 @@ function initializeFavorites() {
 
 function setYouTubeAccount(accountName) {
   const normalizedName = String(accountName || '').trim();
-  if (!normalizedName) return;
+  if (!youtubeAccessToken || !normalizedName) return;
 
-  writeStoredValue(youtubeAccountStorageKey, normalizedName);
   youtubeLoginLabel.textContent = normalizedName;
   youtubeLoginButton.dataset.tooltip = `Signed in as ${normalizedName}`;
   youtubeLoginButton.setAttribute('aria-label', `YouTube account: ${normalizedName}`);
@@ -406,7 +404,6 @@ function resetAccountSession() {
   tokenClient = null;
   silentAttempt = false;
   youtubeAccessToken = '';
-  writeStoredValue(youtubeAccountStorageKey, '');
   youtubeLoginLabel.textContent = 'YOUTUBE LOGIN';
   youtubeLoginButton.dataset.tooltip = 'Sign in to YouTube';
   youtubeLoginButton.setAttribute('aria-label', 'Sign in to YouTube');
@@ -2272,7 +2269,6 @@ initializeFavorites();
 initYouTubePlayer();
 updateNowPlaying();
 ensureMarkers(playingTrack);
-setYouTubeAccount(readStoredValue(youtubeAccountStorageKey));
 if (credentialsLoadError) showLoginError(credentialsLoadError);
 
 // Application code can react here without coupling the controls to playback yet.
