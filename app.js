@@ -765,6 +765,17 @@ function togglePlayback() {
   }
 }
 
+document.addEventListener('keydown', (event) => {
+  if (event.key !== ' ' || event.defaultPrevented || event.isComposing
+    || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const target = event.target;
+  if (target instanceof HTMLElement && (target.isContentEditable
+    || target.closest('input, textarea, select, button, a[href], [role="button"], [role="menuitem"], [role="slider"], [role="textbox"], [role="combobox"]'))) return;
+  if (document.querySelector('dialog[open], #copy-menu:not([hidden])')) return;
+  event.preventDefault();
+  if (!event.repeat) togglePlayback();
+});
+
 // Single place that applies a resolved video title to the playlist and now-playing display.
 function setTrackTitle(track, title) {
   if (!track || !title || track.title === title) return;
