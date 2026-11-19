@@ -37,3 +37,49 @@ test('does not report steady audio or keep an estimate across silence or a captu
   assert.equal(feed(detector, 11000, 19000, beat(90)), 90);
   assert.equal(detector.update(20000, new Float32Array(3)), null);
 });
+
+test('detects a beat in the same frequency band as a louder sustained tone', () => {
+  const detector = new LiveTempo();
+  const pulse = beat(120);
+  const bins = Float32Array.of(-15, -Infinity);
+  const levels = new Float32Array(3);
+  let actual = null;
+  for (let time = 0; time < 10000; time += 16) {
+    bins[1] = -23 + 20 * Math.log10(pulse(time));
+    levels[0] = LiveTempo.bandLevel(bins, 0, 2);
+    actual = detector.update(time, levels);
+  }
+  assert.equal(actual, 120);
+});
+
+test('detects small but regular changes without treating irregular fluctuations as a beat', () => {
+  const detector = new LiveTempo();
+  const pulse = beat(120);
+  assert.equal(feed(detector, 0, 10000, (time) => 0.72 + 0.03 * pulse(time)), 120);
+
+  detector.reset();
+  let seed = 42;
+  assert.equal(feed(detector, 0, 10000, () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return 0.72 + 0.03 * (seed / 2 ** 32);
+  }), null);
+});
+
+test('holds the last tempo through a brief confidence dip, then clears it if the beat does not return', () => {
+  const detector = new LiveTempo();
+  const pulse = beat(120);
+  let seed = 42;
+  let lastConfident;
+  for (let time = 0; time <= 18000; time += 20) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const level = time < 8000 ? 0.3 * pulse(time) : 0.3 * (seed / 2 ** 32);
+    const actual = detector.update(time, Float32Array.of(level, level * 0.6, level * 0.3));
+    if (time === 8000) assert.equal(actual, 120);
+    if (time === 14000) lastConfident = actual;
+    if (time === 16000) {
+      assert.ok(Math.abs(lastConfident - 120) <= 1);
+      assert.equal(actual, lastConfident);
+    }
+    if (time === 18000) assert.equal(actual, null);
+  }
+});

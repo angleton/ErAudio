@@ -915,9 +915,7 @@ async function requestLiveLevels() {
       if (tempoPlaying && !scrubbing && !nudgePreview && !document.hidden) {
         tempoAnalyzer.getFloatFrequencyData(tempoBins);
         for (let band = 0; band < levels.length; band++) {
-          let peak = -Infinity;
-          for (let bin = tempoEdges[band]; bin < tempoEdges[band + 1]; bin++) peak = Math.max(peak, tempoBins[bin]);
-          levels[band] = Math.max(0, Math.min(1, (peak + 85) / 65));
+          levels[band] = ErAudioLiveTempo.bandLevel(tempoBins, tempoEdges[band], tempoEdges[band + 1]);
         }
         showLiveTempo(liveTempo.update(context.currentTime * 1000, levels));
       }

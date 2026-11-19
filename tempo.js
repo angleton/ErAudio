@@ -3,6 +3,8 @@
   const minLag = Math.ceil(60000 / (200 * sampleMs));
   const maxLag = Math.ceil(60000 / (55 * sampleMs));
   const weights = [0.65, 0.25, 0.1];
+  const onsetFloor = 0.002;
+  const confidenceHoldMs = 3000;
 
   function estimateTempo(onsets) {
     const mean = onsets.reduce((sum, value) => sum + value, 0) / onsets.length;
@@ -40,10 +42,18 @@
       this.reset();
     }
 
+    static bandLevel(bins, start, end) {
+      let power = 0;
+      for (let bin = start; bin < end; bin++) power += 10 ** (bins[bin] / 10);
+      // Log compression preserves changes in loud bands without clipping their peaks.
+      return Math.log10(1 + power * 1e8) / 6.5;
+    }
+
     reset() {
       this.previous = null;
       this.onsets = [];
       this.lastOnset = -Infinity;
+      this.lastConfidentAt = -Infinity;
       this.nextEstimate = 0;
       this.bpm = null;
     }
@@ -65,18 +75,22 @@
           flux += weights[i] * Math.max(0, value - this.grid[i]);
           this.grid[i] = value;
         }
-        this.onsets.push(Math.max(0, flux - 0.012));
+        this.onsets.push(Math.max(0, flux - onsetFloor));
         if (this.onsets.length > 500) this.onsets.shift();
-        if (flux >= 0.025) this.lastOnset = this.nextSample;
+        if (flux > onsetFloor) this.lastOnset = this.nextSample;
         this.nextSample += sampleMs;
       }
       this.previous.now = now;
       this.previous.bands.set(bands);
-      if (now - this.lastOnset > 2000) this.bpm = null;
-      else if (this.onsets.length >= 300 && now >= this.nextEstimate) {
+      if (now - this.lastOnset <= 2000 && this.onsets.length >= 300 && now >= this.nextEstimate) {
         this.nextEstimate = now + 1000;
-        this.bpm = estimateTempo(this.onsets);
+        const estimate = estimateTempo(this.onsets);
+        if (estimate !== null) {
+          this.bpm = estimate;
+          this.lastConfidentAt = now;
+        }
       }
+      if (now - this.lastOnset > 2000 || now - this.lastConfidentAt >= confidenceHoldMs) this.bpm = null;
       return this.bpm;
     }
   }
