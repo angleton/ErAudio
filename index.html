@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="history.js" defer></script>
+  <script src="history-sync.js" defer></script>
   <script src="app.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -219,7 +220,12 @@
 
       <div class="playlist-body">
         <div class="history-list" id="history-list" role="list" aria-label="Most listened videos and segments"></div>
-        <p class="history-note">Select an entry to play from its start. History is approximate and stored in this browser. Use EXPORT to keep a backup.</p>
+        <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
+        <div id="history-sync" hidden>
+          <p class="history-note" id="history-sync-status" role="status">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
+          <div id="history-google"></div>
+          <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
+        </div>
         <p class="history-note" id="history-message" role="status" aria-live="polite"></p>
       </div>
 

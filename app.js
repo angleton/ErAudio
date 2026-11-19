@@ -997,7 +997,8 @@ function setTrackTitle(track, title) {
   renderFavoritesList(currentListId);
 }
 
-const listeningHistory = new ErAudioHistory.ListeningHistory();
+const localHistory = new ErAudioHistory.ListeningHistory();
+let listeningHistory = localHistory;
 const { buildSegments, segmentStats, heatBuckets, heatColor, heatGradient } = ErAudioHistory;
 const listenHeat = document.querySelector('#listen-heat');
 const historyWindow = document.querySelector('#history-window');
@@ -1006,11 +1007,193 @@ const historyInfo = document.querySelector('#history-info');
 const historyMessage = document.querySelector('#history-message');
 const historyViewButton = document.querySelector('#history-view');
 const historyFile = document.querySelector('#history-file');
+const historyGoogle = document.querySelector('#history-google');
+const historySignOut = document.querySelector('#history-sign-out');
+const historySyncStatus = document.querySelector('#history-sync-status');
+let historySync = null;
+let historySyncBusy = false;
 const heatBucketCount = 100;
 const maxHistoryRows = 200;
 let heatRefreshId = 0;
 let historyRenderId = 0;
 let historyView = 'segments';
+
+function changeHistoryStore(store, { erasePrevious = false } = {}) {
+  const previous = listeningHistory;
+  previous.endSession();
+  previous.onChange = null;
+  const cleanup = erasePrevious ? previous.clear() : previous.queue;
+  if (previous !== localHistory) {
+    cleanup.catch(() => historyStatus('Could not remove the old local copy of cleared history.'))
+      .finally(() => previous.db?.close());
+  }
+  listeningHistory = store;
+  store.onChange = refreshHistoryViews;
+  historyRenderId++;
+  historyList.replaceChildren();
+  historyInfo.textContent = 'LOADING HISTORY';
+  refreshHistoryViews(null);
+}
+
+async function openSyncedHistory(sync, epoch) {
+  const store = new ErAudioHistory.ListeningHistory(`eraudio-history-${sync.account}-${epoch}`);
+  if (!await store.init()) throw new Error('Could not open private history storage.');
+  return store;
+}
+
+async function readHistory(videoId) {
+  const store = listeningHistory;
+  const sync = historySync;
+  if (!sync) return videoId ? store.getSpans(videoId) : store.getAll();
+  const rows = sync.rows;
+  if (videoId) {
+    const spans = await store.getSpans(videoId);
+    const remote = Array.from(rows).filter(([key, data]) => key.startsWith('s:') && data.videoId === videoId);
+    return ErAudioHistorySync.combine(remote, { spans, videos: [] }, sync.device).spans;
+  }
+  return ErAudioHistorySync.combine(rows, await store.getAll(), sync.device);
+}
+
+function showHistorySync(message, signIn = !historySync?.token) {
+  historySyncStatus.textContent = message;
+  historyGoogle.hidden = !signIn;
+  historySignOut.hidden = !historySync;
+  historySignOut.disabled = historySyncBusy;
+}
+
+function reportHistorySyncError(error) {
+  console.warn('Listening history sync failed:', error.message);
+  if (historySync && error.status === 401) {
+    historySync.token = null;
+    showHistorySync('Sign-in expired. Sign in again to sync changes saved in this browser.');
+  } else {
+    showHistorySync(historySync ? 'Could not sync. Changes are saved here and will retry automatically.'
+      : 'Could not start sync. History is still local. Try signing in again.');
+  }
+}
+
+async function syncHistory() {
+  const sync = historySync;
+  if (!sync?.token || historySyncBusy) return;
+  historySyncBusy = true;
+  historySignOut.disabled = true;
+  try {
+    let state = await sync.state();
+    const cleared = state.epoch !== sync.epoch;
+    if (cleared) {
+      const store = await openSyncedHistory(sync, state.epoch);
+      try { await sync.pull(state); } catch (error) {
+        store.db.close();
+        throw error;
+      }
+      changeHistoryStore(store, { erasePrevious: true });
+    } else {
+      await sync.pull(state);
+    }
+    if (await sync.upload(await listeningHistory.getAll())) {
+      state = await sync.state();
+      if (state.epoch !== sync.epoch) return;
+      await sync.pull(state);
+    }
+    showHistorySync(`Private history synced${sync.email ? ` as ${sync.email}` : ''}.`);
+    if (cleared) historyStatus('Your account history was cleared on another browser.');
+    refreshHistoryViews(null);
+  } catch (error) {
+    reportHistorySyncError(error);
+  } finally {
+    historySyncBusy = false;
+    historySignOut.disabled = false;
+  }
+}
+
+function setupHistorySync(config) {
+  if (!config?.endpoint && !config?.googleClientId) return;
+  document.querySelector('#history-sync').hidden = false;
+  let endpoint;
+  try {
+    endpoint = new URL(config.endpoint);
+    if ((endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:'
+      && ['localhost', '127.0.0.1'].includes(endpoint.hostname))) || endpoint.username || endpoint.password
+      || !config.googleClientId?.endsWith('.apps.googleusercontent.com')) throw new Error('Invalid sync configuration.');
+  } catch {
+    showHistorySync('Listening history sync is not configured correctly.', false);
+    return;
+  }
+  async function signIn({ credential }) {
+    if (historySyncBusy || historySync?.token || !credential) return;
+    historySyncBusy = true;
+    showHistorySync('Connecting to private history…', false);
+    let store;
+    try {
+      if (!await localHistoryReady) throw new Error('Listening history storage is unavailable.');
+      const device = await localHistory.getDeviceId();
+      const sync = new ErAudioHistorySync.HistorySync(endpoint, credential, device);
+      const state = await sync.state();
+      sync.account = state.account;
+      sync.email = state.email;
+      if (historySync && historySync.account !== sync.account) {
+        showHistorySync('Sign out before switching to a different Google account.', true);
+        return;
+      }
+      await sync.pull(state);
+      if (historySync?.epoch === state.epoch) {
+        historySync = sync;
+      } else {
+        store = await openSyncedHistory(sync, state.epoch);
+        const mergeKey = `eraudio:history-merge:${sync.account}`;
+        if (!historySync && !localStorage.getItem(mergeKey)) {
+          localHistory.flushCurrent();
+          const existing = await localHistory.exportData();
+          if (existing.spans.length && window.confirm(`Copy this browser's existing listening history to ${sync.email || 'the signed-in Google account'}? Only continue if this history is yours.`)) {
+            await store.importData(existing);
+          }
+          localStorage.setItem(mergeKey, 'reviewed');
+        }
+        const erasePrevious = Boolean(historySync);
+        historySync = sync;
+        changeHistoryStore(store, { erasePrevious });
+        store = null;
+      }
+      showHistorySync('Connected. Syncing private history…');
+    } catch (error) {
+      store?.db.close();
+      reportHistorySyncError(error);
+    } finally {
+      historySyncBusy = false;
+      historySignOut.disabled = false;
+    }
+    syncHistory();
+  }
+  const renderSignIn = () => {
+    const identity = window.google?.accounts?.id;
+    if (!identity) {
+      showHistorySync('Google sign-in did not load. Reload to try again.', false);
+      return;
+    }
+    identity.initialize({ client_id: config.googleClientId, callback: signIn, auto_select: false });
+    identity.renderButton(historyGoogle, { theme: 'outline', size: 'medium' });
+  };
+  if (window.google?.accounts?.id) renderSignIn();
+  else {
+    if (document.readyState === 'complete') renderSignIn();
+    else window.addEventListener('load', renderSignIn, { once: true });
+  }
+}
+
+historySignOut.addEventListener('click', () => {
+  if (!historySync || historySyncBusy) return;
+  historySync = null;
+  changeHistoryStore(localHistory);
+  window.google?.accounts?.id?.disableAutoSelect();
+  showHistorySync('Signed out. New listens are saved only in this browser.');
+});
+window.addEventListener('online', syncHistory);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncHistory();
+});
+setInterval(() => {
+  if (!document.hidden || playingTrack) syncHistory();
+}, 60000);
 
 function formatDuration(totalSeconds) {
   const seconds = Math.max(0, Math.round(totalSeconds || 0));
@@ -1088,7 +1271,7 @@ async function refreshHeat() {
     applyMarkerHeat([], 0);
     return;
   }
-  const spans = await listeningHistory.getSpans(track.videoId);
+  const spans = await readHistory(track.videoId);
   if (refreshId !== heatRefreshId) return;
   listenHeat.style.backgroundImage = heatGradient(heatBuckets(spans, duration, heatBucketCount));
   applyMarkerHeat(spans, duration);
@@ -1163,7 +1346,7 @@ async function renderHistory() {
     historyInfo.textContent = 'STORAGE UNAVAILABLE';
     return;
   }
-  const { videos, spans } = await listeningHistory.getAll();
+  const { videos, spans } = await readHistory();
   if (renderId !== historyRenderId) return;
   const entries = historyEntries(videos, spans);
   const totalSeconds = spans.reduce((sum, span) => sum + (span.end - span.start), 0);
@@ -1202,10 +1385,11 @@ function historyStatus(message) {
   announceEvent({ type: 'history', name: message });
 }
 
-listeningHistory.onChange = (videoId) => {
+function refreshHistoryViews(videoId) {
   if (videoId === null || videoId === playingTrack?.videoId) refreshHeat();
   renderHistory();
-};
+}
+localHistory.onChange = refreshHistoryViews;
 
 historyViewButton.addEventListener('click', () => {
   historyView = historyView === 'segments' ? 'videos' : 'segments';
@@ -1217,7 +1401,7 @@ document.querySelector('#history-export').addEventListener('click', async () => 
   try {
     if (!listeningHistory.available) throw new Error('Listening history storage is unavailable.');
     listeningHistory.flushCurrent();
-    const data = await listeningHistory.exportData();
+    const data = ErAudioHistory.ListeningHistory.exportSnapshot(await readHistory());
     if (!data.spans.length) {
       historyStatus('There is no listening history to export.');
       return;
@@ -1241,9 +1425,13 @@ historyFile.addEventListener('change', async () => {
   const file = historyFile.files[0];
   historyFile.value = '';
   if (!file) return;
+  const store = listeningHistory;
   try {
-    const result = await listeningHistory.importData(JSON.parse(await file.text()));
+    const data = JSON.parse(await file.text());
+    if (store !== listeningHistory || historySyncBusy) throw new Error('History sync is busy or the account changed. Try importing again.');
+    const result = await store.importData(data);
     historyStatus(`Imported ${result.spans} new listening span${result.spans === 1 ? '' : 's'}.`);
+    syncHistory();
   } catch (error) {
     console.error(error);
     historyStatus(error instanceof SyntaxError ? 'That file is not valid JSON. Nothing was imported.'
@@ -1252,13 +1440,43 @@ historyFile.addEventListener('change', async () => {
 });
 
 document.querySelector('#history-clear').addEventListener('click', async () => {
-  if (!listeningHistory.available || !window.confirm('Erase all listening history stored in this browser? Export it first if you want a backup.')) return;
+  if (!listeningHistory.available) return;
+  const sync = historySync;
+  if (historySyncBusy || (sync && !sync.token)) {
+    historyStatus('Wait for sync or sign in again before clearing your account history.');
+    return;
+  }
+  const question = sync ? 'Erase the synced history for this Google account on all browsers? The separate signed-out history is not deleted.'
+    : 'Erase all listening history stored in this browser? Export it first if you want a backup.';
+  if (!window.confirm(question)) return;
+  historySyncBusy = true;
+  historySignOut.disabled = true;
   try {
-    await listeningHistory.clear();
+    if (sync) {
+      const previous = listeningHistory;
+      const state = await sync.clear();
+      sync.rows = new Map();
+      sync.revision = null;
+      try {
+        const store = await openSyncedHistory(sync, state.epoch);
+        sync.epoch = state.epoch;
+        changeHistoryStore(store, { erasePrevious: true });
+      } catch (error) {
+        await previous.clear();
+        refreshHistoryViews(null);
+        throw error;
+      }
+    } else {
+      await listeningHistory.clear();
+    }
     historyStatus('Listening history cleared.');
   } catch (error) {
     console.error(error);
     historyStatus('Could not clear listening history.');
+    if (sync && error.status === 401) reportHistorySyncError(error);
+  } finally {
+    historySyncBusy = false;
+    historySignOut.disabled = false;
   }
 });
 
@@ -1268,7 +1486,8 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => listeningHistory.flushCurrent());
 
-listeningHistory.init().then(() => {
+const localHistoryReady = localHistory.init();
+localHistoryReady.then(() => {
   refreshHeat();
   renderHistory();
 });
@@ -2053,7 +2272,10 @@ document.addEventListener('click', (event) => {
       'toggle-history': 'history-window',
     }[button.dataset.action] || 'pitchfork-window';
     document.getElementById(targetId).hidden = !isActive;
-    if (targetId === 'history-window') renderHistory();
+    if (targetId === 'history-window') {
+      renderHistory();
+      if (!historyWindow.hidden) syncHistory();
+    }
   }
 
   if (button.dataset.action === 'open') showInputDialog('open');
@@ -2289,6 +2511,7 @@ async function loadStepConfig() {
     const response = await fetch('ErAudio.json', { cache: 'no-store' });
     if (response.ok) {
       const config = await response.json();
+      setupHistorySync(config.historySync);
       stepGroups.forEach((group) => {
         stepSizes.forEach((key) => {
           const value = Number(config?.[group]?.[key]);

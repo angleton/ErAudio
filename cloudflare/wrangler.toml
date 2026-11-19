@@ -1,0 +1,7 @@
+name = "eraudio-history"
+main = "history-worker.mjs"
+compatibility_date = "2026-11-19"
+
+[vars]
+APP_ORIGIN = "https://angleton.github.io"
+GOOGLE_CLIENT_ID = ""

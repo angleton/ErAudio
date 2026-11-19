@@ -96,7 +96,8 @@
   });
 
   class ListeningHistory {
-    constructor() {
+    constructor(dbName = DB_NAME) {
+      this.dbName = dbName;
       this.db = null;
       this.available = false;
       this.persisted = false;
@@ -112,17 +113,25 @@
       try {
         if (!globalThis.indexedDB) throw new Error('IndexedDB unavailable');
         this.db = await new Promise((resolve, reject) => {
-          const open = indexedDB.open(DB_NAME, 1);
-          open.onupgradeneeded = () => {
+          const open = indexedDB.open(this.dbName, 2);
+          open.onupgradeneeded = (event) => {
             const db = open.result;
-            db.createObjectStore('videos', { keyPath: 'videoId' });
-            db.createObjectStore('spans', { keyPath: 'id', autoIncrement: true })
-              .createIndex('videoId', 'videoId');
+            if (event.oldVersion === 0) {
+              db.createObjectStore('videos', { keyPath: 'videoId' });
+              db.createObjectStore('spans', { keyPath: 'id', autoIncrement: true })
+                .createIndex('videoId', 'videoId');
+            }
+            db.createObjectStore('settings');
           };
           open.onsuccess = () => resolve(open.result);
           open.onerror = () => reject(open.error);
           open.onblocked = () => reject(new Error('Database blocked'));
         });
+        this.db.onversionchange = () => {
+          this.db.close();
+          this.available = false;
+          this.onChange?.(null);
+        };
         this.available = true;
         try {
           this.persisted = Boolean(await navigator.storage?.persist?.());
@@ -159,6 +168,17 @@
         ]);
         return { videos, spans };
       });
+    }
+
+    async getDeviceId() {
+      const candidate = crypto.randomUUID();
+      const tx = this.db.transaction('settings', 'readwrite');
+      const done = transactionDone(tx);
+      const store = tx.objectStore('settings');
+      const existing = await request(store.get('deviceId'));
+      if (!existing) store.put(candidate, 'deviceId');
+      await done;
+      return existing || candidate;
     }
 
     async writeVideo(meta, { incrementPlays = false, onlyIfExists = false } = {}) {
@@ -301,8 +321,7 @@
       });
     }
 
-    async exportData() {
-      const { videos, spans } = await this.getAll();
+    static exportSnapshot({ videos, spans }) {
       return {
         app: 'ErAudio',
         type: EXPORT_TYPE,
@@ -311,6 +330,10 @@
         videos,
         spans: spans.map(({ videoId, start, end, playedAt }) => ({ videoId, start, end, playedAt })),
       };
+    }
+
+    async exportData() {
+      return ListeningHistory.exportSnapshot(await this.getAll());
     }
 
     // Merges an export into the existing history, skipping spans that are already stored.

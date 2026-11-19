@@ -76,6 +76,27 @@ While playback is paused, the colored spectrum holds its last frame, but the whi
 * **Sharing locations:** Use **EXPORT LOCATIONS** to download a JSON text file containing saved locations for the current video. The filename includes its title with special characters removed (or its video ID if the title has no usable characters). **IMPORT LOCATIONS** merges a file into local storage, skipping exact duplicates; it also accepts older exports containing multiple videos. If any video would exceed 50 locations, the entire import is rejected without changing existing locations. Importing and exporting require browser storage; exports are not automatically synchronized, and AC does not delete exported files.
 * **Automatic speed ramps:** The up/down triangle buttons change speed by 1 percentage point per second by default. Moving toward normal speed stops at 0%; otherwise the ramp stops at the slider limit or the current YouTube video's supported limit, whichever is closer. Click the same button to stop, the opposite button to reverse, or use another speed control to stop the ramp. YouTube audio changes only at supported discrete rates. Set `ramp.percentPerSecond` to a positive number in `ErAudio.json` to change the rate; the file is loaded over HTTP at launch.
 
+### Private listening history sync
+
+When configured, **HIST** offers a separate **Sign in with Google** button. Sign in with the same account in each browser to combine listening spans, play counts, and heat maps. The first sign-in for each account in a browser asks before copying existing local history. Declining keeps it local. ErAudio uploads video IDs, titles and timeline labels, played ranges, timestamps, and counts to Cloudflare D1; there is no public view. YouTube login and permissions are unchanged.
+
+Sync checks about once a minute while the page is in use, and when you open **HIST** or return online. It does not interrupt playback. If the network or service is unavailable after sign-in, new listens are saved in that account's local browser storage and retried. After a reload or sign-in expiration, use the Google button to reconnect. While signed out, ErAudio shows and records only this browser's separate local history. Signing out hides the account history in the app; it does not erase its local database. Use separate browser profiles on a shared computer.
+
+While signed in, **EXPORT** includes the combined history, **IMPORT** adds to the active account history, and **CLEAR** deletes it from the service. Other browsers see the deletion on their next sync; pending changes from before the clear cannot restore it. Any separate signed-out history is unaffected. Existing JSON imports deduplicate identical spans, but old backups only have per-video play counts, so copying the same old backup from multiple browsers may overcount plays.
+
+#### Enable sync on a deployment
+
+1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add the page's origin (for GitHub Pages, `https://angleton.github.io`, without `/ErAudio`) under **Authorized JavaScript origins**. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
+2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) with binding `HISTORY_DB`. Set `APP_ORIGIN` and `GOOGLE_CLIENT_ID` in the same file. Then apply the schema and deploy:
+   ```powershell
+   npx wrangler d1 execute eraudio-history --remote --file history-schema.sql
+   npx wrangler deploy
+   ```
+3. Set `historySync.endpoint` in [`ErAudio.json`](./ErAudio.json) to the deployed Worker origin and `historySync.googleClientId` to the same **public** Google web client ID. Leave both blank for local-only behavior. Host the updated static files as usual. The Worker authenticates every history request; do not make D1 directly accessible to the browser.
+4. Verify with two browser profiles: sign in as the same test account, exercise the existing-history prompt, play at least five seconds in the first profile, and check **HIST** and the heat map in the second. Sign in with a different account to verify isolation. Also verify that **CLEAR** reaches the other profile.
+
+To run the local API and sync tests without contacting Google or Cloudflare, use Node.js 24+ and run `node --test tests\history-sync.test.mjs` from the repository root.
+
 ### Planned Stack & Capabilities
 * **Rust + WebAssembly (Wasm):** Rust application state management, playlist handling, keyboard shortcuts, and player logic.
 * **YouTube playback:** Start with a YouTube video ID or URL entered through the ErAudio-style **Open** control. A later iteration may offer YouTube browsing/search, subject to the available YouTube APIs and their authentication, quota, and usage requirements.
