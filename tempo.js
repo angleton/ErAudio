@@ -5,21 +5,31 @@
   const weights = [0.65, 0.25, 0.1];
   const onsetFloor = 0.001;
   const confidenceHoldMs = 3000;
+  const maxInterpolationMs = 120;
+  const maxGapMs = 500;
 
   function estimateTempo(onsets) {
-    const mean = onsets.reduce((sum, value) => sum + value, 0) / onsets.length;
-    const signal = onsets.slice(1, -1).map((value, i) => (onsets[i] + 2 * value + onsets[i + 2]) / 4 - mean);
+    const observed = onsets.filter((value) => value !== null);
+    const mean = observed.reduce((sum, value) => sum + value, 0) / observed.length;
+    const signal = onsets.slice(1, -1).map((value, i) => {
+      const before = onsets[i];
+      const after = onsets[i + 2];
+      return before === null || value === null || after === null ? null : (before + 2 * value + after) / 4 - mean;
+    });
     const scores = [];
     for (let lag = minLag - 1; lag <= maxLag + 1; lag++) {
       let a2 = 0, b2 = 0, cross = 0;
+      let pairs = 0;
       for (let i = lag; i < signal.length; i++) {
         const a = signal[i];
         const b = signal[i - lag];
+        if (a === null || b === null) continue;
         a2 += a * a;
         b2 += b * b;
         cross += a * b;
+        pairs++;
       }
-      scores[lag] = cross / Math.sqrt(a2 * b2) || 0;
+      scores[lag] = pairs >= (signal.length - lag) * 0.75 ? cross / Math.sqrt(a2 * b2) || 0 : 0;
     }
     const peaks = [];
     for (let lag = minLag; lag <= maxLag; lag++) {
@@ -63,7 +73,8 @@
     }
 
     update(now, bands) {
-      if (this.previous && (now < this.previous.now || now - this.previous.now > 120)) this.reset();
+      const gap = this.previous ? now - this.previous.now : 0;
+      if (gap < 0 || gap > maxGapMs) this.reset();
       if (!this.previous) {
         this.previous = { now, bands: bands.slice() };
         this.grid = bands.slice();
@@ -71,17 +82,23 @@
         return null;
       }
       const { now: previousTime, bands: previousBands } = this.previous;
+      // Skip missed frames rather than inventing beat energy across the gap.
+      if (gap > maxInterpolationMs) this.grid.set(bands);
       while (this.nextSample <= now) {
-        const fraction = (this.nextSample - previousTime) / (now - previousTime);
-        let flux = 0;
-        for (let i = 0; i < weights.length; i++) {
-          const value = previousBands[i] + fraction * (bands[i] - previousBands[i]);
-          flux += weights[i] * Math.max(0, value - this.grid[i]);
-          this.grid[i] = value;
+        if (gap > maxInterpolationMs) {
+          this.onsets.push(null);
+        } else {
+          const fraction = (this.nextSample - previousTime) / (now - previousTime);
+          let flux = 0;
+          for (let i = 0; i < weights.length; i++) {
+            const value = previousBands[i] + fraction * (bands[i] - previousBands[i]);
+            flux += weights[i] * Math.max(0, value - this.grid[i]);
+            this.grid[i] = value;
+          }
+          this.onsets.push(Math.max(0, flux - onsetFloor));
+          if (flux > onsetFloor) this.lastOnset = this.nextSample;
         }
-        this.onsets.push(Math.max(0, flux - onsetFloor));
         if (this.onsets.length > 500) this.onsets.shift();
-        if (flux > onsetFloor) this.lastOnset = this.nextSample;
         this.nextSample += sampleMs;
       }
       this.previous.now = now;

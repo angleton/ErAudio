@@ -38,6 +38,16 @@ test('does not report steady audio or keep an estimate across silence or a captu
   assert.equal(detector.update(20000, new Float32Array(3)), null);
 });
 
+test('acquires and keeps a tempo through brief gaps in frame delivery', () => {
+  const detector = new LiveTempo();
+  const pulse = beat(128);
+  for (let time = 0; time <= 14000; time += 20) {
+    if (time % 3000 >= 2000 && time % 3000 < 2200) continue;
+    const actual = detector.update(time, Float32Array.of(pulse(time), 0, 0));
+    if (time >= 6500) assert.ok(actual !== null && Math.abs(actual - 128) <= 1, `${time} ms: ${actual}`);
+  }
+});
+
 test('detects a beat in the same frequency band as a louder sustained tone', () => {
   const detector = new LiveTempo();
   const pulse = beat(120);
