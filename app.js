@@ -47,11 +47,6 @@ const playlistSelect = document.querySelector('#playlist-select');
 const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
 const addedTracksStorageKey = 'eraudio:added-tracks';
-const defaultTrack = {
-  title: 'Rooftop Party in the French Riviera | Settow',
-  videoId: 'aXedWClewDU',
-  duration: '--:--',
-};
 const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeLoginLabel = document.querySelector('#youtube-login-label');
 const youtubeSettingsButton = document.querySelector('#youtube-settings');
@@ -93,7 +88,7 @@ const favoriteLists = [
   {
     id: 'favorites',
     name: 'Local videos',
-    tracks: [defaultTrack],
+    tracks: [],
   },
 ];
 
@@ -113,8 +108,8 @@ let displayedDuration = 0;
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
 let ytReady = false;
-let playingTrack = defaultTrack;
-let playingList = favoriteLists[0];
+let playingTrack = null;
+let playingList = null;
 let scrubbing = false;
 let savedLocations = new Map();
 let savedLocationsReadError = false;
@@ -3050,7 +3045,6 @@ loadSavedLocations();
 initializeFavorites();
 initYouTubePlayer();
 updateNowPlaying();
-ensureMarkers(playingTrack);
 if (credentialsLoadError) showLoginError(credentialsLoadError);
 
 // Application code can react here without coupling the controls to playback yet.

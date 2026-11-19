@@ -31,6 +31,56 @@ const assets = new Map([
   ['/tempo.js', ['tempo.js', 'text/javascript']],
   ['/styles.css', ['styles.css', 'text/css']],
 ]);
+
+test('starts without loading a video and preserves user-added videos across reload', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  page.setDefaultTimeout(5000);
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin === origin) return route.continue();
+    if (url.href !== 'https://www.youtube.com/iframe_api') return route.abort();
+    return route.fulfill({
+      contentType: 'text/javascript',
+      body: `window.videoLoads = [];
+        window.YT = { Player: class {
+          constructor(id, options) { queueMicrotask(() => options.events.onReady()); }
+          setVolume() {}
+          loadVideoById(videoId) { window.videoLoads.push(videoId); }
+          getPlayerState() { return -1; }
+        }, PlayerState: { PLAYING: 1, PAUSED: 2, CUED: 5 } };
+        window.onYouTubeIframeAPIReady();`,
+    });
+  });
+  async function checkIdle() {
+    await page.waitForFunction(() => ytReady);
+    assert.deepEqual(await page.evaluate(() => window.videoLoads), []);
+    assert.match(await page.locator('#track-title').textContent(), /press .* to open a YouTube video/);
+  }
+  await page.goto(origin);
+  await checkIdle();
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  assert.equal(await page.locator('#playlist-list button').count(), 0);
+
+  await page.getByRole('button', { name: 'Open a YouTube URL or video ID' }).click();
+  await page.getByLabel('VIDEO URL OR ID').fill('abcdefghijk');
+  await page.getByRole('button', { name: 'OPEN', exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => window.videoLoads), ['abcdefghijk']);
+  await page.reload();
+  await checkIdle();
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  assert.equal(await page.locator('#playlist-list button').count(), 1);
+  assert.equal(await page.locator('#playlist-list button').getAttribute('data-video-id'), 'abcdefghijk');
+});
+
 const ids = { a: 'aaaaaaaaaaa', b: 'bbbbbbbbbbb', z: 'zzzzzzzzzzz' };
 
 function fixture(entries) {

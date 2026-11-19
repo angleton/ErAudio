@@ -7,7 +7,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 ## ▶️ Quick Start (no install needed)
 
 1. **Open the player:** <https://angleton.github.io/ErAudio/>
-2. **Start listening:** Click **Open** to switch to another YouTube link or video ID; no account needed.
+2. **Start listening:** No video loads at startup. Click **Open** and enter a YouTube link or video ID; no account needed. Previously added videos are still available in **VID**.
 3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. See [YouTube API setup](#youtube-api-setup).
 4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, **DJ** opens the speed control, and **TOP** opens your listening history ranked by total listening time. Only the main player is visible at first.
 5. **See live audio levels:** Follow [Enable live audio levels](#enable-live-audio-levels) to share audio from the ErAudio tab.
