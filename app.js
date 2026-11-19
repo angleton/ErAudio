@@ -696,7 +696,7 @@ function seekToMarker(index) {
   ytPlayer.playVideo();
 }
 
-function playTrack(list, track) {
+function playTrack(list, track, startSeconds) {
   cancelNudgePreview(true);
   if (track !== playingTrack) stopSpeedRamp();
   playingList = list;
@@ -704,8 +704,11 @@ function playTrack(list, track) {
   updateNowPlaying();
   ensureMarkers(track);
   resetTransportDisplay();
-  if (ytReady) ytPlayer.loadVideoById(track.videoId);
-  if (currentListId === list.id) renderFavoritesList(list.id);
+  if (ytReady) {
+    ytPlayer.loadVideoById(startSeconds === undefined
+      ? track.videoId : { videoId: track.videoId, startSeconds });
+  }
+  if (list && currentListId === list.id) renderFavoritesList(list.id);
 }
 
 // Makes the track active; keeps playing if already playing, otherwise just cues it.
@@ -897,7 +900,9 @@ function historyEntries(videos, spans) {
     const title = video.title || `YouTube video ${video.videoId}`;
     const total = videoSpans.reduce((sum, span) => sum + (span.end - span.start), 0);
     if (historyView === 'videos') {
-      if (video.plays || total) entries.push({ title, label: '', listens: video.plays || 0, seconds: total });
+      if (video.plays || total) {
+        entries.push({ videoId: video.videoId, start: 0, title, label: '', listens: video.plays || 0, seconds: total });
+      }
       return;
     }
     const markers = video.chapters?.length ? video.chapters : (video.timestamps || []);
@@ -907,6 +912,8 @@ function historyEntries(videos, spans) {
       const segment = segments[index];
       const name = segment.lead ? 'Before first marker' : segment.title || (markers.length ? `Part ${index + 1}` : 'Whole video');
       entries.push({
+        videoId: video.videoId,
+        start: segment.start,
         title,
         label: markers.length && !segment.lead ? `[${formatClock(segment.start)}] ${name}` : name,
         listens: stat.listens,
@@ -918,6 +925,24 @@ function historyEntries(videos, spans) {
     ? (a, b) => b.seconds - a.seconds || b.listens - a.listens
     : (a, b) => b.listens - a.listens || b.seconds - a.seconds);
   return entries;
+}
+
+function playHistoryEntry({ videoId, start, title }) {
+  if (!ytReady) {
+    historyStatus('The YouTube player is not ready yet. Try again once it loads.');
+    return;
+  }
+  historyMessage.textContent = '';
+  if (playingTrack?.videoId === videoId && ytPlayer.getVideoData?.()?.video_id === videoId) {
+    cancelNudgePreview(true);
+    ytPlayer.seekTo(start, true);
+    ytPlayer.playVideo();
+    return;
+  }
+  const list = favoriteLists.find((candidate) => candidate.tracks.some((track) => track.videoId === videoId));
+  const track = list?.tracks.find((candidate) => candidate.videoId === videoId)
+    ?? { videoId, title, duration: '--:--' };
+  playTrack(list ?? null, track, start);
 }
 
 async function renderHistory() {
@@ -947,17 +972,27 @@ async function renderHistory() {
     placeholder('Nothing listened to yet. Play a video for at least a few seconds.');
     return;
   }
+  const focusedLocation = historyList.contains(document.activeElement)
+    ? document.activeElement.dataset.historyLocation : undefined;
+  let nextFocus;
   historyList.replaceChildren(...entries.slice(0, maxHistoryRows).map((entry, index) => {
     const item = document.createElement('div');
-    item.className = 'history-item';
     item.setAttribute('role', 'listitem');
-    item.append(`${index + 1}. ${entry.title}${entry.label ? ` / ${entry.label}` : ''}`);
+    const button = document.createElement('button');
+    button.className = 'playlist-item history-item';
+    button.type = 'button';
+    button.dataset.historyLocation = `${entry.videoId}:${entry.start}`;
+    if (button.dataset.historyLocation === focusedLocation) nextFocus = button;
+    button.append(`${index + 1}. ${entry.title}${entry.label ? ` / ${entry.label}` : ''}`);
     const detail = document.createElement('span');
     detail.className = 'history-detail';
     detail.textContent = `${historyView === 'videos' ? 'PLAYS' : 'LISTENS'} ${entry.listens} / TIME ${formatDuration(entry.seconds)}`;
-    item.append(detail);
+    button.append(detail);
+    button.addEventListener('click', () => playHistoryEntry(entry));
+    item.append(button);
     return item;
   }));
+  nextFocus?.focus({ preventScroll: true });
 }
 
 function historyStatus(message) {

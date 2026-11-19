@@ -456,12 +456,13 @@ body {
   box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.9);
 }
 
-.history-item {
+.playlist-item.history-item {
   padding: 3px 6px;
   color: var(--lcd-green);
   font-family: var(--font-digital);
   font-size: 16px;
   border-bottom: 1px solid #0f1f0f;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
