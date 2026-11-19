@@ -798,14 +798,12 @@ const historyList = document.querySelector('#history-list');
 const historyInfo = document.querySelector('#history-info');
 const historyMessage = document.querySelector('#history-message');
 const historyViewButton = document.querySelector('#history-view');
-const historySortButton = document.querySelector('#history-sort');
 const historyFile = document.querySelector('#history-file');
 const heatBucketCount = 100;
 const maxHistoryRows = 200;
 let heatRefreshId = 0;
 let historyRenderId = 0;
 let historyView = 'segments';
-let historySort = 'listens';
 
 function formatDuration(totalSeconds) {
   const seconds = Math.max(0, Math.round(totalSeconds || 0));
@@ -921,9 +919,7 @@ function historyEntries(videos, spans) {
       });
     });
   });
-  entries.sort(historySort === 'time'
-    ? (a, b) => b.seconds - a.seconds || b.listens - a.listens
-    : (a, b) => b.listens - a.listens || b.seconds - a.seconds);
+  entries.sort((a, b) => b.listens - a.listens || b.seconds - a.seconds);
   return entries;
 }
 
@@ -949,7 +945,6 @@ async function renderHistory() {
   if (historyWindow.hidden) return;
   const renderId = ++historyRenderId;
   historyViewButton.textContent = historyView === 'segments' ? 'VIEW: SEGMENTS' : 'VIEW: VIDEOS';
-  historySortButton.textContent = historySort === 'listens' ? 'RANK BY: LISTENS' : 'RANK BY: TIME';
   const placeholder = (text) => {
     const empty = document.createElement('div');
     empty.className = 'playlist-empty';
@@ -1007,11 +1002,6 @@ listeningHistory.onChange = (videoId) => {
 
 historyViewButton.addEventListener('click', () => {
   historyView = historyView === 'segments' ? 'videos' : 'segments';
-  renderHistory();
-});
-
-historySortButton.addEventListener('click', () => {
-  historySort = historySort === 'listens' ? 'time' : 'listens';
   renderHistory();
 });
 
