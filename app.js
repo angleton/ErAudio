@@ -840,7 +840,7 @@ async function requestLiveLevels() {
     context = new AudioContext();
     const analyzer = context.createAnalyser();
     analyzer.fftSize = 16384;
-    analyzer.smoothingTimeConstant = 0.4;
+    analyzer.smoothingTimeConstant = 0;
     context.createMediaStreamSource(new MediaStream([audio])).connect(analyzer);
     const bins = new Float32Array(analyzer.frequencyBinCount);
     const lowHz = 30;
