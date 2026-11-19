@@ -31,7 +31,7 @@ This project aims to preserve the compact retro-audio-player aesthetic that insp
 ### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The time and title displays are the same height, with a full-width [live audio waveform](#enable-live-audio-levels) above the position bar.
+The time and title displays are the same height, with a full-width [live audio spectrum](#enable-live-audio-levels) above the position bar.
 
 The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v3.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
@@ -43,9 +43,9 @@ The main title bar displays **ErAudio**, the YouTube login or account name, and 
 
 1. Open ErAudio over HTTPS or localhost (`file://` does not work for the meter). Click **Share Tab Audio** beside the meter, or start playback with ErAudio's **Play** button to open the picker automatically on your first Play.
 2. In desktop Chrome, Edge, or Brave, choose **This Tab** or the browser's tab category in the picker. Select the ErAudio tab you're using, turn on **Share tab audio** (sometimes **Also share tab audio**), and click **Share**. The audio option is in the picker, not in ErAudio or the browser tab menu. Do not select **Window** or **Entire Screen**.
-3. While sharing is active, the display shows a live waveform of the sound playing now, not a timeline of the whole video. The instructions and **Share Tab Audio** button return when sharing stops. If the picker closes before you can share, or if you cancel or share without audio, click **Share Tab Audio** again. You don't need to reload or pause playback. If the browser is unsupported, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
+3. While sharing is active, the bars show real-time levels from bass on the left to treble on the right. The instructions and **Share Tab Audio** button return when sharing stops. If the picker closes before you can share, or if you cancel or share without audio, click **Share Tab Audio** again. You don't need to reload or pause playback. If the browser is unsupported, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
 
-The browser grants access to the selected tab's audio and video, not a waveform-only permission. ErAudio verifies the selection is this tab, stops the video track, and draws the waveform locally without recording or uploading audio. Canceling leaves playback working without the waveform. Use the browser's sharing controls to stop.
+The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures frequency levels locally without recording or uploading audio. Canceling leaves playback working without the spectrum. Use the browser's sharing controls to stop.
 
 ---
 
@@ -77,7 +77,7 @@ The browser grants access to the selected tab's audio and video, not a waveform-
 * **Rust + WebAssembly (Wasm):** Rust application state management, playlist handling, keyboard shortcuts, and player logic.
 * **YouTube playback:** Start with a YouTube video ID or URL entered through the ErAudio-style **Open** control. A later iteration may offer YouTube browsing/search, subject to the available YouTube APIs and their authentication, quota, and usage requirements.
 * **Audio-first presentation:** The player can present YouTube playback as an audio-focused experience while retaining the underlying supported YouTube player. Extracting and redistributing raw YouTube audio is not assumed to be part of this project.
-* **Playback controls:** The YouTube IFrame Player API can provide supported playback-rate controls, but it does not guarantee arbitrary floating-point rates. Pitch, tempo, spectrum analysis, and stream bitrate/sample-rate readouts are not exposed by the embed, so those controls are intentionally omitted; they would require an approved playback pipeline or a separate DSP layer rather than direct cross-origin iframe manipulation.
+* **Playback controls:** The YouTube IFrame Player API can provide supported playback-rate controls, but it does not guarantee arbitrary floating-point rates. The embed does not expose raw audio for spectrum analysis; the spectrum instead uses audio shared from the browser tab. Independent pitch and tempo controls and stream bitrate/sample-rate readouts are not provided by the embed.
 * **Optional browser extension interop:** A browser extension could report which tabs are marked audible through the WebExtensions `tabs` API in Chromium-based browsers and Firefox. This is useful for discovery and companion features, but it does not expose exact audio routing or the individual audio element responsible for sound.
 * **Desktop window behavior:** HTML/CSS can make the player surface translucent, but a normal browser page cannot make its outer browser window transparent or define OS-level click-through regions. True transparent-window behavior requires a desktop wrapper or native host such as Electron, Tauri, WinUI, WPF, or WinForms.
 

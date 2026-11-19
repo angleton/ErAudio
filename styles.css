@@ -395,13 +395,11 @@ body {
   gap: 3px;
 }
 
-#live-waveform {
+#live-spectrum {
   display: block;
   width: 100%;
   height: 64px;
-  background:
-    linear-gradient(#174317, #174317) center / 100% 1px no-repeat,
-    #101b10;
+  background: #101b10;
 }
 
 .live-level-actions {

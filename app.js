@@ -753,7 +753,7 @@ function stepTrack(step, { wrap = true } = {}) {
 
 const liveLevelStatus = document.querySelector('#live-level-status');
 const liveLevelSetup = document.querySelector('#live-level-setup');
-const waveform = document.querySelector('#live-waveform');
+const spectrum = document.querySelector('#live-spectrum');
 const liveLevelButton = document.querySelector('#live-level-share');
 const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
@@ -788,7 +788,7 @@ async function requestLiveLevels() {
     if (context && context.state !== 'closed') {
       context.close().catch((error) => console.warn('Could not close the live level audio context.', error));
     }
-    drawing?.clearRect(0, 0, waveform.width, waveform.height);
+    drawing?.clearRect(0, 0, spectrum.width, spectrum.height);
     liveLevelStatus.textContent = message;
     liveLevelSetup.hidden = false;
     if (!pickerPending) liveLevelButton.disabled = false;
@@ -839,36 +839,50 @@ async function requestLiveLevels() {
 
     context = new AudioContext();
     const analyzer = context.createAnalyser();
+    analyzer.fftSize = 8192;
+    analyzer.smoothingTimeConstant = 0.75;
     context.createMediaStreamSource(new MediaStream([audio])).connect(analyzer);
-    const samples = new Float32Array(analyzer.fftSize);
-    drawing = waveform.getContext('2d');
+    const bins = new Float32Array(analyzer.frequencyBinCount);
+    const bandCount = 28;
+    const lowHz = 30;
+    const highHz = Math.min(16000, context.sampleRate / 2);
+    const hzPerBin = context.sampleRate / analyzer.fftSize;
+    // Logarithmic bands give bass and treble comparable space on the display.
+    const bandEdges = Array.from({ length: bandCount + 1 }, (_, index) =>
+      Math.min(bins.length, Math.ceil(lowHz * (highHz / lowHz) ** (index / bandCount) / hzPerBin)));
+    drawing = spectrum.getContext('2d');
     if (!drawing) throw new Error('Canvas drawing is unavailable.');
     await context.resume();
     if (stopped) return;
     liveLevelSetup.hidden = true;
-    function drawWaveform() {
+    function drawSpectrum() {
       const ratio = window.devicePixelRatio || 1;
-      const width = Math.max(1, Math.round(waveform.clientWidth * ratio));
-      const height = Math.max(1, Math.round(waveform.clientHeight * ratio));
-      if (waveform.width !== width) waveform.width = width;
-      if (waveform.height !== height) waveform.height = height;
-      analyzer.getFloatTimeDomainData(samples);
+      const width = Math.max(1, Math.round(spectrum.clientWidth * ratio));
+      const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
+      if (spectrum.width !== width) spectrum.width = width;
+      if (spectrum.height !== height) spectrum.height = height;
+      analyzer.getFloatFrequencyData(bins);
       drawing.clearRect(0, 0, width, height);
-      drawing.beginPath();
-      const center = height / 2;
-      const amplitude = Math.max(0, center - ratio);
-      const step = width / (samples.length - 1);
-      for (let i = 0; i < samples.length; i++) {
-        const y = center - Math.max(-1, Math.min(1, samples[i])) * amplitude;
-        if (i === 0) drawing.moveTo(0, y);
-        else drawing.lineTo(i * step, y);
+      const colors = drawing.createLinearGradient(0, height, 0, 0);
+      colors.addColorStop(0, '#00ff33');
+      colors.addColorStop(0.75, '#ccff00');
+      colors.addColorStop(1, '#ff3333');
+      drawing.fillStyle = colors;
+      const step = width / bandCount;
+      const gap = Math.min(2 * ratio, step / 3);
+      for (let band = 0; band < bandCount; band++) {
+        let peak = -Infinity;
+        const end = Math.min(bins.length, Math.max(bandEdges[band] + 1, bandEdges[band + 1]));
+        for (let bin = bandEdges[band]; bin < end; bin++) peak = Math.max(peak, bins[bin]);
+        const level = Math.min(1, Math.max(0, (peak + 90) / 65));
+        if (level > 0) {
+          const barHeight = level * height;
+          drawing.fillRect(band * step + gap / 2, height - barHeight, step - gap, barHeight);
+        }
       }
-      drawing.strokeStyle = '#00ff33';
-      drawing.lineWidth = ratio;
-      drawing.stroke();
-      frame = requestAnimationFrame(drawWaveform);
+      frame = requestAnimationFrame(drawSpectrum);
     }
-    drawWaveform();
+    drawSpectrum();
   } catch (error) {
     pickerPending = false;
     if (stopped) {
