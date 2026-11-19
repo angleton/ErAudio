@@ -47,6 +47,8 @@ The main title bar displays **ErAudio**, the YouTube login or account name, and 
 
 The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures frequency levels locally without recording or uploading audio. Canceling leaves playback working without the spectrum. Use the browser's sharing controls to stop.
 
+The spectrum updates on each animation frame while visible and uses light smoothing so the bars respond quickly to changes in the audio.
+
 ---
 
 ## 🚀 Project Overview & Architecture
