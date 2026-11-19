@@ -87,12 +87,23 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
 #### Enable sync on a deployment
 
 1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add the page's origin (for GitHub Pages, `https://angleton.github.io`, without `/ErAudio`) under **Authorized JavaScript origins**. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
-2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) with binding `HISTORY_DB`. Set `APP_ORIGIN` and `GOOGLE_CLIENT_ID` in the same file. Then apply the schema and deploy:
+2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) with binding `HISTORY_DB`. Set `APP_ORIGIN` and `GOOGLE_CLIENT_ID` in the same file.
+
+   **Run these commands one at a time.** Copy and run the first block to apply the database schema:
    ```powershell
    npx wrangler d1 execute eraudio-history --remote --file history-schema.sql
+   ```
+
+   Respond to any prompts and wait for the command to finish successfully. Then copy and run this block to deploy the Worker:
+   ```powershell
    npx wrangler deploy
    ```
-3. Set `historySync.endpoint` in [`ErAudio.json`](./ErAudio.json) to the deployed Worker origin and `historySync.googleClientId` to the same **public** Google web client ID. Leave both blank for local-only behavior. Host the updated static files as usual. The Worker authenticates every history request; do not make D1 directly accessible to the browser.
+3. Set `historySync.endpoint` in [`ErAudio.json`](./ErAudio.json) to the deployed Worker origin. From the repository root, copy the **public** Google web client ID from `wrangler.toml` into `ErAudio.json` by running:
+   ```powershell
+   .\Sync-GoogleClientId.ps1
+   ```
+
+   Edit the client ID only in `wrangler.toml`. When it changes, rerun the script, redeploy the Worker, and publish the updated static files. The script does not deploy anything. Leave both `historySync` settings blank in `ErAudio.json` for local-only behavior. The Worker authenticates every history request; do not make D1 directly accessible to the browser.
 4. Verify with two browser profiles: sign in as the same test account, exercise the existing-history prompt, play at least five seconds in the first profile, and check **HIST** and the heat map in the second. Sign in with a different account to verify isolation. Also verify that **CLEAR** reaches the other profile.
 
 To run the local API and sync tests without contacting Google or Cloudflare, use Node.js 24+ and run `node --test tests\history-sync.test.mjs` from the repository root.
