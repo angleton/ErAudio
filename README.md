@@ -31,7 +31,7 @@ This project aims to preserve the compact retro-audio-player aesthetic that insp
 ### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The time and title displays are the same height, with a full-width [live level meter](#enable-live-audio-levels) above the position bar.
+The time and title displays are the same height, with a full-width [live audio waveform](#enable-live-audio-levels) above the position bar.
 
 The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v3.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
@@ -43,9 +43,9 @@ The main title bar displays **ErAudio**, the YouTube login or account name, and 
 
 1. Open ErAudio over HTTPS or localhost (`file://` does not work for the meter). Click **Share Tab Audio** beside the meter, or start playback with ErAudio's **Play** button to open the picker automatically on your first Play.
 2. In desktop Chrome, Edge, or Brave, choose **This Tab** or the browser's tab category in the picker. Select the ErAudio tab you're using, turn on **Share tab audio** (sometimes **Also share tab audio**), and click **Share**. The audio option is in the picker, not in ErAudio or the browser tab menu. Do not select **Window** or **Entire Screen**.
-3. If the picker closes before you can share, or if you cancel, share without audio, or stop sharing, click **Share Tab Audio** again. You don't need to reload or pause playback. The button is disabled while the picker is open or sharing is active. If the meter says to use a supported desktop browser on HTTPS or localhost, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
+3. While sharing is active, the display shows a live waveform of the sound playing now, not a timeline of the whole video. The instructions and **Share Tab Audio** button return when sharing stops. If the picker closes before you can share, or if you cancel or share without audio, click **Share Tab Audio** again. You don't need to reload or pause playback. If the browser is unsupported, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
 
-The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures audio locally without recording or uploading it. Canceling leaves playback working without the meter. Use the browser's sharing controls to stop.
+The browser grants access to the selected tab's audio and video, not a waveform-only permission. ErAudio verifies the selection is this tab, stops the video track, and draws the waveform locally without recording or uploading audio. Canceling leaves playback working without the waveform. Use the browser's sharing controls to stop.
 
 ---
 

@@ -37,12 +37,14 @@
           </div>
         </div>
         <div class="vis-container">
-          <div class="live-level-track" aria-hidden="true"><div id="live-level-fill"></div></div>
-          <div class="live-level-actions">
-            <p id="live-level-status" role="status">Live levels: on first Play, choose this ErAudio tab and share its audio.</p>
-            <button class="pl-btn" id="live-level-share" type="button" disabled>SHARE TAB AUDIO</button>
+          <canvas id="live-waveform" role="img" aria-label="Live audio waveform"></canvas>
+          <div id="live-level-setup">
+            <div class="live-level-actions">
+              <p id="live-level-status" role="status">Live waveform: on first Play, choose this ErAudio tab and share its audio.</p>
+              <button class="pl-btn" id="live-level-share" type="button" disabled>SHARE TAB AUDIO</button>
+            </div>
+            <p>The browser shares tab audio and video. ErAudio discards the video and draws the waveform locally. The visualizer does not record or upload anything.</p>
           </div>
-          <p>The browser shares tab audio and video. ErAudio discards the video and measures audio levels locally. Nothing is recorded or uploaded by the meter.</p>
         </div>
       </div>
 

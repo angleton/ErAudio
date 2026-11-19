@@ -752,7 +752,8 @@ function stepTrack(step, { wrap = true } = {}) {
 }
 
 const liveLevelStatus = document.querySelector('#live-level-status');
-const liveLevelFill = document.querySelector('#live-level-fill');
+const liveLevelSetup = document.querySelector('#live-level-setup');
+const waveform = document.querySelector('#live-waveform');
 const liveLevelButton = document.querySelector('#live-level-share');
 const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
@@ -773,6 +774,7 @@ async function requestLiveLevels() {
   const mediaDevices = navigator.mediaDevices;
   let capture;
   let context;
+  let drawing;
   let frame;
   let stopped = false;
   let pickerPending = true;
@@ -786,8 +788,9 @@ async function requestLiveLevels() {
     if (context && context.state !== 'closed') {
       context.close().catch((error) => console.warn('Could not close the live level audio context.', error));
     }
-    liveLevelFill.style.removeProperty('--live-level-unfilled');
+    drawing?.clearRect(0, 0, waveform.width, waveform.height);
     liveLevelStatus.textContent = message;
+    liveLevelSetup.hidden = false;
     if (!pickerPending) liveLevelButton.disabled = false;
   }
 
@@ -838,19 +841,34 @@ async function requestLiveLevels() {
     const analyzer = context.createAnalyser();
     context.createMediaStreamSource(new MediaStream([audio])).connect(analyzer);
     const samples = new Float32Array(analyzer.fftSize);
+    drawing = waveform.getContext('2d');
+    if (!drawing) throw new Error('Canvas drawing is unavailable.');
     await context.resume();
     if (stopped) return;
-    liveLevelStatus.textContent = 'Live levels: measuring tab audio. Use the browser sharing controls to stop.';
-    function drawLevel() {
+    liveLevelSetup.hidden = true;
+    function drawWaveform() {
+      const ratio = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(waveform.clientWidth * ratio));
+      const height = Math.max(1, Math.round(waveform.clientHeight * ratio));
+      if (waveform.width !== width) waveform.width = width;
+      if (waveform.height !== height) waveform.height = height;
       analyzer.getFloatTimeDomainData(samples);
-      let peak = 0;
-      for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
-      const decibels = 20 * Math.log10(peak);
-      const level = Math.min(1, Math.max(0, (decibels + 60) / 60));
-      liveLevelFill.style.setProperty('--live-level-unfilled', `${(1 - level) * 100}%`);
-      frame = requestAnimationFrame(drawLevel);
+      drawing.clearRect(0, 0, width, height);
+      drawing.beginPath();
+      const center = height / 2;
+      const amplitude = Math.max(0, center - ratio);
+      const step = width / (samples.length - 1);
+      for (let i = 0; i < samples.length; i++) {
+        const y = center - Math.max(-1, Math.min(1, samples[i])) * amplitude;
+        if (i === 0) drawing.moveTo(0, y);
+        else drawing.lineTo(i * step, y);
+      }
+      drawing.strokeStyle = '#00ff33';
+      drawing.lineWidth = ratio;
+      drawing.stroke();
+      frame = requestAnimationFrame(drawWaveform);
     }
-    drawLevel();
+    drawWaveform();
   } catch (error) {
     pickerPending = false;
     if (stopped) {
