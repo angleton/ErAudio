@@ -423,6 +423,67 @@ body {
   display: block;
 }
 
+.listen-heat {
+  height: 5px;
+  margin: 3px 6px 0;
+  background-color: #080f08;
+  border: 1px solid #003300;
+  background-size: 100% 100%;
+}
+
+.marker-heat {
+  flex: none;
+  margin-left: auto;
+  padding: 0 5px;
+  border: 1px solid #111;
+  color: #ffffff;
+  font: 10px/1.6 var(--font-mono);
+  text-shadow: 0 0 2px #000;
+}
+
+.playlist-item.has-heat {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.history-list {
+  height: 190px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #080f08;
+  border: 1px solid #003300;
+  box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.history-item {
+  padding: 3px 6px;
+  color: var(--lcd-green);
+  font-family: var(--font-digital);
+  font-size: 16px;
+  border-bottom: 1px solid #0f1f0f;
+  overflow-wrap: anywhere;
+}
+
+.history-item .history-detail {
+  display: block;
+  color: var(--accent-gold);
+  font: 10px var(--font-mono);
+}
+
+.history-note {
+  margin: 4px 0 0;
+  color: #aaaaaa;
+  font: 10px/1.4 var(--font-mono);
+}
+
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 6px;
+}
+
 .saved-locations {
   position: absolute;
   inset: 0 6px auto;

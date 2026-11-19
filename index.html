@@ -6,6 +6,7 @@
   <title>ErAudio Web Player (with Pitchfork Plugin UI)</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="history.js" defer></script>
   <script src="app.js" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,6 +46,7 @@
         <div class="scrubber-track">
           <input type="range" class="winamp-slider scrubber" id="scrubber" data-control="scrubber" min="0" max="100" value="0">
           <div class="saved-locations" id="saved-locations" aria-label="Saved playback locations"></div>
+          <div class="listen-heat" id="listen-heat" aria-hidden="true"></div>
         </div>
       </div>
       <p class="memory-message" id="memory-message" role="status" aria-live="polite"></p>
@@ -98,6 +100,7 @@
         <div class="toggle-buttons">
           <button class="toggle-btn tooltip-target" id="btn-vid" type="button" data-action="toggle-videos" data-tooltip="Toggle videos" aria-pressed="false">VID</button>
           <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle video chapters or timestamps" aria-pressed="false">PL</button>
+          <button class="toggle-btn tooltip-target" id="btn-hist" type="button" data-action="toggle-history" data-tooltip="Toggle listening history" aria-pressed="false">HIST</button>
           <button class="toggle-btn tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-pressed="false">DJ</button>
         </div>
       </div>
@@ -198,6 +201,31 @@
         <button class="pl-btn" id="marker-source-toggle" type="button">SHOW MY LOCATIONS</button>
         <button class="pl-btn" id="marker-view-toggle" type="button" hidden></button>
         <div class="pl-info" id="marker-info">NO VIDEO</div>
+      </div>
+    </div>
+
+    <!-- LISTENING HISTORY WINDOW -->
+    <div class="winamp-window playlist-window" id="history-window" hidden>
+      <div class="title-bar">
+        <div class="title-bar-text">ErAudio Listening History</div>
+      </div>
+
+      <div class="playlist-body">
+        <div class="history-list" id="history-list" role="list" aria-label="Most listened videos and segments"></div>
+        <p class="history-note">Tracked locally in this browser and approximate. Clearing site data erases it, so use EXPORT to keep a backup.</p>
+        <p class="history-note" id="history-message" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="history-actions">
+        <button class="pl-btn" id="history-view" type="button">VIEW: SEGMENTS</button>
+        <button class="pl-btn" id="history-sort" type="button">RANK BY: LISTENS</button>
+        <button class="pl-btn" id="history-export" type="button">EXPORT</button>
+        <button class="pl-btn" id="history-import" type="button">IMPORT</button>
+        <button class="pl-btn" id="history-clear" type="button">CLEAR</button>
+        <input id="history-file" type="file" accept=".json,application/json" hidden>
+      </div>
+      <div class="playlist-footer">
+        <div class="pl-info" id="history-info">NO HISTORY</div>
       </div>
     </div>
 

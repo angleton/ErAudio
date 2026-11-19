@@ -639,6 +639,7 @@ function renderMarkers() {
       : showingChapters ? 'INFERRED CHAPTERS' : 'TIMESTAMPS';
     markerInfo.textContent = `${label} / ${entries.length} ENTRIES${markers.duration ? '' : ' / CHAPTERS UNAVAILABLE'}`;
   }
+  refreshHeat();
 }
 
 async function ensureMarkers(track) {
@@ -661,6 +662,7 @@ async function ensureMarkers(track) {
     if (typeof description !== 'string') throw new Error('Video description unavailable');
     const duration = parseIsoDurationSeconds(data.items[0].contentDetails?.duration);
     track.markers = parseDescriptionMarkers(description, duration);
+    listeningHistory.updateVideoMeta(trackHistoryMeta(track));
   } catch {
     retryWithCredentials = accessToken !== youtubeAccessToken || (!accessToken && apiKey !== youtubeApiKey);
     if (!retryWithCredentials) {
@@ -728,6 +730,7 @@ function loadTrackIntoPlayer(list, track) {
 
 function stopPlayback() {
   cancelNudgePreview(true);
+  listeningHistory.endSession();
   if (ytReady) ytPlayer.stopVideo();
   resetTransportDisplay();
 }
@@ -784,6 +787,260 @@ function setTrackTitle(track, title) {
   renderFavoritesList(currentListId);
 }
 
+const listeningHistory = new ErAudioHistory.ListeningHistory();
+const { buildSegments, segmentStats, heatBuckets, heatColor, heatGradient } = ErAudioHistory;
+const listenHeat = document.querySelector('#listen-heat');
+const historyWindow = document.querySelector('#history-window');
+const historyList = document.querySelector('#history-list');
+const historyInfo = document.querySelector('#history-info');
+const historyMessage = document.querySelector('#history-message');
+const historyViewButton = document.querySelector('#history-view');
+const historySortButton = document.querySelector('#history-sort');
+const historyFile = document.querySelector('#history-file');
+const heatBucketCount = 100;
+const maxHistoryRows = 200;
+let heatRefreshId = 0;
+let historyRenderId = 0;
+let historyView = 'segments';
+let historySort = 'listens';
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.round(totalSeconds || 0));
+  const hours = Math.floor(seconds / 3600);
+  const rest = `${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  return hours ? `${hours}:${rest}` : rest;
+}
+
+function trackHistoryMeta(track) {
+  const markers = track.markers;
+  return {
+    videoId: track.videoId,
+    title: track.title,
+    duration: (track === playingTrack && activeVideoDuration()) || markers?.duration || 0,
+    chapters: markers?.chapters,
+    timestamps: markers?.timestamps,
+  };
+}
+
+// Feeds the playback position to the history recorder; only the active, loaded video counts.
+function recordListening(state = ytReady ? ytPlayer.getPlayerState() : -1) {
+  if (!ytReady || !playingTrack) {
+    listeningHistory.close();
+    return;
+  }
+  const track = playingTrack;
+  const loaded = ytPlayer.getVideoData?.()?.video_id === track.videoId;
+  listeningHistory.update({
+    videoId: track.videoId,
+    position: loaded ? ytPlayer.getCurrentTime() : NaN,
+    playing: loaded && state === YT.PlayerState.PLAYING && !nudgePreview,
+    rate: ytPlayer.getPlaybackRate?.() || 1,
+    getMeta: () => trackHistoryMeta(track),
+  });
+}
+
+function applyMarkerHeat(spans, duration) {
+  markerList.querySelectorAll('.marker-heat').forEach((badge) => {
+    badge.parentElement.classList.remove('has-heat');
+    badge.remove();
+  });
+  if (markerSource !== 'video' || !playingTrack?.markers) return;
+  const entries = currentMarkerEntries();
+  const items = markerList.querySelectorAll('[data-marker]');
+  if (!entries.length || items.length !== entries.length) return;
+  const segments = entries.map((entry, index) => ({
+    start: entry.start,
+    end: index + 1 < entries.length ? entries[index + 1].start : Math.max(duration, entry.start + 1),
+  }));
+  const stats = segmentStats(spans, segments);
+  const hottest = Math.max(...stats.map((stat) => stat.coverage), 0);
+  if (!(hottest > 0)) return;
+  stats.forEach((stat, index) => {
+    if (!(stat.seconds > 0)) return;
+    const badge = document.createElement('span');
+    badge.className = 'marker-heat';
+    badge.style.backgroundColor = heatColor(stat.coverage / hottest);
+    badge.title = `${stat.listens} listen${stat.listens === 1 ? '' : 's'}, ${formatDuration(stat.seconds)} listened`;
+    badge.append(`x${stat.coverage.toFixed(1)}`);
+    const hidden = document.createElement('span');
+    hidden.className = 'sr-only';
+    hidden.textContent = ` times listened, ${formatDuration(stat.seconds)} total`;
+    badge.append(hidden);
+    items[index].classList.add('has-heat');
+    items[index].append(badge);
+  });
+}
+
+async function refreshHeat() {
+  const refreshId = ++heatRefreshId;
+  const track = playingTrack;
+  const duration = track ? (activeVideoDuration() || track.markers?.duration || 0) : 0;
+  if (!track || !listeningHistory.available || !(duration > 0)) {
+    listenHeat.style.backgroundImage = 'none';
+    applyMarkerHeat([], 0);
+    return;
+  }
+  const spans = await listeningHistory.getSpans(track.videoId);
+  if (refreshId !== heatRefreshId) return;
+  listenHeat.style.backgroundImage = heatGradient(heatBuckets(spans, duration, heatBucketCount));
+  applyMarkerHeat(spans, duration);
+}
+
+function historyEntries(videos, spans) {
+  const byVideo = new Map(videos.map((video) => [video.videoId, { video, spans: [] }]));
+  spans.forEach((span) => {
+    if (!byVideo.has(span.videoId)) byVideo.set(span.videoId, { video: { videoId: span.videoId, plays: 0 }, spans: [] });
+    byVideo.get(span.videoId).spans.push(span);
+  });
+  const entries = [];
+  byVideo.forEach(({ video, spans: videoSpans }) => {
+    const title = video.title || `YouTube video ${video.videoId}`;
+    const total = videoSpans.reduce((sum, span) => sum + (span.end - span.start), 0);
+    if (historyView === 'videos') {
+      if (video.plays || total) entries.push({ title, label: '', listens: video.plays || 0, seconds: total });
+      return;
+    }
+    const markers = video.chapters?.length ? video.chapters : (video.timestamps || []);
+    const segments = buildSegments(markers, video.duration, videoSpans);
+    segmentStats(videoSpans, segments).forEach((stat, index) => {
+      if (!(stat.seconds > 0)) return;
+      const segment = segments[index];
+      const name = segment.lead ? 'Before first marker' : segment.title || (markers.length ? `Part ${index + 1}` : 'Whole video');
+      entries.push({
+        title,
+        label: markers.length && !segment.lead ? `[${formatClock(segment.start)}] ${name}` : name,
+        listens: stat.listens,
+        seconds: stat.seconds,
+      });
+    });
+  });
+  entries.sort(historySort === 'time'
+    ? (a, b) => b.seconds - a.seconds || b.listens - a.listens
+    : (a, b) => b.listens - a.listens || b.seconds - a.seconds);
+  return entries;
+}
+
+async function renderHistory() {
+  if (historyWindow.hidden) return;
+  const renderId = ++historyRenderId;
+  historyViewButton.textContent = historyView === 'segments' ? 'VIEW: SEGMENTS' : 'VIEW: VIDEOS';
+  historySortButton.textContent = historySort === 'listens' ? 'RANK BY: LISTENS' : 'RANK BY: TIME';
+  const placeholder = (text) => {
+    const empty = document.createElement('div');
+    empty.className = 'playlist-empty';
+    empty.textContent = text;
+    historyList.replaceChildren(empty);
+  };
+  if (!listeningHistory.available) {
+    placeholder('Listening history is unavailable because this browser could not open its local storage.');
+    historyInfo.textContent = 'STORAGE UNAVAILABLE';
+    return;
+  }
+  const { videos, spans } = await listeningHistory.getAll();
+  if (renderId !== historyRenderId) return;
+  const entries = historyEntries(videos, spans);
+  const totalSeconds = spans.reduce((sum, span) => sum + (span.end - span.start), 0);
+  const totalPlays = videos.reduce((sum, video) => sum + (video.plays || 0), 0);
+  historyInfo.textContent = videos.length || spans.length
+    ? `${videos.length} VIDEOS / ${totalPlays} PLAYS / ${formatDuration(totalSeconds)}` : 'NO HISTORY';
+  if (!entries.length) {
+    placeholder('Nothing listened to yet. Play a video for at least a few seconds.');
+    return;
+  }
+  historyList.replaceChildren(...entries.slice(0, maxHistoryRows).map((entry, index) => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.setAttribute('role', 'listitem');
+    item.append(`${index + 1}. ${entry.title}${entry.label ? ` / ${entry.label}` : ''}`);
+    const detail = document.createElement('span');
+    detail.className = 'history-detail';
+    detail.textContent = `${historyView === 'videos' ? 'PLAYS' : 'LISTENS'} ${entry.listens} / TIME ${formatDuration(entry.seconds)}`;
+    item.append(detail);
+    return item;
+  }));
+}
+
+function historyStatus(message) {
+  historyMessage.textContent = message;
+  announceEvent({ type: 'history', name: message });
+}
+
+listeningHistory.onChange = (videoId) => {
+  if (videoId === null || videoId === playingTrack?.videoId) refreshHeat();
+  renderHistory();
+};
+
+historyViewButton.addEventListener('click', () => {
+  historyView = historyView === 'segments' ? 'videos' : 'segments';
+  renderHistory();
+});
+
+historySortButton.addEventListener('click', () => {
+  historySort = historySort === 'listens' ? 'time' : 'listens';
+  renderHistory();
+});
+
+document.querySelector('#history-export').addEventListener('click', async () => {
+  let url;
+  try {
+    if (!listeningHistory.available) throw new Error('Listening history storage is unavailable.');
+    listeningHistory.flushCurrent();
+    const data = await listeningHistory.exportData();
+    if (!data.spans.length) {
+      historyStatus('There is no listening history to export.');
+      return;
+    }
+    url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ErAudio-listening-history.json';
+    link.click();
+    historyStatus('Export started for your listening history.');
+  } catch (error) {
+    console.error(error);
+    historyStatus('Could not export listening history.');
+  } finally {
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+});
+
+document.querySelector('#history-import').addEventListener('click', () => historyFile.click());
+historyFile.addEventListener('change', async () => {
+  const file = historyFile.files[0];
+  historyFile.value = '';
+  if (!file) return;
+  try {
+    const result = await listeningHistory.importData(JSON.parse(await file.text()));
+    historyStatus(`Imported ${result.spans} new listening span${result.spans === 1 ? '' : 's'}.`);
+  } catch (error) {
+    console.error(error);
+    historyStatus(error instanceof SyntaxError ? 'That file is not valid JSON. Nothing was imported.'
+      : `${error.message || 'Could not import listening history.'}`);
+  }
+});
+
+document.querySelector('#history-clear').addEventListener('click', async () => {
+  if (!listeningHistory.available || !window.confirm('Erase all listening history stored in this browser? Export it first if you want a backup.')) return;
+  try {
+    await listeningHistory.clear();
+    historyStatus('Listening history cleared.');
+  } catch (error) {
+    console.error(error);
+    historyStatus('Could not clear listening history.');
+  }
+});
+
+// The tab may be closed or backgrounded without a pause, so save the open span.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') listeningHistory.flushCurrent();
+});
+window.addEventListener('pagehide', () => listeningHistory.flushCurrent());
+
+listeningHistory.init().then(() => {
+  refreshHeat();
+  renderHistory();
+});
+
 function onPlayerStateChange(event) {
   if (event.data !== YT.PlayerState.BUFFERING) {
     const isPlaying = event.data === YT.PlayerState.PLAYING;
@@ -797,6 +1054,7 @@ function onPlayerStateChange(event) {
     button.setAttribute('aria-pressed', String(event.data === YT.PlayerState.PAUSED));
   });
   renderSavedLocations();
+  recordListening(event.data);
   if (!playingTrack) return;
   if (handleNudgeStateChange(event.data)) return;
   if (event.data === YT.PlayerState.PLAYING) {
@@ -807,7 +1065,9 @@ function onPlayerStateChange(event) {
       if (currentListId === playingList?.id) renderFavoritesList(currentListId);
     }
     setTrackTitle(playingTrack, ytPlayer.getVideoData?.().title);
+    refreshHeat();
   } else if (event.data === YT.PlayerState.ENDED) {
+    listeningHistory.endSession();
     if (!stepTrack(1, { wrap: false })) resetTransportDisplay();
   }
 }
@@ -852,6 +1112,7 @@ function initYouTubePlayer() {
     if (!ytReady || !playingTrack) return;
     renderSavedLocations();
     const state = ytPlayer.getPlayerState();
+    recordListening(state);
     if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED) return;
     const duration = ytPlayer.getDuration();
     const position = ytPlayer.getCurrentTime();
@@ -1553,8 +1814,10 @@ document.addEventListener('click', (event) => {
     const targetId = {
       'toggle-videos': 'videos-window',
       'toggle-playlist': 'playlist-window',
+      'toggle-history': 'history-window',
     }[button.dataset.action] || 'pitchfork-window';
     document.getElementById(targetId).hidden = !isActive;
+    if (targetId === 'history-window') renderHistory();
   }
 
   if (button.dataset.action === 'open') showInputDialog('open');
