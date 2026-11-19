@@ -10,6 +10,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 2. **Start listening:** Click **Open** to switch to another YouTube link or video ID; no account needed.
 3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. See [YouTube API setup](#youtube-api-setup).
 4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, **DJ** opens the speed control, and **HIST** opens your listening history. Only the main player is visible at first.
+5. **See live audio levels:** Follow [Enable live audio levels](#enable-live-audio-levels) to share audio from the ErAudio tab.
 
 > If Google says "this app isn't verified", click **Advanced**, then **Continue**. ErAudio only asks to *view* your YouTube account and never changes anything.
 
@@ -30,13 +31,21 @@ This project aims to preserve the compact retro-audio-player aesthetic that insp
 ### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The time and title displays are the same height, with a full-width live level meter above the position bar. On the first **Play** action after the player is ready, a supported desktop browser opens its sharing picker. Choose this ErAudio tab and enable **Share tab audio**. The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures audio locally without recording or uploading it. Canceling leaves playback working without the meter. Use the browser's sharing controls to stop; to try again, reload and press **Play**. Tab capture requires a supported browser and HTTPS or localhost.
+The time and title displays are the same height, with a full-width [live level meter](#enable-live-audio-levels) above the position bar.
 
 The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v3.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
 ![ErAudio player showing saved locations, Pitchfork controls, videos, and chapters](screenshot-ui.png)
 <br>
 *Current interface with example videos, chapters, BPM, and saved locations; playback is simulated for this screenshot.*
+
+### Enable live audio levels
+
+1. Open ErAudio over HTTPS or localhost (`file://` does not work for the meter). Wait for the player to be ready and press ErAudio's **Play** button. If a video is already playing, pause it and press **Play** again. The first action that starts or resumes playback from that button opens the browser's sharing picker; do not right-click the browser tab.
+2. In desktop Chrome, Edge, or Brave, choose **This Tab** or the browser's tab category in the picker. Select the ErAudio tab you're using, turn on **Share tab audio** (sometimes **Also share tab audio**), and click **Share**. The audio option is in the picker, not in ErAudio or the browser tab menu. Do not select **Window** or **Entire Screen**.
+3. If the picker doesn't appear, or if you dismissed it, shared without audio, or stopped sharing, reload ErAudio and press **Play** again. The app only asks once per page load. If the meter says to use a supported desktop browser on HTTPS or localhost, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
+
+The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures audio locally without recording or uploading it. Canceling leaves playback working without the meter. Use the browser's sharing controls to stop.
 
 ---
 
