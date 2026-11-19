@@ -779,6 +779,7 @@ const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof navigator.mediaDevices?.setCaptureHandleConfig === 'function'
   && typeof window.AudioContext === 'function';
 let liveLevelAutoPrompted = false;
+let liveLevelsPaused = false;
 
 liveLevelButton.disabled = !tabCaptureAvailable;
 liveLevelButton.addEventListener('click', requestLiveLevels);
@@ -861,7 +862,7 @@ async function requestLiveLevels() {
     analyzer.fftSize = 16384;
     analyzer.smoothingTimeConstant = 0;
     context.createMediaStreamSource(new MediaStream([audio])).connect(analyzer);
-    const bins = new Float32Array(analyzer.frequencyBinCount);
+    const bins = new Float32Array(analyzer.frequencyBinCount).fill(-Infinity);
     const lowHz = 30;
     const highHz = Math.min(16000, context.sampleRate / 2);
     const hzPerBin = context.sampleRate / analyzer.fftSize;
@@ -880,7 +881,9 @@ async function requestLiveLevels() {
       const ratio = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(spectrum.clientWidth * ratio));
       const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
-      const bandCount = Math.max(1, Math.min(64, Math.floor(width / (6 * ratio))));
+      const bandCount = liveLevelsPaused && bandEdges.length
+        ? bandEdges.length - 1
+        : Math.max(1, Math.min(64, Math.floor(width / (6 * ratio))));
       if (bandEdges.length !== bandCount + 1) {
         // Logarithmic bands spread bass and treble across the display.
         bandEdges = Array.from({ length: bandCount + 1 }, (_, index) =>
@@ -890,7 +893,7 @@ async function requestLiveLevels() {
       }
       if (spectrum.width !== width) spectrum.width = width;
       if (spectrum.height !== height) spectrum.height = height;
-      analyzer.getFloatFrequencyData(bins);
+      if (!liveLevelsPaused) analyzer.getFloatFrequencyData(bins);
       drawing.clearRect(0, 0, width, height);
       const step = width / bandCount;
       const dotRadius = Math.min(1.5 * ratio, step / 2, height / 2);
@@ -912,7 +915,7 @@ async function requestLiveLevels() {
         colors.addColorStop(center, `hsl(${hue} 100% 55%)`);
         const fallingMs = Math.max(0, now - Math.max(lastFrameTime, holdUntil[band]));
         const fallingPeak = Math.max(0, heldPeaks[band] - fallingMs * peakFallPerMs);
-        if (level > 0 && level >= fallingPeak) {
+        if (!liveLevelsPaused && level > 0 && level >= fallingPeak) {
           heldPeaks[band] = level;
           holdUntil[band] = now + peakHoldMs;
         } else {
@@ -1272,6 +1275,7 @@ listeningHistory.init().then(() => {
 
 function onPlayerStateChange(event) {
   if (event.data !== YT.PlayerState.BUFFERING) {
+    liveLevelsPaused = event.data === YT.PlayerState.PAUSED;
     const isPlaying = event.data === YT.PlayerState.PLAYING;
     updatePlayButton(isPlaying);
   } else {
@@ -1302,6 +1306,7 @@ function onPlayerStateChange(event) {
 }
 
 function onPlayerError() {
+  liveLevelsPaused = false;
   updatePlayButton(false);
   if (nudgePreview) {
     cancelNudgePreview(true);
