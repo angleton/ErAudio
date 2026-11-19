@@ -106,6 +106,10 @@ const markerInfo = document.querySelector('#marker-info');
 const markerSourceToggle = document.querySelector('#marker-source-toggle');
 const markerViewToggle = document.querySelector('#marker-view-toggle');
 const timeDisplay = document.querySelector('#time-display');
+const timerButton = document.querySelector('#timer-display');
+let showTimeRemaining = false;
+let displayedPosition = 0;
+let displayedDuration = 0;
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
 let ytReady = false;
@@ -466,6 +470,21 @@ function formatClock(totalSeconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+function updateTimeDisplay(position, duration) {
+  displayedPosition = position;
+  displayedDuration = duration;
+  const text = showTimeRemaining
+    ? (duration > 0 ? `-${formatClock(Math.ceil(duration - position))}` : '--:--')
+    : formatClock(position);
+  if (timeDisplay.textContent !== text) timeDisplay.textContent = text;
+}
+
+timerButton.addEventListener('click', () => {
+  showTimeRemaining = !showTimeRemaining;
+  timerButton.setAttribute('aria-pressed', String(showTimeRemaining));
+  updateTimeDisplay(displayedPosition, displayedDuration);
+});
+
 function updateNowPlaying() {
   renderMarkers();
   renderSavedLocations();
@@ -484,7 +503,7 @@ function applyControl(name, value) {
 }
 
 function resetTransportDisplay() {
-  timeDisplay.textContent = '00:00';
+  updateTimeDisplay(0, 0);
   controls.scrubber.value = 0;
   updatePlayButton(false);
 }
@@ -1323,11 +1342,11 @@ function initYouTubePlayer() {
     renderSavedLocations();
     const state = ytPlayer.getPlayerState();
     recordListening(state);
-    if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED) return;
+    if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED && state !== YT.PlayerState.CUED) return;
     const duration = ytPlayer.getDuration();
     const position = ytPlayer.getCurrentTime();
     if (scrubbing) return;
-    timeDisplay.textContent = formatClock(position);
+    updateTimeDisplay(position, duration);
     highlightActiveMarker(position);
     if (duration > 0) controls.scrubber.value = (position / duration) * 100;
   }, 250);
@@ -1694,7 +1713,7 @@ function recallSavedLocation(index, { allowUnavailableSelection = false } = {}) 
   cancelNudgePreview(true);
   ytPlayer.seekTo(position, true);
   controls.scrubber.value = (position / duration) * 100;
-  timeDisplay.textContent = formatClock(position);
+  updateTimeDisplay(position, duration);
   highlightActiveMarker(position);
   memoryMessage.textContent = '';
   selectedLocation = { videoId: playingTrack.videoId, index, position };
@@ -1897,7 +1916,8 @@ document.querySelectorAll('[data-control]').forEach((control) => {
     if (controlName === 'scrubber') {
       cancelNudgePreview(true);
       scrubbing = true;
-      timeDisplay.textContent = formatClock((Number(control.value) / 100) * currentDuration());
+      const duration = currentDuration();
+      updateTimeDisplay((Number(control.value) / 100) * duration, duration);
     } else {
       if (controlName === 'speed') {
         stopSpeedRamp();
@@ -1914,8 +1934,9 @@ document.querySelectorAll('[data-control]').forEach((control) => {
   control.addEventListener('change', () => {
     if (control.dataset.control === 'scrubber') {
       scrubbing = false;
-      const target = (Number(control.value) / 100) * currentDuration();
-      timeDisplay.textContent = formatClock(target);
+      const duration = currentDuration();
+      const target = (Number(control.value) / 100) * duration;
+      updateTimeDisplay(target, duration);
       if (ytReady && playingTrack) ytPlayer.seekTo(target, true);
     }
     const value = control.dataset.control === 'speed' ? String(currentSpeedRate()) : control.value;
@@ -2551,8 +2572,9 @@ function handleNudgeStateChange(state) {
     const target = preview.target;
     cancelNudgePreview();
     ytPlayer.seekTo(target, true);
-    controls.scrubber.value = (target / activeVideoDuration()) * 100;
-    timeDisplay.textContent = formatClock(target);
+    const duration = activeVideoDuration();
+    controls.scrubber.value = (target / duration) * 100;
+    updateTimeDisplay(target, duration);
     highlightActiveMarker(target);
     nudgeMessage.textContent = `Requested ${formatLocationTime(target)}. YouTube seek and preview timing are approximate.`;
   }

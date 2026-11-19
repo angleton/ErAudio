@@ -318,6 +318,7 @@ body {
 
 .timer-display {
   position: relative;
+  cursor: pointer;
   font-family: var(--font-digital);
   font-size: 38px;
   color: var(--lcd-green);

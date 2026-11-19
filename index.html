@@ -26,11 +26,10 @@
 
       <!-- Main Display Screen (Green/Yellow LCD) -->
       <div class="display-panel">
-        <div class="timer-display">
+        <button class="timer-display" id="timer-display" type="button" aria-label="Show remaining time" aria-pressed="false" aria-describedby="time-display" title="Switch between elapsed and remaining time">
           <span id="playback-indicator" aria-hidden="true" hidden>▶</span>
-          <span class="digit-minus"></span>
           <span class="digits" id="time-display">00:00</span>
-        </div>
+        </button>
         <div class="display-right">
           <div class="marquee-container">
             <div class="marquee-text" id="track-title">ErAudio - press ⏏ to open a YouTube video</div>
