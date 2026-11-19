@@ -171,7 +171,9 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
         contentType: 'text/javascript',
         body: `window.google = { accounts: { id: {
           initialize({ callback }) { this.callback = callback; },
+          disableAutoSelect() {},
           renderButton(parent) {
+            parent.style.display = 'block';
             const button = document.createElement('button');
             button.textContent = 'Sign in with Google';
             button.onclick = () => this.callback({ credential: ${JSON.stringify(token('10000001'))} });
@@ -183,11 +185,15 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     await page.goto(origin);
     const top = page.getByRole('button', { name: 'TOP', exact: true });
     await top.click();
-    await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+    const signIn = page.getByRole('button', { name: 'Sign in with Google', exact: true });
+    await signIn.click();
     await page.getByText('Private history synced.', { exact: true }).waitFor().catch(async (error) => {
       throw new Error(`Could not sign into local sync: ${await page.locator('#history-sync-status').innerText()}`, { cause: error });
     });
-    return { page, top, view: page.locator('#history-view') };
+    const signOut = page.getByRole('button', { name: 'STOP SYNC & SIGN OUT' });
+    await page.locator('#history-google button').waitFor({ state: 'hidden' });
+    await signOut.waitFor({ state: 'visible' });
+    return { page, top, view: page.locator('#history-view'), signIn, signOut };
   }
 
   async function reopenTop({ top }) {
@@ -210,4 +216,7 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     await view.click();
     await waitForTop(page, 'PLAYS', [['b', 2, 20], ['z', 2, 20], ['a', 1, 10]]);
   }));
+  await first.signOut.click();
+  await first.signIn.waitFor({ state: 'visible' });
+  await first.signOut.waitFor({ state: 'hidden' });
 });

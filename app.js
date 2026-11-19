@@ -1207,7 +1207,7 @@ function setupHistorySync(config) {
       return;
     }
     identity.initialize({ client_id: config.googleClientId, callback: signIn, auto_select: false });
-    identity.renderButton(historyGoogle, { theme: 'outline', size: 'medium' });
+    identity.renderButton(document.querySelector('#history-google-button'), { theme: 'outline', size: 'medium' });
   };
   if (window.google?.accounts?.id) renderSignIn();
   else {
