@@ -874,21 +874,23 @@ async function requestLiveLevels() {
       analyzer.getFloatFrequencyData(bins);
       drawing.clearRect(0, 0, width, height);
       const step = width / bandCount;
-      const gap = Math.min(2 * ratio, step / 4);
-      const barWidth = step - gap;
-      const dotRadius = Math.min(1.5 * ratio, barWidth / 2, height / 2);
+      const dotRadius = Math.min(1.5 * ratio, step / 2, height / 2);
+      const colors = drawing.createLinearGradient(0, 0, width, 0);
+      let spectrumTop = height;
+      drawing.beginPath();
+      drawing.moveTo(0, height);
       for (let band = 0; band < bandCount; band++) {
         let peak = -Infinity;
         for (let bin = bandEdges[band]; bin < bandEdges[band + 1]; bin++) {
           peak = Math.max(peak, bins[bin]);
         }
         const level = Math.min(1, Math.max(0, (peak + 90) / 65));
-        const x = band * step + gap / 2;
-        if (level > 0) {
-          const hue = Math.round(120 * (1 - level));
-          drawing.fillStyle = `hsl(${hue} 100% 55%)`;
-          drawing.fillRect(x, height * (1 - level), barWidth, height * level);
-        }
+        spectrumTop = height * (1 - level);
+        const center = (band + 0.5) / bandCount;
+        if (band === 0) drawing.lineTo(0, spectrumTop);
+        drawing.lineTo(center * width, spectrumTop);
+        const hue = Math.round(120 * (1 - level));
+        colors.addColorStop(center, `hsl(${hue} 100% 55%)`);
         const fallingMs = Math.max(0, now - Math.max(lastFrameTime, holdUntil[band]));
         const fallingPeak = Math.max(0, heldPeaks[band] - fallingMs * peakFallPerMs);
         if (level > 0 && level >= fallingPeak) {
@@ -897,11 +899,18 @@ async function requestLiveLevels() {
         } else {
           heldPeaks[band] = fallingPeak;
         }
+      }
+      drawing.lineTo(width, spectrumTop);
+      drawing.lineTo(width, height);
+      drawing.closePath();
+      drawing.fillStyle = colors;
+      drawing.fill();
+      drawing.fillStyle = '#fff';
+      for (let band = 0; band < bandCount; band++) {
         if (heldPeaks[band] > 0) {
           const y = Math.max(dotRadius, height * (1 - heldPeaks[band]) - dotRadius);
-          drawing.fillStyle = '#fff';
           drawing.beginPath();
-          drawing.arc(x + barWidth / 2, y, dotRadius, 0, 2 * Math.PI);
+          drawing.arc((band + 0.5) * step, y, dotRadius, 0, 2 * Math.PI);
           drawing.fill();
         }
       }
