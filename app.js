@@ -753,24 +753,29 @@ function stepTrack(step, { wrap = true } = {}) {
 
 const liveLevelStatus = document.querySelector('#live-level-status');
 const liveLevelFill = document.querySelector('#live-level-fill');
+const liveLevelButton = document.querySelector('#live-level-share');
 const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
   && typeof navigator.mediaDevices?.setCaptureHandleConfig === 'function'
   && typeof window.AudioContext === 'function';
-let liveLevelRequested = false;
+let liveLevelAutoPrompted = false;
 
+liveLevelButton.disabled = !tabCaptureAvailable;
+liveLevelButton.addEventListener('click', requestLiveLevels);
 if (!tabCaptureAvailable) {
   liveLevelStatus.textContent = 'Live levels: use a supported desktop browser on HTTPS or localhost.';
 }
 
 async function requestLiveLevels() {
-  if (!tabCaptureAvailable || liveLevelRequested) return;
-  liveLevelRequested = true;
+  if (liveLevelButton.disabled) return;
+  liveLevelAutoPrompted = true;
+  liveLevelButton.disabled = true;
   const mediaDevices = navigator.mediaDevices;
   let capture;
   let context;
   let frame;
   let stopped = false;
+  let pickerPending = true;
 
   function stop(message) {
     if (stopped) return;
@@ -783,9 +788,10 @@ async function requestLiveLevels() {
     }
     liveLevelFill.style.removeProperty('--live-level-unfilled');
     liveLevelStatus.textContent = message;
+    if (!pickerPending) liveLevelButton.disabled = false;
   }
 
-  const stoppedMessage = 'Live levels: sharing stopped. Reload and press Play to try again.';
+  const stoppedMessage = 'Live levels: sharing stopped. Use Share Tab Audio to try again.';
   const onPageHide = () => stop(stoppedMessage);
   window.addEventListener('pagehide', onPageHide);
   liveLevelStatus.textContent = 'Live levels: waiting for tab sharing.';
@@ -810,18 +816,20 @@ async function requestLiveLevels() {
     } finally {
       mediaDevices.setCaptureHandleConfig({});
     }
+    pickerPending = false;
     if (stopped) {
       capture.getTracks().forEach((track) => track.stop());
+      liveLevelButton.disabled = false;
       return;
     }
     if (capturedHandle !== handle) {
-      stop('Live levels: only this ErAudio tab can be used. Reload and press Play to try again.');
+      stop('Live levels: only this ErAudio tab can be used. Use Share Tab Audio to try again.');
       return;
     }
     capture.getVideoTracks().forEach((track) => track.stop());
     const [audio] = capture.getAudioTracks();
     if (!audio || audio.readyState === 'ended') {
-      stop('Live levels: no tab audio was shared. Reload and press Play to try again.');
+      stop('Live levels: no tab audio was shared. Use Share Tab Audio to try again.');
       return;
     }
     audio.addEventListener('ended', () => stop(stoppedMessage), { once: true });
@@ -844,11 +852,16 @@ async function requestLiveLevels() {
     }
     drawLevel();
   } catch (error) {
-    if (stopped) return;
+    pickerPending = false;
+    if (stopped) {
+      capture?.getTracks().forEach((track) => track.stop());
+      liveLevelButton.disabled = false;
+      return;
+    }
     const denied = error.name === 'NotAllowedError';
     if (!denied) console.warn('Could not start the live level meter.', error);
     const reason = denied ? 'tab sharing was not allowed' : 'could not start tab audio';
-    stop(`Live levels: ${reason}. Playback still works; reload to try again.`);
+    stop(`Live levels: ${reason}. Playback still works; use Share Tab Audio to try again.`);
   }
 }
 
@@ -860,7 +873,7 @@ function togglePlayback() {
     if (ytReady) {
       if (wasPlaying) ytPlayer.pauseVideo();
       else {
-        requestLiveLevels();
+        if (!liveLevelAutoPrompted) requestLiveLevels();
         ytPlayer.playVideo();
       }
     }
@@ -869,7 +882,7 @@ function togglePlayback() {
   const list = currentList();
   const track = list.tracks.find((candidate) => candidate.selected) || list.tracks[0];
   if (track) {
-    if (ytReady) requestLiveLevels();
+    if (ytReady && !liveLevelAutoPrompted) requestLiveLevels();
     playTrack(list, track);
   } else {
     showInputDialog('open');

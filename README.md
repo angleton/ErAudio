@@ -41,9 +41,9 @@ The main title bar displays **ErAudio**, the YouTube login or account name, and 
 
 ### Enable live audio levels
 
-1. Open ErAudio over HTTPS or localhost (`file://` does not work for the meter). Wait for the player to be ready and press ErAudio's **Play** button. If a video is already playing, pause it and press **Play** again. The first action that starts or resumes playback from that button opens the browser's sharing picker; do not right-click the browser tab.
+1. Open ErAudio over HTTPS or localhost (`file://` does not work for the meter). Click **Share Tab Audio** beside the meter, or start playback with ErAudio's **Play** button to open the picker automatically on your first Play.
 2. In desktop Chrome, Edge, or Brave, choose **This Tab** or the browser's tab category in the picker. Select the ErAudio tab you're using, turn on **Share tab audio** (sometimes **Also share tab audio**), and click **Share**. The audio option is in the picker, not in ErAudio or the browser tab menu. Do not select **Window** or **Entire Screen**.
-3. If the picker doesn't appear, or if you dismissed it, shared without audio, or stopped sharing, reload ErAudio and press **Play** again. The app only asks once per page load. If the meter says to use a supported desktop browser on HTTPS or localhost, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
+3. If the picker closes before you can share, or if you cancel, share without audio, or stop sharing, click **Share Tab Audio** again. You don't need to reload or pause playback. The button is disabled while the picker is open or sharing is active. If the meter says to use a supported desktop browser on HTTPS or localhost, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
 
 The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures audio locally without recording or uploading it. Canceling leaves playback working without the meter. Use the browser's sharing controls to stop.
 
