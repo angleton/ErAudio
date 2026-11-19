@@ -1,2 +1,3 @@
 config.js
 cloudflare/.wrangler/
+node_modules/

@@ -1,0 +1,10 @@
+{
+  "name": "eraudio",
+  "private": true,
+  "scripts": {
+    "test:top": "node --test tests/top-browser.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

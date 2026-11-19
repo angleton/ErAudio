@@ -133,11 +133,10 @@
           this.onChange?.(null);
         };
         this.available = true;
-        try {
-          this.persisted = Boolean(await navigator.storage?.persist?.());
-        } catch {
-          this.persisted = false;
-        }
+        // A browser permission prompt must not hold up history or sign-in.
+        navigator.storage?.persist?.().then((granted) => {
+          this.persisted = granted;
+        }).catch((error) => console.warn('Could not request persistent history storage.', error));
       } catch (error) {
         this.available = false;
         this.error = error;

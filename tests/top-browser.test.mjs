@@ -1,0 +1,163 @@
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import test from 'node:test';
+import { chromium, firefox } from 'playwright';
+import worker from '../cloudflare/history-worker.mjs';
+import { audience, jwk, token, testDatabase } from './history-fixture.mjs';
+
+async function serve(t, handler) {
+  const server = createServer((req, res) => {
+    handler(req, res).catch((error) => {
+      t.diagnostic(error.stack);
+      res.writeHead(500).end();
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => {
+    server.close(resolve);
+    server.closeAllConnections();
+  }));
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+const assets = new Map([
+  ['/', ['index.html', 'text/html']],
+  ['/app.js', ['app.js', 'text/javascript']],
+  ['/history.js', ['history.js', 'text/javascript']],
+  ['/history-sync.js', ['history-sync.js', 'text/javascript']],
+  ['/tempo.js', ['tempo.js', 'text/javascript']],
+  ['/styles.css', ['styles.css', 'text/css']],
+]);
+const ids = { a: 'aaaaaaaaaaa', b: 'bbbbbbbbbbb', z: 'zzzzzzzzzzz' };
+
+function fixture(entries) {
+  return {
+    type: 'eraudio-listening-history', version: 1,
+    videos: entries.map(([name, playedAt]) => ({
+      videoId: ids[name], title: `Video ${name.toUpperCase()}`, duration: 30,
+      chapters: [{ start: 0, title: 'Opening' }, { start: 10, title: 'Next' }],
+      timestamps: [], plays: 1, lastPlayed: playedAt,
+    })),
+    spans: entries.map(([name, playedAt, start = 0]) => ({ videoId: ids[name], start, end: start + 10, playedAt })),
+  };
+}
+
+function waitForTop(page, mode, entries) {
+  const expected = entries.map(([name, count, seconds, start = 0], rank) => [
+    `${ids[name]}:${start}`,
+    `${rank + 1}. Video ${name.toUpperCase()}${mode === 'LISTENS'
+      ? ` / [00:${String(start).padStart(2, '0')}] ${start ? 'Next' : 'Opening'}` : ''}`,
+    `${mode} ${count} / TIME 00:${seconds}`,
+  ]);
+  return page.waitForFunction((wanted) => {
+    const buttons = Array.from(document.querySelectorAll('#history-list button'));
+    const rows = buttons.map((button) => [
+      button.dataset.historyLocation,
+      button.firstChild.textContent,
+      button.querySelector('.history-detail').textContent,
+    ]);
+    return JSON.stringify(rows) === JSON.stringify(wanted);
+  }, expected, { timeout: 8000 }).catch(async (error) => {
+    const actual = await page.locator('#history-window').innerText();
+    throw new Error(`TOP did not show ${JSON.stringify(expected)}.\nActual:\n${actual}`, { cause: error });
+  });
+}
+
+async function importHistory(page, data) {
+  const uploaded = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/rows' && response.request().method() === 'POST');
+  await page.locator('#history-file').setInputFiles({
+    name: 'synthetic-history.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)),
+  });
+  assert.equal((await uploaded).status(), 200);
+  await page.locator('#history-sign-out:enabled').waitFor();
+}
+
+test('TOP converges in both directions across Chromium and Firefox', { timeout: 45000 }, async (t) => {
+  const db = testDatabase();
+  t.after(() => db.close());
+  const env = { GOOGLE_CLIENT_ID: audience, HISTORY_DB: db };
+  const endpoint = await serve(t, async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const request = new Request(new URL(req.url, endpoint), {
+      method: req.method, headers: req.headers, body: chunks.length ? Buffer.concat(chunks) : undefined,
+    });
+    const response = await worker.fetch(request, env);
+    res.writeHead(response.status, Object.fromEntries(response.headers))
+      .end(Buffer.from(await response.arrayBuffer()));
+  });
+  const origin = await serve(t, async (req, res) => {
+    const { pathname } = new URL(req.url, origin);
+    if (pathname === '/ErAudio.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ historySync: { endpoint, googleClientId: audience } }));
+      return;
+    }
+    const asset = assets.get(pathname);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  env.APP_ORIGIN = origin;
+  t.mock.method(globalThis, 'fetch', (url) => {
+    assert.equal(url, 'https://www.googleapis.com/oauth2/v3/certs');
+    return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });
+  });
+
+  async function openBrowser(engine) {
+    const browser = await engine.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    page.setDefaultTimeout(8000);
+    await page.route('**/*', (route) => {
+      const url = new URL(route.request().url());
+      if ([origin, endpoint].includes(url.origin)) return route.continue();
+      if (url.href !== 'https://accounts.google.com/gsi/client') return route.abort();
+      return route.fulfill({
+        contentType: 'text/javascript',
+        body: `window.google = { accounts: { id: {
+          initialize({ callback }) { this.callback = callback; },
+          renderButton(parent) {
+            const button = document.createElement('button');
+            button.textContent = 'Sign in with Google';
+            button.onclick = () => this.callback({ credential: ${JSON.stringify(token('10000001'))} });
+            parent.append(button);
+          }
+        } } };`,
+      });
+    });
+    await page.goto(origin);
+    const top = page.getByRole('button', { name: 'TOP', exact: true });
+    await top.click();
+    await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+    await page.getByText('Private history synced.', { exact: true }).waitFor().catch(async (error) => {
+      throw new Error(`Could not sign into local sync: ${await page.locator('#history-sync-status').innerText()}`, { cause: error });
+    });
+    return { page, top, view: page.locator('#history-view') };
+  }
+
+  async function reopenTop({ top }) {
+    await top.click();
+    await top.click();
+  }
+
+  const first = await openBrowser(chromium);
+  const second = await openBrowser(firefox);
+  await importHistory(first.page, fixture([['z', 100], ['b', 200]]));
+  await reopenTop(second);
+  const initial = [['b', 1, 10], ['z', 1, 10]];
+  await Promise.all([first, second].map(({ page }) => waitForTop(page, 'LISTENS', initial)));
+
+  await importHistory(second.page, fixture([['a', 300], ['z', 400], ['b', 500, 10]]));
+  await reopenTop(first);
+  const segments = [['z', 2, 20], ['a', 1, 10], ['b', 1, 10], ['b', 1, 10, 10]];
+  await Promise.all([first, second].map(async ({ page, view }) => {
+    await waitForTop(page, 'LISTENS', segments);
+    await view.click();
+    await waitForTop(page, 'PLAYS', [['b', 2, 20], ['z', 2, 20], ['a', 1, 10]]);
+  }));
+});

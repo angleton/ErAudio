@@ -49,6 +49,8 @@ The browser grants access to the selected tab's audio and video, not a levels-on
 
 While playback is paused, the colored spectrum holds its last frame, but the white peak dots keep falling until they disappear. Resuming playback restores live updates for both.
 
+The **BPM** readout to the right of **LOCATIONS**, above **DJ**, estimates the tempo of the shared audio at the current playback speed. If audio isn't shared, use **Share Tab Audio**; no Google sign-in is needed. The readout shows a gray `-- BPM` until it detects a tempo, then turns yellow during playback. It needs at least six seconds of steady playback in the visible tab and returns to gray when paused or while reacquiring after a seek or speed change. Music without a clear beat may show no estimate, and some rhythms can register at half or double tempo. The estimate does not change the manual Pitchfork BPM counters or playback speed.
+
 ---
 
 ## 🚀 Project Overview & Architecture
@@ -107,6 +109,8 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
 4. Verify with two browser profiles: sign in as the same test account, exercise the existing-history prompt, play at least five seconds in the first profile, and check **TOP** and the heat map in the second. Sign in with a different account to verify isolation. Also verify that **CLEAR** reaches the other profile.
 
 To run the local API and sync tests without contacting Google or Cloudflare, use Node.js 24+ and run `node --test tests\history-sync.test.mjs` from the repository root.
+
+To compare **TOP** in real Chromium and Firefox browsers, run `npm.cmd ci` and then `npx.cmd playwright install chromium firefox` from the repository root. Run the test with `npm.cmd run test:top`. It imports synthetic listens in each browser and compares the ranked segment and video rows after syncing through a local Worker and in-memory database. It does not use a real Google account, play YouTube videos, or touch deployed Cloudflare data.
 
 ### Planned Stack & Capabilities
 * **Rust + WebAssembly (Wasm):** Rust application state management, playlist handling, keyboard shortcuts, and player logic.

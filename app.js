@@ -503,6 +503,7 @@ function applyControl(name, value) {
 }
 
 function resetTransportDisplay() {
+  resetLiveTempo();
   updateTimeDisplay(0, 0);
   controls.scrubber.value = 0;
   updatePlayButton(false);
@@ -711,7 +712,7 @@ function seekToMarker(index) {
   const entry = currentMarkerEntries()[index];
   if (!entry || !ytReady || (playingTrack.markers.duration && entry.start >= playingTrack.markers.duration)) return;
   cancelNudgePreview(true);
-  ytPlayer.seekTo(entry.start, true);
+  seekPlayback(entry.start);
   ytPlayer.playVideo();
 }
 
@@ -774,17 +775,39 @@ const liveLevelStatus = document.querySelector('#live-level-status');
 const liveLevelSetup = document.querySelector('#live-level-setup');
 const spectrum = document.querySelector('#live-spectrum');
 const liveLevelButton = document.querySelector('#live-level-share');
+const liveBpm = document.querySelector('#live-bpm');
+const liveTempo = new ErAudioLiveTempo();
 const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
   && typeof navigator.mediaDevices?.setCaptureHandleConfig === 'function'
   && typeof window.AudioContext === 'function';
 let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
+let tempoPlaying = false;
+
+function showLiveTempo(bpm) {
+  const label = `${bpm ?? '--'} BPM`;
+  if (liveBpm.textContent === label) return;
+  liveBpm.textContent = label;
+  liveBpm.classList.toggle('active', bpm !== null);
+}
+
+function resetLiveTempo() {
+  liveTempo.reset();
+  showLiveTempo(null);
+}
+
+function seekPlayback(position) {
+  resetLiveTempo();
+  ytPlayer.seekTo(position, true);
+}
+
+document.addEventListener('visibilitychange', resetLiveTempo);
 
 liveLevelButton.disabled = !tabCaptureAvailable;
 liveLevelButton.addEventListener('click', requestLiveLevels);
 if (!tabCaptureAvailable) {
-  liveLevelStatus.textContent = 'Live levels: use a supported desktop browser on HTTPS or localhost.';
+  liveLevelStatus.textContent = 'BPM and the live spectrum need tab audio sharing. Use a supported desktop browser on HTTPS or localhost.';
 }
 
 async function requestLiveLevels() {
@@ -809,15 +832,16 @@ async function requestLiveLevels() {
       context.close().catch((error) => console.warn('Could not close the live level audio context.', error));
     }
     drawing?.clearRect(0, 0, spectrum.width, spectrum.height);
+    resetLiveTempo();
     liveLevelStatus.textContent = message;
     liveLevelSetup.hidden = false;
     if (!pickerPending) liveLevelButton.disabled = false;
   }
 
-  const stoppedMessage = 'Live levels: sharing stopped. Use Share Tab Audio to try again.';
+  const stoppedMessage = 'Tab audio sharing stopped. Use Share Tab Audio to restore BPM and the live spectrum.';
   const onPageHide = () => stop(stoppedMessage);
   window.addEventListener('pagehide', onPageHide);
-  liveLevelStatus.textContent = 'Live levels: waiting for tab sharing.';
+  liveLevelStatus.textContent = 'Waiting for tab audio sharing to enable BPM and the live spectrum.';
 
   try {
     // The per-page handle rejects other sources, including other ErAudio tabs.
@@ -846,13 +870,13 @@ async function requestLiveLevels() {
       return;
     }
     if (capturedHandle !== handle) {
-      stop('Live levels: only this ErAudio tab can be used. Use Share Tab Audio to try again.');
+      stop('BPM and the live spectrum need audio from this ErAudio tab. Use Share Tab Audio to try again.');
       return;
     }
     capture.getVideoTracks().forEach((track) => track.stop());
     const [audio] = capture.getAudioTracks();
     if (!audio || audio.readyState === 'ended') {
-      stop('Live levels: no tab audio was shared. Use Share Tab Audio to try again.');
+      stop('No tab audio was shared. To enable BPM and the live spectrum, use Share Tab Audio and turn on audio sharing in the picker.');
       return;
     }
     audio.addEventListener('ended', () => stop(stoppedMessage), { once: true });
@@ -861,7 +885,17 @@ async function requestLiveLevels() {
     const analyzer = context.createAnalyser();
     analyzer.fftSize = 16384;
     analyzer.smoothingTimeConstant = 0;
-    context.createMediaStreamSource(new MediaStream([audio])).connect(analyzer);
+    const source = context.createMediaStreamSource(new MediaStream([audio]));
+    source.connect(analyzer);
+    // Keep beat transients sharp without changing the spectrum's larger FFT.
+    const tempoAnalyzer = context.createAnalyser();
+    tempoAnalyzer.fftSize = 4096;
+    tempoAnalyzer.smoothingTimeConstant = 0;
+    source.connect(tempoAnalyzer);
+    const tempoBins = new Float32Array(tempoAnalyzer.frequencyBinCount);
+    const tempoEdges = [35, 180, 600, 3500].map((hz) => Math.min(tempoBins.length,
+      Math.ceil(hz * tempoAnalyzer.fftSize / context.sampleRate)));
+    const levels = new Float32Array(tempoEdges.length - 1);
     const bins = new Float32Array(analyzer.frequencyBinCount).fill(-Infinity);
     const lowHz = 30;
     const highHz = Math.min(16000, context.sampleRate / 2);
@@ -878,6 +912,15 @@ async function requestLiveLevels() {
     liveLevelSetup.hidden = true;
     let lastFrameTime = performance.now();
     function drawSpectrum(now) {
+      if (tempoPlaying && !scrubbing && !nudgePreview && !document.hidden) {
+        tempoAnalyzer.getFloatFrequencyData(tempoBins);
+        for (let band = 0; band < levels.length; band++) {
+          let peak = -Infinity;
+          for (let bin = tempoEdges[band]; bin < tempoEdges[band + 1]; bin++) peak = Math.max(peak, tempoBins[bin]);
+          levels[band] = Math.max(0, Math.min(1, (peak + 85) / 65));
+        }
+        showLiveTempo(liveTempo.update(context.currentTime * 1000, levels));
+      }
       const ratio = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(spectrum.clientWidth * ratio));
       const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
@@ -950,7 +993,7 @@ async function requestLiveLevels() {
     const denied = error.name === 'NotAllowedError';
     if (!denied) console.warn('Could not start the live level meter.', error);
     const reason = denied ? 'tab sharing was not allowed' : 'could not start tab audio';
-    stop(`Live levels: ${reason}. Playback still works; use Share Tab Audio to try again.`);
+    stop(`BPM and the live spectrum are unavailable: ${reason}. Playback still works; use Share Tab Audio to try again.`);
   }
 }
 
@@ -1309,7 +1352,8 @@ function historyEntries(videos, spans) {
       });
     });
   });
-  entries.sort((a, b) => b.seconds - a.seconds || b.listens - a.listens);
+  entries.sort((a, b) => Math.round(b.seconds * 10) - Math.round(a.seconds * 10) || b.listens - a.listens
+    || (a.videoId < b.videoId ? -1 : a.videoId > b.videoId ? 1 : a.start - b.start));
   return entries;
 }
 
@@ -1321,7 +1365,7 @@ function playHistoryEntry({ videoId, start, title }) {
   historyMessage.textContent = '';
   if (playingTrack?.videoId === videoId && ytPlayer.getVideoData?.()?.video_id === videoId) {
     cancelNudgePreview(true);
-    ytPlayer.seekTo(start, true);
+    seekPlayback(start);
     ytPlayer.playVideo();
     return;
   }
@@ -1493,6 +1537,8 @@ localHistoryReady.then(() => {
 });
 
 function onPlayerStateChange(event) {
+  tempoPlaying = event.data === YT.PlayerState.PLAYING;
+  if (!tempoPlaying) resetLiveTempo();
   if (event.data !== YT.PlayerState.BUFFERING) {
     liveLevelsPaused = event.data === YT.PlayerState.PAUSED;
     const isPlaying = event.data === YT.PlayerState.PLAYING;
@@ -1525,6 +1571,8 @@ function onPlayerStateChange(event) {
 }
 
 function onPlayerError() {
+  tempoPlaying = false;
+  resetLiveTempo();
   liveLevelsPaused = false;
   updatePlayButton(false);
   if (nudgePreview) {
@@ -1548,6 +1596,7 @@ function initYouTubePlayer() {
           if (playingTrack) ytPlayer.loadVideoById(playingTrack.videoId);
         },
         onStateChange: onPlayerStateChange,
+        onPlaybackRateChange: resetLiveTempo,
         onError: onPlayerError,
         onAutoplayBlocked: () => {
           if (!nudgePreview) return;
@@ -1935,7 +1984,7 @@ function recallSavedLocation(index, { allowUnavailableSelection = false } = {}) 
     return;
   }
   cancelNudgePreview(true);
-  ytPlayer.seekTo(position, true);
+  seekPlayback(position);
   controls.scrubber.value = (position / duration) * 100;
   updateTimeDisplay(position, duration);
   highlightActiveMarker(position);
@@ -2139,6 +2188,7 @@ document.querySelectorAll('[data-control]').forEach((control) => {
     const value = controlName === 'speed' ? currentSpeedRate() : control.value;
     if (controlName === 'scrubber') {
       cancelNudgePreview(true);
+      if (!scrubbing) resetLiveTempo();
       scrubbing = true;
       const duration = currentDuration();
       updateTimeDisplay((Number(control.value) / 100) * duration, duration);
@@ -2161,7 +2211,7 @@ document.querySelectorAll('[data-control]').forEach((control) => {
       const duration = currentDuration();
       const target = (Number(control.value) / 100) * duration;
       updateTimeDisplay(target, duration);
-      if (ytReady && playingTrack) ytPlayer.seekTo(target, true);
+      if (ytReady && playingTrack) seekPlayback(target);
     }
     const value = control.dataset.control === 'speed' ? String(currentSpeedRate()) : control.value;
     announceEvent({ type: 'change', name: control.dataset.control, value });

@@ -521,7 +521,20 @@ body {
 .memory-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+}
+
+.live-bpm {
+  margin-left: auto;
+  margin-right: 7px;
+  color: #a0a0a0;
+  font: bold 12px var(--font-mono);
+  white-space: nowrap;
+}
+
+.live-bpm.active {
+  color: var(--accent-gold);
 }
 
 .locations-panel {
