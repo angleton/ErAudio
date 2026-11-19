@@ -30,9 +30,9 @@ This project aims to preserve the compact retro-audio-player aesthetic that insp
 ### Current UI
 The main player combines YouTube playback and transport controls with a position bar, saved-location markers, and import/export controls. **LOCATIONS** opens a timestamp list where a selected location can be recalled or removed; **M+** saves the current position.
 
-The time and title displays are the same height. A full-width area above the position bar is reserved for live levels; it is inactive and does not capture audio.
+The time and title displays are the same height, with a full-width live level meter above the position bar. On the first **Play** action after the player is ready, a supported desktop browser opens its sharing picker. Choose this ErAudio tab and enable **Share tab audio**. The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures audio locally without recording or uploading it. Canceling leaves playback working without the meter. Use the browser's sharing controls to stop; to try again, reload and press **Play**. Tab capture requires a supported browser and HTTPS or localhost.
 
-The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v2.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
+The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v3.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
 ![ErAudio player showing saved locations, Pitchfork controls, videos, and chapters](screenshot-ui.png)
 <br>
@@ -42,7 +42,7 @@ The main title bar displays **ErAudio**, the YouTube login or account name, and 
 
 ## 🚀 Project Overview & Architecture
 
-### Current Stage: Version 2.0
+### Current Stage: Version 3.0
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
 * **Granular Controls:** The horizontal speed slider spans the bottom of Pitchfork, from -50% (`0.5x`) to +50% (`1.5x`), with normal speed (0%) at its midpoint. Values are rounded to `0.0001x`, and the arrow keys adjust by that amount; YouTube playback uses the rates supported by the video.

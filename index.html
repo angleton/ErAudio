@@ -21,7 +21,7 @@
         <span class="title-bar-text title-bar-brand">ErAudio</span>
         <button class="title-bar-text title-bar-login tooltip-target" id="youtube-login" type="button" data-tooltip="Sign in to YouTube" aria-label="Sign in to YouTube"><span id="youtube-login-label">YOUTUBE LOGIN</span></button>
         <button class="title-bar-text title-bar-login" id="youtube-settings" type="button">API SETUP</button>
-        <span class="title-bar-text" aria-label="Version 2.0">v2.0</span>
+        <span class="title-bar-text" aria-label="Version 3.0">v3.0</span>
       </div>
 
       <!-- Main Display Screen (Green/Yellow LCD) -->
@@ -36,7 +36,11 @@
             <div class="marquee-text" id="track-title">ErAudio - press ⏏ to open a YouTube video</div>
           </div>
         </div>
-        <div class="vis-container">LIVE LEVELS / INACTIVE</div>
+        <div class="vis-container">
+          <div class="live-level-track" aria-hidden="true"><div id="live-level-fill"></div></div>
+          <p id="live-level-status" role="status">Live levels: on first Play, choose this ErAudio tab and share its audio.</p>
+          <p>The browser shares tab audio and video. ErAudio discards the video and measures audio levels locally. Nothing is recorded or uploaded by the meter.</p>
+        </div>
       </div>
 
       <!-- Position / Track Scrubber -->

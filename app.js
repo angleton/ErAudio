@@ -751,6 +751,107 @@ function stepTrack(step, { wrap = true } = {}) {
   return true;
 }
 
+const liveLevelStatus = document.querySelector('#live-level-status');
+const liveLevelFill = document.querySelector('#live-level-fill');
+const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
+  && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+  && typeof navigator.mediaDevices?.setCaptureHandleConfig === 'function'
+  && typeof window.AudioContext === 'function';
+let liveLevelRequested = false;
+
+if (!tabCaptureAvailable) {
+  liveLevelStatus.textContent = 'Live levels: use a supported desktop browser on HTTPS or localhost.';
+}
+
+async function requestLiveLevels() {
+  if (!tabCaptureAvailable || liveLevelRequested) return;
+  liveLevelRequested = true;
+  const mediaDevices = navigator.mediaDevices;
+  let capture;
+  let context;
+  let frame;
+  let stopped = false;
+
+  function stop(message) {
+    if (stopped) return;
+    stopped = true;
+    window.removeEventListener('pagehide', onPageHide);
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    capture?.getTracks().forEach((track) => track.stop());
+    if (context && context.state !== 'closed') {
+      context.close().catch((error) => console.warn('Could not close the live level audio context.', error));
+    }
+    liveLevelFill.style.removeProperty('--live-level-unfilled');
+    liveLevelStatus.textContent = message;
+  }
+
+  const stoppedMessage = 'Live levels: sharing stopped. Reload and press Play to try again.';
+  const onPageHide = () => stop(stoppedMessage);
+  window.addEventListener('pagehide', onPageHide);
+  liveLevelStatus.textContent = 'Live levels: waiting for tab sharing.';
+
+  try {
+    // The per-page handle rejects other sources, including other ErAudio tabs.
+    const handle = crypto.randomUUID();
+    mediaDevices.setCaptureHandleConfig({ handle, permittedOrigins: [location.origin] });
+    let capturedHandle;
+    try {
+      capture = await mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser' },
+        audio: { suppressLocalAudioPlayback: false },
+        preferCurrentTab: true,
+        selfBrowserSurface: 'include',
+        monitorTypeSurfaces: 'exclude',
+        systemAudio: 'exclude',
+        windowAudio: 'exclude',
+        surfaceSwitching: 'exclude',
+      });
+      capturedHandle = capture.getVideoTracks()[0]?.getCaptureHandle?.()?.handle;
+    } finally {
+      mediaDevices.setCaptureHandleConfig({});
+    }
+    if (stopped) {
+      capture.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    if (capturedHandle !== handle) {
+      stop('Live levels: only this ErAudio tab can be used. Reload and press Play to try again.');
+      return;
+    }
+    capture.getVideoTracks().forEach((track) => track.stop());
+    const [audio] = capture.getAudioTracks();
+    if (!audio || audio.readyState === 'ended') {
+      stop('Live levels: no tab audio was shared. Reload and press Play to try again.');
+      return;
+    }
+    audio.addEventListener('ended', () => stop(stoppedMessage), { once: true });
+
+    context = new AudioContext();
+    const analyzer = context.createAnalyser();
+    context.createMediaStreamSource(new MediaStream([audio])).connect(analyzer);
+    const samples = new Float32Array(analyzer.fftSize);
+    await context.resume();
+    if (stopped) return;
+    liveLevelStatus.textContent = 'Live levels: measuring tab audio. Use the browser sharing controls to stop.';
+    function drawLevel() {
+      analyzer.getFloatTimeDomainData(samples);
+      let peak = 0;
+      for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+      const decibels = 20 * Math.log10(peak);
+      const level = Math.min(1, Math.max(0, (decibels + 60) / 60));
+      liveLevelFill.style.setProperty('--live-level-unfilled', `${(1 - level) * 100}%`);
+      frame = requestAnimationFrame(drawLevel);
+    }
+    drawLevel();
+  } catch (error) {
+    if (stopped) return;
+    const denied = error.name === 'NotAllowedError';
+    if (!denied) console.warn('Could not start the live level meter.', error);
+    const reason = denied ? 'tab sharing was not allowed' : 'could not start tab audio';
+    stop(`Live levels: ${reason}. Playback still works; reload to try again.`);
+  }
+}
+
 function togglePlayback() {
   const wasPlaying = ytReady && playingTrack && !nudgePreview
     && ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
@@ -758,13 +859,17 @@ function togglePlayback() {
   if (playingTrack) {
     if (ytReady) {
       if (wasPlaying) ytPlayer.pauseVideo();
-      else ytPlayer.playVideo();
+      else {
+        requestLiveLevels();
+        ytPlayer.playVideo();
+      }
     }
     return;
   }
   const list = currentList();
   const track = list.tracks.find((candidate) => candidate.selected) || list.tracks[0];
   if (track) {
+    if (ytReady) requestLiveLevels();
     playTrack(list, track);
   } else {
     showInputDialog('open');

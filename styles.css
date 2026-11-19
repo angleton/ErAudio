@@ -388,23 +388,22 @@ body {
   border: 1px solid #003300;
   min-height: 36px;
   padding: 4px 6px;
-  color: #769376;
+  color: #a4baa4;
   font: 10px var(--font-mono);
+  display: grid;
+  gap: 3px;
 }
 
-.spectrum-analyzer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+.live-level-track {
+  height: 12px;
+  border: 1px solid #003300;
+  background: #101b10;
+}
+
+#live-level-fill {
   height: 100%;
-  gap: 2px;
-}
-
-.spectrum-analyzer .bar {
-  flex: 1;
-  background: linear-gradient(0deg, var(--lcd-green) 0%, var(--lcd-yellow) 70%, var(--accent-red) 100%);
-  height: var(--h, 50%);
-  box-shadow: 0 0 2px var(--lcd-green-glow);
+  background: linear-gradient(90deg, var(--lcd-green) 0%, var(--lcd-yellow) 78%, var(--accent-red) 100%);
+  clip-path: inset(0 var(--live-level-unfilled, 100%) 0 0);
 }
 
 /* SCRUBBER BAR */
