@@ -1104,7 +1104,7 @@ function historyEntries(videos, spans) {
       });
     });
   });
-  entries.sort((a, b) => b.listens - a.listens || b.seconds - a.seconds);
+  entries.sort((a, b) => b.seconds - a.seconds || b.listens - a.listens);
   return entries;
 }
 
