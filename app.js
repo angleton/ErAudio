@@ -846,13 +846,18 @@ async function requestLiveLevels() {
     const lowHz = 30;
     const highHz = Math.min(16000, context.sampleRate / 2);
     const hzPerBin = context.sampleRate / analyzer.fftSize;
+    const peakHoldMs = 200;
+    const peakFallPerMs = 0.0008;
     let bandEdges = [];
+    let heldPeaks;
+    let holdUntil;
     drawing = spectrum.getContext('2d');
     if (!drawing) throw new Error('Canvas drawing is unavailable.');
     await context.resume();
     if (stopped) return;
     liveLevelSetup.hidden = true;
-    function drawSpectrum() {
+    let lastFrameTime = performance.now();
+    function drawSpectrum(now) {
       const ratio = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(spectrum.clientWidth * ratio));
       const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
@@ -861,6 +866,8 @@ async function requestLiveLevels() {
         // Logarithmic bands spread bass and treble across the display.
         bandEdges = Array.from({ length: bandCount + 1 }, (_, index) =>
           Math.min(bins.length, Math.ceil(lowHz * (highHz / lowHz) ** (index / bandCount) / hzPerBin)));
+        heldPeaks = new Float32Array(bandCount);
+        holdUntil = new Float64Array(bandCount);
       }
       if (spectrum.width !== width) spectrum.width = width;
       if (spectrum.height !== height) spectrum.height = height;
@@ -868,26 +875,40 @@ async function requestLiveLevels() {
       drawing.clearRect(0, 0, width, height);
       const step = width / bandCount;
       const gap = Math.min(2 * ratio, step / 4);
-      const rows = Math.max(1, Math.floor(height / (4 * ratio)));
-      const rowStep = height / rows;
-      const segmentHeight = rowStep - Math.min(ratio, rowStep / 4);
+      const barWidth = step - gap;
+      const dotRadius = Math.min(1.5 * ratio, barWidth / 2, height / 2);
       for (let band = 0; band < bandCount; band++) {
         let peak = -Infinity;
         for (let bin = bandEdges[band]; bin < bandEdges[band + 1]; bin++) {
           peak = Math.max(peak, bins[bin]);
         }
         const level = Math.min(1, Math.max(0, (peak + 90) / 65));
-        const litRows = Math.round(level * rows);
-        if (!litRows) continue;
-        const hue = Math.round(120 * (1 - level));
-        drawing.fillStyle = `hsl(${hue} 100% 55%)`;
-        for (let row = 0; row < litRows; row++) {
-          drawing.fillRect(band * step + gap / 2, height - row * rowStep - segmentHeight, step - gap, segmentHeight);
+        const x = band * step + gap / 2;
+        if (level > 0) {
+          const hue = Math.round(120 * (1 - level));
+          drawing.fillStyle = `hsl(${hue} 100% 55%)`;
+          drawing.fillRect(x, height * (1 - level), barWidth, height * level);
+        }
+        const fallingMs = Math.max(0, now - Math.max(lastFrameTime, holdUntil[band]));
+        const fallingPeak = Math.max(0, heldPeaks[band] - fallingMs * peakFallPerMs);
+        if (level > 0 && level >= fallingPeak) {
+          heldPeaks[band] = level;
+          holdUntil[band] = now + peakHoldMs;
+        } else {
+          heldPeaks[band] = fallingPeak;
+        }
+        if (heldPeaks[band] > 0) {
+          const y = Math.max(dotRadius, height * (1 - heldPeaks[band]) - dotRadius);
+          drawing.fillStyle = '#fff';
+          drawing.beginPath();
+          drawing.arc(x + barWidth / 2, y, dotRadius, 0, 2 * Math.PI);
+          drawing.fill();
         }
       }
+      lastFrameTime = now;
       frame = requestAnimationFrame(drawSpectrum);
     }
-    drawSpectrum();
+    drawSpectrum(lastFrameTime);
   } catch (error) {
     pickerPending = false;
     if (stopped) {
