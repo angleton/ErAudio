@@ -55,7 +55,7 @@ test('detects a beat in the same frequency band as a louder sustained tone', () 
 test('detects small but regular changes without treating irregular fluctuations as a beat', () => {
   const detector = new LiveTempo();
   const pulse = beat(120);
-  assert.equal(feed(detector, 0, 10000, (time) => 0.72 + 0.03 * pulse(time)), 120);
+  assert.equal(feed(detector, 0, 10000, (time) => 0.72 + 0.004 * pulse(time)), 120);
 
   detector.reset();
   let seed = 42;
@@ -63,6 +63,18 @@ test('detects small but regular changes without treating irregular fluctuations 
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return 0.72 + 0.03 * (seed / 2 ** 32);
   }), null);
+});
+
+test('uses weaker alternating beats without doubling a genuine slow tempo', () => {
+  const slowBeat = beat(62);
+  const detector = new LiveTempo();
+  assert.equal(feed(detector, 0, 10000, (time) => 0.65 + 0.2 * slowBeat(time)), 62);
+
+  detector.reset();
+  const beatInterval = 60000 / 124;
+  const alternating = (time) => 0.65 + 0.2 * slowBeat(time) + 0.064 * slowBeat(time + beatInterval);
+  assert.equal(feed(detector, 0, 10000, alternating), 124);
+  assert.equal(feed(detector, 10000, 14000, alternating), 124);
 });
 
 test('holds the last tempo through a brief confidence dip, then clears it if the beat does not return', () => {
@@ -75,8 +87,8 @@ test('holds the last tempo through a brief confidence dip, then clears it if the
     const level = time < 8000 ? 0.3 * pulse(time) : 0.3 * (seed / 2 ** 32);
     const actual = detector.update(time, Float32Array.of(level, level * 0.6, level * 0.3));
     if (time === 8000) assert.equal(actual, 120);
-    if (time === 14000) lastConfident = actual;
-    if (time === 16000) {
+    if (time === 15000) lastConfident = actual;
+    if (time === 17000) {
       assert.ok(Math.abs(lastConfident - 120) <= 1);
       assert.equal(actual, lastConfident);
     }

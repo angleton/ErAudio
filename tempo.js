@@ -3,7 +3,7 @@
   const minLag = Math.ceil(60000 / (200 * sampleMs));
   const maxLag = Math.ceil(60000 / (55 * sampleMs));
   const weights = [0.65, 0.25, 0.1];
-  const onsetFloor = 0.002;
+  const onsetFloor = 0.001;
   const confidenceHoldMs = 3000;
 
   function estimateTempo(onsets) {
@@ -27,8 +27,12 @@
     }
     const best = Math.max(0, ...peaks.map((lag) => scores[lag]));
     // Prefer the first strong repeat over an equally convincing multiple (half tempo).
-    const peak = peaks.find((lag) => scores[lag] >= Math.max(0.42, best * 0.88));
+    let peak = peaks.find((lag) => scores[lag] >= Math.max(0.38, best * 0.88));
     if (peak === undefined) return null;
+    // Alternating accents favor the two-beat lag; use the shorter lag only if it has its own peak.
+    const half = peaks.find((lag) => Math.abs(2 * lag - peak) <= 2
+      && scores[lag] >= Math.max(0.34, scores[peak] * 0.45));
+    if (half !== undefined) peak = half;
     const left = scores[peak - 1];
     const center = scores[peak];
     const right = scores[peak + 1];
