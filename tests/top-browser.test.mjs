@@ -32,7 +32,7 @@ const assets = new Map([
   ['/styles.css', ['styles.css', 'text/css']],
 ]);
 
-test('starts without loading a video and preserves user-added videos across reload', { timeout: 20000 }, async (t) => {
+test('starts idle and persists video additions and context-menu removals', { timeout: 20000 }, async (t) => {
   const origin = await serve(t, async (req, res) => {
     if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
     const asset = assets.get(req.url);
@@ -79,6 +79,24 @@ test('starts without loading a video and preserves user-added videos across relo
   await page.getByRole('button', { name: 'VID', exact: true }).click();
   assert.equal(await page.locator('#playlist-list button').count(), 1);
   assert.equal(await page.locator('#playlist-list button').getAttribute('data-video-id'), 'abcdefghijk');
+
+  await page.getByRole('button', { name: '+ ADD URL', exact: true }).click();
+  await page.getByLabel('VIDEO URL OR ID').fill('lmnopqrstuv');
+  await page.locator('#open-dialog [type="submit"]').click();
+  const kept = page.locator('#playlist-list [data-video-id="abcdefghijk"]');
+  const removed = page.locator('#playlist-list [data-video-id="lmnopqrstuv"]');
+  await kept.click({ modifiers: ['Control'] });
+  await removed.click({ button: 'right' });
+  await page.keyboard.press('End');
+  const remove = page.getByRole('menuitem', { name: 'REMOVE FROM VIDEOS' });
+  assert.equal(await remove.evaluate((item) => item === document.activeElement), true);
+  await page.keyboard.press('Enter');
+  assert.equal(await removed.count(), 0);
+  assert.equal(await kept.getAttribute('aria-pressed'), 'true');
+  await page.reload();
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  assert.equal(await removed.count(), 0);
+  assert.equal(await kept.count(), 1);
 });
 
 const ids = { a: 'aaaaaaaaaaa', b: 'bbbbbbbbbbb', z: 'zzzzzzzzzzz' };

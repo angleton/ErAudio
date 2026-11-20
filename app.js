@@ -753,6 +753,19 @@ function stopPlayback() {
   resetTransportDisplay();
 }
 
+function removeVideos(list, shouldRemove) {
+  const remaining = list.tracks.filter((track) => !shouldRemove(track));
+  if (remaining.length === list.tracks.length) return;
+  if (list.tracks.includes(playingTrack) && !remaining.includes(playingTrack)) {
+    stopPlayback();
+    playingTrack = null;
+    playingList = null;
+  }
+  list.tracks = remaining;
+  renderFavoritesList(list.id);
+  updateNowPlaying();
+}
+
 function stepTrack(step, { wrap = true } = {}) {
   const tracks = playingList?.tracks || [];
   const index = tracks.indexOf(playingTrack);
@@ -2280,18 +2293,7 @@ document.addEventListener('click', (event) => {
   }
 
   if (button.dataset.action === 'remove-track') {
-    const list = currentList();
-    if (list.tracks.some((track) => track.selected)) {
-      if (playingTrack?.selected && list.tracks.includes(playingTrack)) {
-        stopPlayback();
-        playingTrack = null;
-        playingList = null;
-        updateNowPlaying();
-      }
-      list.tracks = list.tracks.filter((track) => !track.selected);
-      renderFavoritesList(list.id);
-      updateNowPlaying();
-    }
+    removeVideos(currentList(), (track) => track.selected);
   }
 
   if (button.dataset.action === 'add-url') showInputDialog('add');
@@ -2358,6 +2360,7 @@ markerList.addEventListener('dblclick', (event) => {
 const copyNotice = document.querySelector('#copy-notice');
 const copyMenu = document.querySelector('#copy-menu');
 const copyMenuItems = [...copyMenu.querySelectorAll('[role="menuitem"]')];
+const removeVideoMenuItem = copyMenu.querySelector('[data-remove-video]');
 let copyNoticeTimer = null;
 let copySelection = null;
 
@@ -2373,12 +2376,17 @@ function closeCopyMenu(restoreFocus = false) {
     const item = event.target.closest('.playlist-item');
     if (!item || !list.contains(item)) return;
     event.preventDefault();
+    const videoList = list === playlistList ? currentList() : null;
+    const track = videoList?.tracks[Number(item.dataset.track) - 1];
     copySelection = {
       item,
+      videoList,
+      track,
       text: item.textContent.trim(),
       videoId: list === playlistList ? item.dataset.videoId : playingTrack?.videoId,
       position: list === markerList ? currentMarkerEntries()[Number(item.dataset.marker)]?.start : null,
     };
+    removeVideoMenuItem.hidden = !track;
     copyMenu.hidden = false;
     const itemRect = item.getBoundingClientRect();
     const x = event.clientX || itemRect.left;
@@ -2396,10 +2404,11 @@ copyMenu.addEventListener('keydown', (event) => {
     closeCopyMenu(true);
   } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
     event.preventDefault();
-    const index = copyMenuItems.indexOf(document.activeElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? copyMenuItems.length - 1
-      : (index + (event.key === 'ArrowDown' ? 1 : -1) + copyMenuItems.length) % copyMenuItems.length;
-    copyMenuItems[next].focus();
+    const items = copyMenuItems.filter((item) => !item.hidden);
+    const index = items.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
   }
 });
 
@@ -2412,10 +2421,25 @@ document.addEventListener('pointerdown', (event) => {
 });
 
 copyMenu.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-copy]');
+  const button = event.target.closest('[role="menuitem"]');
   if (!button || !copySelection) return;
   event.stopPropagation();
   const selection = copySelection;
+  if (button === removeVideoMenuItem) {
+    const { videoList, track } = selection;
+    if (!track || videoList !== currentList() || !videoList.tracks.includes(track)) {
+      closeCopyMenu(true);
+      announceEvent({ type: 'error', name: 'That video is no longer in the list.' });
+      return;
+    }
+    const index = videoList.tracks.indexOf(track);
+    closeCopyMenu();
+    removeVideos(videoList, (candidate) => candidate === track);
+    const nextItem = playlistList.children[Math.min(index, playlistList.children.length - 1)]
+      ?? document.querySelector('[data-action="add-url"]');
+    nextItem?.focus();
+    return;
+  }
   closeCopyMenu(true);
   clearTimeout(copyNoticeTimer);
   copyNotice.hidden = true;

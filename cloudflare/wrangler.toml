@@ -7,7 +7,6 @@ APP_ORIGIN = "https://angleton.github.io"
 GOOGLE_CLIENT_ID = "496741257133-nabe9n84t4vfh2fdp8foiqg399n0ueth.apps.googleusercontent.com"
 
 [[d1_databases]]
-binding = "eraudio_history"
+binding = "HISTORY_DB"
 database_name = "eraudio-history"
 database_id = "c41052cd-ecd5-42f8-979d-45746835a2e3"
-binding = "HISTORY_DB"
