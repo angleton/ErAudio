@@ -814,6 +814,7 @@ function updateSpectrumBandSetting(value) {
     : spectrumBandCount;
   spectrumBandInput.value = String(spectrumBandCount);
   spectrumBandValue.value = String(spectrumBandCount);
+  spectrumBandValue.style.setProperty('--band-digits', String(Math.max(3, spectrumBandValue.value.length)));
   spectrum.setAttribute('aria-label',
     `Live audio spectrum with ${spectrumBandCount} frequency bands, bass on the left and treble on the right`);
 }
@@ -845,6 +846,8 @@ spectrumBandInput.addEventListener('input', () => {
 spectrumBandValue.addEventListener('click', () => spectrumBandValue.select());
 
 spectrumBandValue.addEventListener('input', () => {
+  spectrumBandValue.style.setProperty('--band-digits',
+    String(Math.max(3, spectrumBandValue.value.length)));
   if (Number.isFinite(spectrumBandValue.valueAsNumber)
     && spectrumBandValue.valueAsNumber >= minSpectrumBands) {
     persistSpectrumBandSetting(spectrumBandValue.valueAsNumber);

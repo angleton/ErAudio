@@ -1088,7 +1088,7 @@ body {
 
 .spectrum-band-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
 }
@@ -1099,7 +1099,8 @@ body {
 }
 
 .spectrum-band-control input[type="number"] {
-  width: 100%;
+  width: calc(var(--band-digits, 3) * 1ch + 1.75rem);
+  min-width: 4ch;
   padding: 2px 3px;
   border: 0;
   border-bottom: 1px solid var(--lcd-dim);
