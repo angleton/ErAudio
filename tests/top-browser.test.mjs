@@ -104,8 +104,21 @@ test('starts idle and persists video additions and context-menu removals', { tim
     input.value = '512';
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  assert.equal(await page.locator('#spectrum-band-value').textContent(), '512');
+  assert.equal(await page.locator('#spectrum-band-value').inputValue(), '512');
   assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '512');
+
+  const spectrumBandNumber = page.getByRole('spinbutton', { name: 'Spectrum band count' });
+  await spectrumBandNumber.fill('800');
+  await spectrumBandNumber.press('Enter');
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '512');
+
+  await page.locator('.vis-container').click({ button: 'right' });
+  await spectrumBandNumber.fill('128');
+  await spectrumBandNumber.press('Escape');
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '512');
+  assert.match(await page.locator('#live-spectrum').getAttribute('aria-label'), /512 frequency bands/);
+
+  await page.locator('.vis-container').click({ button: 'right' });
   await page.locator('body').click({ position: { x: 4, y: 4 } });
   assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
 

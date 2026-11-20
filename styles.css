@@ -1093,14 +1093,25 @@ body {
   gap: 8px;
 }
 
-.spectrum-band-control input {
+.spectrum-band-control input[type="range"] {
   min-width: 0;
   accent-color: var(--lcd-green);
 }
 
-.spectrum-band-control output {
+.spectrum-band-control input[type="number"] {
+  width: 100%;
+  padding: 2px 3px;
+  border: 0;
+  border-bottom: 1px solid var(--lcd-dim);
+  background: transparent;
   color: var(--lcd-green);
+  font: inherit;
   text-align: right;
+  user-select: text;
+}
+
+.spectrum-band-control input[type="number"]:focus-visible {
+  outline-offset: 1px;
 }
 
 .spectrum-settings p {

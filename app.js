@@ -805,13 +805,22 @@ const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
 let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
 let tempoPlaying = false;
+let spectrumBandSettingBeforeEdit = spectrumBandCount;
 
 function updateSpectrumBandSetting(value) {
-  spectrumBandCount = Math.max(minSpectrumBands, Math.min(maxSpectrumBands, Math.round(value)));
+  const numericValue = Number(value);
+  spectrumBandCount = Number.isFinite(numericValue)
+    ? Math.max(minSpectrumBands, Math.min(maxSpectrumBands, Math.round(numericValue)))
+    : spectrumBandCount;
   spectrumBandInput.value = String(spectrumBandCount);
   spectrumBandValue.value = String(spectrumBandCount);
   spectrum.setAttribute('aria-label',
     `Live audio spectrum with ${spectrumBandCount} frequency bands, bass on the left and treble on the right`);
+}
+
+function persistSpectrumBandSetting(value = spectrumBandCount) {
+  updateSpectrumBandSetting(value);
+  writeStoredValue(spectrumBandStorageKey, String(spectrumBandCount));
 }
 
 function closeSpectrumSettings() {
@@ -819,6 +828,7 @@ function closeSpectrumSettings() {
 }
 
 function openSpectrumSettings(x, y) {
+  spectrumBandSettingBeforeEdit = spectrumBandCount;
   spectrumSettings.hidden = false;
   const menuRect = spectrumSettings.getBoundingClientRect();
   spectrumSettings.style.left = `${Math.max(0, Math.min(x, window.innerWidth - menuRect.width))}px`;
@@ -829,8 +839,29 @@ function openSpectrumSettings(x, y) {
 updateSpectrumBandSetting(spectrumBandCount);
 
 spectrumBandInput.addEventListener('input', () => {
-  updateSpectrumBandSetting(spectrumBandInput.valueAsNumber);
-  writeStoredValue(spectrumBandStorageKey, String(spectrumBandCount));
+  persistSpectrumBandSetting(spectrumBandInput.valueAsNumber);
+});
+
+spectrumBandValue.addEventListener('click', () => spectrumBandValue.select());
+
+spectrumBandValue.addEventListener('input', () => {
+  if (Number.isFinite(spectrumBandValue.valueAsNumber)
+    && spectrumBandValue.valueAsNumber >= minSpectrumBands) {
+    persistSpectrumBandSetting(spectrumBandValue.valueAsNumber);
+  }
+});
+
+spectrumBandValue.addEventListener('change', () => {
+  persistSpectrumBandSetting(spectrumBandValue.valueAsNumber);
+});
+
+spectrumBandValue.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    persistSpectrumBandSetting(spectrumBandValue.valueAsNumber);
+    closeSpectrumSettings();
+    spectrum.focus();
+  }
 });
 
 spectrumContainer.addEventListener('contextmenu', (event) => {
@@ -849,6 +880,7 @@ spectrumContainer.addEventListener('keydown', (event) => {
 spectrumSettings.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     event.preventDefault();
+    persistSpectrumBandSetting(spectrumBandSettingBeforeEdit);
     closeSpectrumSettings();
     spectrum.focus();
   }
