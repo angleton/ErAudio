@@ -109,6 +109,14 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
    Edit the client ID only in `wrangler.toml`. When it changes, rerun the script, redeploy the Worker, and publish the updated static files. The script does not deploy anything. Leave both `historySync` settings blank in `ErAudio.json` for local-only behavior. The Worker authenticates every history request; do not make D1 directly accessible to the browser.
 4. Verify with two browser profiles: sign in as the same test account, exercise the existing-history prompt, play at least five seconds in the first profile, and check **TOP** and the heat map in the second. Sign in with a different account to verify isolation. Also verify that **CLEAR** reaches the other profile.
 
+#### Automate Worker deployments with GitHub Actions
+
+1. Create a [Cloudflare deployment API token](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/) using the **Edit Cloudflare Workers** template, scoped to the account that owns ErAudio's Worker. Copy that account's ID (not the D1 database ID).
+2. In GitHub, go to **Settings → Secrets and variables → Actions** and add two repository secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Do not put the token in a config file or commit it.
+3. In **Actions → Deploy Cloudflare History Worker**, choose **Run workflow** on `main` to deploy without changing a file. Subsequent pushes to `main` that change the Worker, its Wrangler config, or the workflow deploy automatically.
+
+This workflow is separate from GitHub Pages. It deploys to the existing Worker and does not create the D1 database or apply its schema; run the database setup above separately.
+
 To run the local API and sync tests without contacting Google or Cloudflare, use Node.js 24+ and run `node --test tests\history-sync.test.mjs` from the repository root.
 
 To compare **TOP** in real Chromium and Firefox browsers, run `npm.cmd ci` and then `npx.cmd playwright install chromium firefox` from the repository root. Run the test with `npm.cmd run test:top`. It imports synthetic listens in each browser and compares the ranked segment and video rows after syncing through a local Worker and in-memory database. It does not use a real Google account, play YouTube videos, or touch deployed Cloudflare data.
