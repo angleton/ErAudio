@@ -97,6 +97,22 @@ test('starts idle and persists video additions and context-menu removals', { tim
   await page.getByRole('button', { name: 'VID', exact: true }).click();
   assert.equal(await removed.count(), 0);
   assert.equal(await kept.count(), 1);
+
+  await page.locator('.vis-container').click({ button: 'right' });
+  const spectrumBands = page.getByRole('slider', { name: 'FREQUENCY BANDS' });
+  await spectrumBands.evaluate((input) => {
+    input.value = '512';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.equal(await page.locator('#spectrum-band-value').textContent(), '512');
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '512');
+  await page.locator('body').click({ position: { x: 4, y: 4 } });
+  assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
+
+  await page.reload();
+  await page.locator('.vis-container').click({ button: 'right' });
+  assert.equal(await page.locator('#spectrum-bands').inputValue(), '512');
+  assert.match(await page.locator('#live-spectrum').getAttribute('aria-label'), /512 frequency bands/);
 });
 
 const ids = { a: 'aaaaaaaaaaa', b: 'bbbbbbbbbbb', z: 'zzzzzzzzzzz' };

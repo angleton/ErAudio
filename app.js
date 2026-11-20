@@ -782,9 +782,22 @@ function stepTrack(step, { wrap = true } = {}) {
 const liveLevelStatus = document.querySelector('#live-level-status');
 const liveLevelSetup = document.querySelector('#live-level-setup');
 const spectrum = document.querySelector('#live-spectrum');
+const spectrumContainer = document.querySelector('.vis-container');
 const liveLevelButton = document.querySelector('#live-level-share');
 const liveBpm = document.querySelector('#live-bpm');
 const liveTempo = new ErAudioLiveTempo();
+const spectrumSettings = document.querySelector('#spectrum-settings');
+const spectrumBandInput = document.querySelector('#spectrum-bands');
+const spectrumBandValue = document.querySelector('#spectrum-band-value');
+const spectrumBandStorageKey = 'eraudio:spectrum-bands';
+const minSpectrumBands = Number(spectrumBandInput.min);
+const maxSpectrumBands = Number(spectrumBandInput.max);
+const storedSpectrumBands = Number(readStoredValue(spectrumBandStorageKey));
+let spectrumBandCount = Number.isInteger(storedSpectrumBands)
+  && storedSpectrumBands >= minSpectrumBands
+  && storedSpectrumBands <= maxSpectrumBands
+  ? storedSpectrumBands
+  : Number(spectrumBandInput.value);
 const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
   && typeof navigator.mediaDevices?.setCaptureHandleConfig === 'function'
@@ -792,6 +805,62 @@ const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
 let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
 let tempoPlaying = false;
+
+function updateSpectrumBandSetting(value) {
+  spectrumBandCount = Math.max(minSpectrumBands, Math.min(maxSpectrumBands, Math.round(value)));
+  spectrumBandInput.value = String(spectrumBandCount);
+  spectrumBandValue.value = String(spectrumBandCount);
+  spectrum.setAttribute('aria-label',
+    `Live audio spectrum with ${spectrumBandCount} frequency bands, bass on the left and treble on the right`);
+}
+
+function closeSpectrumSettings() {
+  spectrumSettings.hidden = true;
+}
+
+function openSpectrumSettings(x, y) {
+  spectrumSettings.hidden = false;
+  const menuRect = spectrumSettings.getBoundingClientRect();
+  spectrumSettings.style.left = `${Math.max(0, Math.min(x, window.innerWidth - menuRect.width))}px`;
+  spectrumSettings.style.top = `${Math.max(0, Math.min(y, window.innerHeight - menuRect.height))}px`;
+  spectrumBandInput.focus();
+}
+
+updateSpectrumBandSetting(spectrumBandCount);
+
+spectrumBandInput.addEventListener('input', () => {
+  updateSpectrumBandSetting(spectrumBandInput.valueAsNumber);
+  writeStoredValue(spectrumBandStorageKey, String(spectrumBandCount));
+});
+
+spectrumContainer.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  const paneRect = spectrumContainer.getBoundingClientRect();
+  openSpectrumSettings(event.clientX || paneRect.left, event.clientY || paneRect.top);
+});
+
+spectrumContainer.addEventListener('keydown', (event) => {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+  event.preventDefault();
+  const paneRect = spectrumContainer.getBoundingClientRect();
+  openSpectrumSettings(paneRect.left, paneRect.bottom);
+});
+
+spectrumSettings.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeSpectrumSettings();
+    spectrum.focus();
+  }
+});
+
+spectrumSettings.addEventListener('focusout', (event) => {
+  if (!spectrumSettings.contains(event.relatedTarget)) closeSpectrumSettings();
+});
+
+document.addEventListener('pointerdown', (event) => {
+  if (!spectrumSettings.hidden && !spectrumSettings.contains(event.target)) closeSpectrumSettings();
+});
 
 function showLiveTempo(bpm) {
   const label = `${bpm ?? '--'} BPM`;
@@ -930,9 +999,7 @@ async function requestLiveLevels() {
       const ratio = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(spectrum.clientWidth * ratio));
       const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
-      const bandCount = liveLevelsPaused && bandEdges.length
-        ? bandEdges.length - 1
-        : Math.max(1, Math.min(192, Math.floor(width / (3 * ratio))));
+      const bandCount = spectrumBandCount;
       if (bandEdges.length !== bandCount + 1) {
         // Logarithmic bands spread bass and treble across the display.
         bandEdges = Array.from({ length: bandCount + 1 }, (_, index) =>
@@ -954,6 +1021,9 @@ async function requestLiveLevels() {
         let peak = -Infinity;
         for (let bin = bandEdges[band]; bin < bandEdges[band + 1]; bin++) {
           peak = Math.max(peak, bins[bin]);
+        }
+        if (peak === -Infinity && bandEdges[band] < bins.length) {
+          peak = bins[bandEdges[band]];
         }
         const level = Math.min(1, Math.max(0, (peak + 90) / 65));
         spectrumTop = height * (1 - level);
