@@ -891,7 +891,7 @@ async function requestLiveLevels() {
 
     context = new AudioContext();
     const analyzer = context.createAnalyser();
-    analyzer.fftSize = 16384;
+    analyzer.fftSize = 32768;
     analyzer.smoothingTimeConstant = 0;
     const source = context.createMediaStreamSource(new MediaStream([audio]));
     source.connect(analyzer);
@@ -932,7 +932,7 @@ async function requestLiveLevels() {
       const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
       const bandCount = liveLevelsPaused && bandEdges.length
         ? bandEdges.length - 1
-        : Math.max(1, Math.min(64, Math.floor(width / (6 * ratio))));
+        : Math.max(1, Math.min(192, Math.floor(width / (3 * ratio))));
       if (bandEdges.length !== bandCount + 1) {
         // Logarithmic bands spread bass and treble across the display.
         bandEdges = Array.from({ length: bandCount + 1 }, (_, index) =>
@@ -945,7 +945,7 @@ async function requestLiveLevels() {
       if (!liveLevelsPaused) analyzer.getFloatFrequencyData(bins);
       drawing.clearRect(0, 0, width, height);
       const step = width / bandCount;
-      const dotRadius = Math.min(1.5 * ratio, step / 2, height / 2);
+      const dotRadius = Math.min(0.75 * ratio, step / 4, height / 2);
       const colors = drawing.createLinearGradient(0, 0, width, 0);
       let spectrumTop = height;
       drawing.beginPath();
