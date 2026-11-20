@@ -805,6 +805,7 @@ const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
 let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
 let tempoPlaying = false;
+let detectedBpm = null;
 let spectrumBandSettingBeforeEdit = spectrumBandCount;
 
 function updateSpectrumBandSetting(value) {
@@ -898,10 +899,11 @@ document.addEventListener('pointerdown', (event) => {
 });
 
 function showLiveTempo(bpm) {
+  detectedBpm = bpm;
   const label = `${bpm ?? '--'} BPM`;
-  if (liveBpm.textContent === label) return;
-  liveBpm.textContent = label;
+  if (liveBpm.textContent !== label) liveBpm.textContent = label;
   liveBpm.classList.toggle('active', bpm !== null);
+  refreshAutoBpmButtons();
 }
 
 function resetLiveTempo() {
@@ -2921,8 +2923,11 @@ stepButtons.forEach((button) => {
 const bpmValues = new Map();
 const bpmTaps = new Map();
 const bpmEditors = new Map();
+const bpmModes = new Map();
+const bpmManualTimers = new Map();
 const bpmMessage = document.querySelector('#bpm-message');
 const defaultNudgeBpm = 130;
+const bpmManualTimeoutMs = 10000;
 
 function nudgeError(message) {
   nudgeMessage.textContent = message;
@@ -3030,18 +3035,50 @@ function nudgePosition(direction) {
   else ytPlayer.pauseVideo();
 }
 
-function displayBpm(button, value) {
-  button.textContent = value === undefined ? 'BPM' : String(value);
+function displayBpm(button, value, mode = 'AUTO') {
+  const reading = document.createElement('span');
+  reading.className = 'pf-bpm-reading';
+  reading.textContent = value === undefined ? 'BPM' : String(value);
+  const modeLabel = document.createElement('span');
+  modeLabel.className = 'pf-bpm-mode';
+  modeLabel.textContent = mode;
+  button.replaceChildren(reading, modeLabel);
+  button.classList.toggle('manual', mode === 'MANUAL');
   const side = button.id === 'bpm-left' ? 'Left' : 'Right';
-  const description = value === undefined ? 'not measured' : String(value);
+  const description = `${value === undefined ? 'not measured' : String(value)}, ${mode.toLowerCase()}`;
   button.setAttribute('aria-label', `${side} BPM: ${description}. Tap to measure; press Shift+F10 to enter manually.`);
+}
+
+function useAutoBpm(button) {
+  clearTimeout(bpmManualTimers.get(button.id));
+  bpmManualTimers.delete(button.id);
+  bpmModes.set(button.id, 'AUTO');
+  const value = detectedBpm ?? undefined;
+  if (value === undefined) bpmValues.delete(button.id);
+  else bpmValues.set(button.id, value);
+  displayBpm(button, value, 'AUTO');
+}
+
+function refreshAutoBpmButtons() {
+  document.querySelectorAll('[data-bpm]').forEach((button) => {
+    if (bpmModes.get(button.id) !== 'MANUAL') useAutoBpm(button);
+  });
+}
+
+function useManualBpm(button, value) {
+  bpmModes.set(button.id, 'MANUAL');
+  if (value === undefined) bpmValues.delete(button.id);
+  else bpmValues.set(button.id, value);
+  displayBpm(button, value, 'MANUAL');
+  clearTimeout(bpmManualTimers.get(button.id));
+  bpmManualTimers.set(button.id, setTimeout(() => useAutoBpm(button), bpmManualTimeoutMs));
 }
 
 function resetBpm() {
   bpmEditors.forEach((close) => close(false));
   bpmValues.clear();
   bpmTaps.forEach((taps) => { taps.length = 0; });
-  document.querySelectorAll('[data-bpm]').forEach((button) => displayBpm(button));
+  document.querySelectorAll('[data-bpm]').forEach(useAutoBpm);
   bpmMessage.textContent = '';
 }
 
@@ -3110,9 +3147,8 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
       if (!restoreFocus) closeEditor(false);
       return;
     }
-    bpmValues.set(button.id, bpm);
     taps.length = 0;
-    displayBpm(button, bpm);
+    useManualBpm(button, bpm);
     bpmMessage.textContent = '';
     announceEvent({ type: 'bpm', name: button.id, value: String(bpm) });
     closeEditor(restoreFocus);
@@ -3152,6 +3188,7 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
     if (taps.length && now - taps[taps.length - 1] > bpmMaxGapMs) taps.length = 0;
     taps.push(now);
     if (taps.length > bpmMaxTaps) taps.shift();
+    useManualBpm(button, bpmValues.get(button.id));
     if (taps.length < 2) {
       announceEvent({ type: 'button', name: button.id });
       return;
@@ -3163,13 +3200,13 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
       announceEvent({ type: 'error', name: bpmMessage.textContent });
       return;
     }
-    bpmValues.set(button.id, displayedBpm);
     bpmMessage.textContent = '';
-    displayBpm(button, displayedBpm);
+    useManualBpm(button, displayedBpm);
     announceEvent({ type: 'bpm', name: button.id, value: bpm.toFixed(1) });
   });
 });
 
+refreshAutoBpmButtons();
 loadSavedLocations();
 initializeFavorites();
 initYouTubePlayer();

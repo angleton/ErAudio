@@ -126,6 +126,17 @@ test('starts idle and persists video additions and context-menu removals', { tim
   await page.locator('.vis-container').click({ button: 'right' });
   assert.equal(await page.locator('#spectrum-bands').inputValue(), '512');
   assert.match(await page.locator('#live-spectrum').getAttribute('aria-label'), /512 frequency bands/);
+
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  await page.evaluate(() => showLiveTempo(128));
+  assert.equal(await page.locator('#bpm-left').innerText(), '128\nAUTO');
+  assert.equal(await page.locator('#bpm-right').innerText(), '128\nAUTO');
+  await page.locator('#bpm-left').click();
+  assert.equal(await page.locator('#bpm-left .pf-bpm-mode').textContent(), 'MANUAL');
+  await page.evaluate(() => showLiveTempo(130));
+  assert.equal(await page.locator('#bpm-left .pf-bpm-reading').textContent(), '128');
+  assert.equal(await page.locator('#bpm-right .pf-bpm-reading').textContent(), '130');
 });
 
 const ids = { a: 'aaaaaaaaaaa', b: 'bbbbbbbbbbb', z: 'zzzzzzzzzzz' };

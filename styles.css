@@ -904,7 +904,28 @@ body {
 }
 
 .pf-bpm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   font-size: 13px;
+  line-height: 1;
+}
+
+.pf-bpm-reading {
+  display: block;
+}
+
+.pf-bpm-mode {
+  display: block;
+  margin-top: 2px;
+  color: #3f5b3f;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+
+.pf-bpm.manual .pf-bpm-mode {
+  color: #725000;
 }
 
 .pf-bpm-editor,
