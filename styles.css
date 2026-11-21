@@ -41,7 +41,8 @@ input {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+.title-bar-brand:focus-visible {
   outline: 2px solid var(--accent-gold);
   outline-offset: 2px;
 }
@@ -81,7 +82,8 @@ input:focus-visible {
   visibility: visible;
 }
 
-.transport-buttons .tooltip-target::after {
+.transport-buttons .tooltip-target::after,
+.title-bar-brand.tooltip-target::after {
   left: 0;
   transform: translate(0, -3px);
 }
@@ -94,6 +96,8 @@ input:focus-visible {
 
 .transport-buttons .tooltip-target:hover::after,
 .transport-buttons .tooltip-target:focus-visible::after,
+.title-bar-brand.tooltip-target:hover::after,
+.title-bar-brand.tooltip-target:focus-visible::after,
 .toggle-buttons .tooltip-target:hover::after,
 .toggle-buttons .tooltip-target:focus-visible::after {
   transform: translate(0, 0);

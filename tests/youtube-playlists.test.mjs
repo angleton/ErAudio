@@ -140,6 +140,27 @@ async function openVideo(page, videoId) {
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
 
+test('brand pronunciation tooltip matches the README and works on hover and keyboard focus', async (t) => {
+  const { page } = await setup(t);
+  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const pronunciation = readme.split(/\r?\n/).find((line) => line.startsWith('**ErAudio:**')).replaceAll('**', '');
+  const brand = page.locator('.title-bar-brand');
+  assert.equal(await brand.getAttribute('data-tooltip'), pronunciation);
+  assert.equal(await page.locator('#brand-pronunciation').textContent(), pronunciation);
+  await page.setViewportSize({ width: 320, height: 480 });
+  await brand.hover();
+  const hovered = await brand.evaluate((element) => {
+    const tooltip = getComputedStyle(element, '::after');
+    return { visibility: tooltip.visibility, left: element.getBoundingClientRect().left + parseFloat(tooltip.left) };
+  });
+  assert.equal(hovered.visibility, 'visible');
+  assert.ok(hovered.left >= 0);
+  await page.mouse.move(319, 479);
+  await page.keyboard.press('Tab');
+  assert.equal(await brand.evaluate((element) => document.activeElement === element), true);
+  assert.equal(await brand.evaluate((element) => getComputedStyle(element, '::after').visibility), 'visible');
+});
+
 test('timer and title overlay the spectrum without losing playback controls', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
   await openVideo(page, 'aaaaaaaaaaa');
