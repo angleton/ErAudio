@@ -50,6 +50,7 @@ const playlistStatus = document.querySelector('#playlist-status');
 const addVideoButton = document.querySelector('[data-action="add-url"]');
 const removeVideoButton = document.querySelector('[data-action="remove-track"]');
 const addedTracksStorageKey = 'eraudio:added-tracks';
+const lastPlayedStorageKey = 'eraudio:last-played';
 const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeLoginLabel = document.querySelector('#youtube-login-label');
 const youtubeSettingsButton = document.querySelector('#youtube-settings');
@@ -113,8 +114,11 @@ let displayedDuration = 0;
 const idleTitle = 'ErAudio - press ⏏ to open a YouTube video';
 let ytPlayer = null;
 let ytReady = false;
+let pendingPlayerPlayback = false;
 let playingTrack = null;
 let playingList = null;
+let lastPlayedVideoId = null;
+let lastPlayedWasLocal = false;
 let scrubbing = false;
 let savedLocations = new Map();
 let savedLocationsReadError = false;
@@ -252,6 +256,57 @@ function restoreAddedTracks() {
 function initializeFavorites() {
   restoreAddedTracks();
   renderFavoritesList(favoriteLists[0].id);
+}
+
+function saveLastPlayed(track, isLocal) {
+  lastPlayedVideoId = track.videoId;
+  lastPlayedWasLocal = isLocal;
+  try {
+    localStorage.setItem(lastPlayedStorageKey, JSON.stringify({
+      videoId: track.videoId, title: track.title, duration: track.duration, local: isLocal,
+    }));
+  } catch (error) {
+    console.error('Could not save the last played video.', error);
+    announceEvent({ type: 'error', name: 'Could not save the last played video in browser storage.' });
+  }
+}
+
+function restoreLastPlayed() {
+  let entry;
+  try {
+    const saved = localStorage.getItem(lastPlayedStorageKey);
+    if (saved === null) return;
+    entry = JSON.parse(saved);
+    if (!entry || typeof entry.videoId !== 'string' || !/^[A-Za-z0-9_-]{11}$/.test(entry.videoId)
+      || typeof entry.title !== 'string' || typeof entry.duration !== 'string' || typeof entry.local !== 'boolean') {
+      throw new Error('Invalid last played video.');
+    }
+  } catch (error) {
+    console.error('Could not restore the last played video.', error);
+    announceEvent({ type: 'error', name: 'Could not restore the last played video from browser storage.' });
+    return;
+  }
+  lastPlayedVideoId = entry.videoId;
+  lastPlayedWasLocal = entry.local;
+  const localTrack = entry.local && favoriteLists[0].tracks.find((track) => track.videoId === entry.videoId);
+  playingList = localTrack ? favoriteLists[0] : null;
+  playingTrack = localTrack || { videoId: entry.videoId, title: entry.title, duration: entry.duration };
+  if (localTrack) {
+    localTrack.selected = true;
+    renderFavoritesList(playingList.id);
+  }
+  ensureMarkers(playingTrack);
+}
+
+function clearLastPlayed() {
+  lastPlayedVideoId = null;
+  lastPlayedWasLocal = false;
+  try {
+    localStorage.removeItem(lastPlayedStorageKey);
+  } catch (error) {
+    console.error('Could not remove the last played video.', error);
+    announceEvent({ type: 'error', name: 'Could not remove the last played video from browser storage.' });
+  }
 }
 
 function setYouTubeAccount(accountName) {
@@ -791,6 +846,7 @@ function playTrack(list, track, startSeconds) {
   listeningHistory.endSession();
   playingList = list;
   playingTrack = track;
+  pendingPlayerPlayback = true;
   updateNowPlaying();
   ensureMarkers(track);
   resetTransportDisplay();
@@ -815,6 +871,7 @@ function loadTrackIntoPlayer(list, track) {
   listeningHistory.endSession();
   playingList = list;
   playingTrack = track;
+  pendingPlayerPlayback = false;
   updateNowPlaying();
   ensureMarkers(track);
   resetTransportDisplay();
@@ -825,6 +882,7 @@ function loadTrackIntoPlayer(list, track) {
 function stopPlayback() {
   cancelNudgePreview(true);
   listeningHistory.endSession();
+  pendingPlayerPlayback = false;
   if (ytReady) ytPlayer.stopVideo();
   resetTransportDisplay();
 }
@@ -836,6 +894,8 @@ function removeVideos(list, shouldRemove) {
   }
   const remaining = list.tracks.filter((track) => !shouldRemove(track));
   if (remaining.length === list.tracks.length) return;
+  if (lastPlayedWasLocal && list.tracks.some((track) =>
+    track.videoId === lastPlayedVideoId && !remaining.includes(track))) clearLastPlayed();
   if (list.tracks.includes(playingTrack) && !remaining.includes(playingTrack)) {
     stopPlayback();
     playingTrack = null;
@@ -1164,6 +1224,7 @@ document.addEventListener('keydown', (event) => {
 function setTrackTitle(track, title) {
   if (!track || !title || track.title === title) return;
   track.title = title;
+  if (track === playingTrack && track.videoId === lastPlayedVideoId) saveLastPlayed(track, lastPlayedWasLocal);
   if (track === playingTrack) updateNowPlaying();
   renderFavoritesList(currentListId);
 }
@@ -1703,6 +1764,9 @@ function onPlayerStateChange(event) {
       if (currentListId === playingList?.id) renderFavoritesList(currentListId);
     }
     setTrackTitle(playingTrack, ytPlayer.getVideoData?.().title);
+    if (ytPlayer.getVideoData?.()?.video_id === playingTrack.videoId) {
+      saveLastPlayed(playingTrack, playingList === favoriteLists[0]);
+    }
     refreshHeat();
   } else if (event.data === YT.PlayerState.ENDED) {
     listeningHistory.endSession();
@@ -1733,7 +1797,10 @@ function initYouTubePlayer() {
         onReady: () => {
           ytReady = true;
           ytPlayer.setVolume(Number(controls.volume.value));
-          if (playingTrack) ytPlayer.loadVideoById(playingTrack.videoId);
+          if (playingTrack) {
+            if (pendingPlayerPlayback) ytPlayer.loadVideoById(playingTrack.videoId);
+            else ytPlayer.cueVideoById(playingTrack.videoId);
+          }
         },
         onStateChange: onPlayerStateChange,
         onPlaybackRateChange: resetLiveTempo,
@@ -3240,6 +3307,7 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
 refreshAutoBpmButtons();
 loadSavedLocations();
 initializeFavorites();
+restoreLastPlayed();
 initYouTubePlayer();
 updateNowPlaying();
 if (credentialsLoadError) showLoginError(credentialsLoadError);

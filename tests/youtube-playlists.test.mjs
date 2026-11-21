@@ -193,6 +193,114 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   assert.equal(await page.locator('#time-display').textContent(), '-02:15');
 });
 
+test('last played local video is selected and cued on reload, not an unplayed selection', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  assert.deepEqual(await page.evaluate(() => window.playerEvents), []);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => playingTrack?.title === 'Local video');
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PLAYING }));
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await page.getByRole('button', { name: '+ ADD URL' }).click();
+  await page.getByLabel('VIDEO URL OR ID').fill('bbbbbbbbbbb');
+  await page.getByRole('button', { name: 'OPEN', exact: true }).click();
+  await page.locator('#playlist-list button').nth(1).click();
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 5);
+
+  await page.reload();
+  await page.waitForFunction(() => ytReady && window.playerEvents.length > 0);
+  assert.deepEqual(await page.evaluate(() => window.playerEvents), [['cue', 'aaaaaaaaaaa']]);
+  assert.match(await page.locator('#track-title').textContent(), /Local video/);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  const first = page.locator('#playlist-list button').first();
+  assert.equal(await first.getAttribute('aria-pressed'), 'true');
+  assert.equal(await first.evaluate((element) => element.classList.contains('active')), true);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.evaluate(() => ytPlayer.videoId), 'aaaaaaaaaaa');
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PLAYING }));
+
+  await first.click();
+  await page.getByRole('button', { name: '- REMOVE' }).click();
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:last-played')), null);
+  await page.reload();
+  await page.waitForFunction(() => ytReady);
+  assert.deepEqual(await page.evaluate(() => window.playerEvents), []);
+});
+
+test('last played playlist and history videos restore without adding them to Local Videos', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await signIn(page);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.locator('#playlist-select').selectOption('youtube:list-a');
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
+  await page.locator('#playlist-list button').nth(1).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PLAYING }));
+  await page.reload();
+  await page.waitForFunction(() => ytReady && window.playerEvents.length > 0);
+  assert.deepEqual(await page.evaluate(() => window.playerEvents), [['cue', 'bbbbbbbbbbb']]);
+  assert.equal(await page.locator('#track-title').textContent(), 'Second A');
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('eraudio:added-tracks'))), []);
+
+  await page.evaluate(() => {
+    playHistoryEntry({ videoId: 'ccccccccccc', start: 5, title: 'History video' });
+    onPlayerStateChange({ data: YT.PlayerState.PLAYING });
+  });
+  await page.reload();
+  await page.waitForFunction(() => ytReady && window.playerEvents.length > 0);
+  assert.deepEqual(await page.evaluate(() => window.playerEvents), [['cue', 'ccccccccccc']]);
+  assert.equal(await page.locator('#track-title').textContent(), 'History video');
+});
+
+test('invalid last played data is reported without preventing normal playback', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await page.evaluate(() => localStorage.setItem('eraudio:last-played', '{bad json'));
+  await page.reload();
+  await page.waitForFunction(() => ytReady);
+  assert.deepEqual(await page.evaluate(() => window.playerEvents), []);
+  assert.match(await page.locator('#event-status').textContent(), /Could not restore the last played video/);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PLAYING }));
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('eraudio:last-played')).videoId), 'aaaaaaaaaaa');
+});
+
+test('play and cue requests before the player is ready retain their intended behavior', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  const events = await page.evaluate(async () => {
+    const list = favoriteLists[0];
+    list.tracks.push(
+      { videoId: 'aaaaaaaaaaa', title: 'First', duration: '--:--' },
+      { videoId: 'bbbbbbbbbbb', title: 'Second', duration: '--:--' },
+    );
+    ytReady = false;
+    playTrack(list, list.tracks[0]);
+    window.onYouTubeIframeAPIReady();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    ytReady = false;
+    loadTrackIntoPlayer(list, list.tracks[1]);
+    window.onYouTubeIframeAPIReady();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return window.playerEvents;
+  });
+  assert.deepEqual(events, [['play', 'aaaaaaaaaaa'], ['cue', 'bbbbbbbbbbb']]);
+});
+
+test('last played storage failures are reported without interrupting playback', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'eraudio:last-played') throw new Error('Storage unavailable');
+      return setItem.call(this, key, value);
+    };
+    onPlayerStateChange({ data: YT.PlayerState.PLAYING });
+  });
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.match(await page.locator('#event-status').textContent(), /Could not save the last played video/);
+});
+
 test('YouTube playlists are read-only views and preserve the local list and playing queue', { timeout: 20000 }, async (t) => {
   const { page, requests } = await setup(t);
   const select = page.locator('#playlist-select');
