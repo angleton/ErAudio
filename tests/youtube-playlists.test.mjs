@@ -23,13 +23,14 @@ const playerScript = `
       setPlaybackRate() {}
       loadVideoById(video) {
         this.videoId = typeof video === 'string' ? video : video.videoId;
+        this.position = 0;
         this.state = 1;
         window.playerEvents.push(['play', this.videoId]);
       }
-      cueVideoById(videoId) { this.videoId = videoId; this.state = 5; window.playerEvents.push(['cue', videoId]); }
+      cueVideoById(videoId) { this.videoId = videoId; this.position = 0; this.state = 5; window.playerEvents.push(['cue', videoId]); }
       getPlayerState() { return this.state; }
-      getDuration() { return 0; }
-      getCurrentTime() { return 0; }
+      getDuration() { return this.duration || 0; }
+      getCurrentTime() { return this.position || 0; }
       getVideoData() { return { video_id: this.videoId }; }
       playVideo() { this.state = 1; }
       pauseVideo() { this.state = 2; }
@@ -237,4 +238,92 @@ test('resetting YouTube settings cancels an in-flight playlist without changing 
   assert.equal(await page.locator('#playlist-list button').first().getAttribute('data-video-id'), 'lllllllllll');
   assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:added-tracks')), saved);
   assert.equal(requests.some((request) => request.params.pageToken === 'slow-next'), false);
+});
+
+async function checkPlaylistHistory(t, endFirst) {
+  const { page } = await setup(t);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(async (endFirst) => {
+    await localHistoryReady;
+    window.testNow = Date.now();
+    Date.now = () => window.testNow;
+    ytPlayer.duration = 60;
+    ytPlayer.position = 0;
+    recordListening(YT.PlayerState.PLAYING);
+    window.testNow += 7000;
+    ytPlayer.position = 7;
+    recordListening(YT.PlayerState.PLAYING);
+    if (endFirst) {
+      ytPlayer.state = YT.PlayerState.ENDED;
+      onPlayerStateChange({ data: YT.PlayerState.ENDED });
+    }
+    await listeningHistory.queue;
+  }, endFirst);
+  await signIn(page);
+  await page.locator('#playlist-select').selectOption('youtube:list-a');
+  await page.waitForFunction(() => document.querySelector('#playlist-info').textContent.includes('PLAYLIST A'));
+  await page.locator('#playlist-list button').first().click();
+  if (endFirst) await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const history = await page.evaluate(async () => {
+    window.testNow += 1000;
+    ytPlayer.position = 0;
+    recordListening(YT.PlayerState.PLAYING);
+    window.testNow += 7000;
+    ytPlayer.position = 7;
+    recordListening(YT.PlayerState.PLAYING);
+    ytPlayer.state = YT.PlayerState.ENDED;
+    onPlayerStateChange({ data: YT.PlayerState.ENDED });
+    await listeningHistory.queue;
+    return listeningHistory.getAll();
+  });
+  assert.equal(history.videos.length, 1);
+  assert.equal(history.videos[0].videoId, 'aaaaaaaaaaa');
+  assert.equal(history.videos[0].plays, 2);
+  assert.deepEqual(history.spans.map(({ videoId, start, end }) => ({ videoId, start, end })), [
+    { videoId: 'aaaaaaaaaaa', start: 0, end: 7 },
+    { videoId: 'aaaaaaaaaaa', start: 0, end: 7 },
+  ]);
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'LISTENS 2 / TIME 00:14');
+  await page.locator('#history-view').click();
+  await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'PLAYS 2 / TIME 00:14');
+  await page.reload();
+  await page.waitForFunction(() => ytReady);
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'LISTENS 2 / TIME 00:14');
+}
+
+test('TOP combines the same video across playlists after finishing', { timeout: 20000 }, (t) => checkPlaylistHistory(t, true));
+test('TOP combines the same video across playlists when restarted while playing', { timeout: 20000 }, (t) => checkPlaylistHistory(t, false));
+
+test('pausing and resuming still counts as one play', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  const history = await page.evaluate(async () => {
+    await localHistoryReady;
+    window.testNow = Date.now();
+    Date.now = () => window.testNow;
+    ytPlayer.duration = 60;
+    ytPlayer.position = 0;
+    recordListening(YT.PlayerState.PLAYING);
+    window.testNow += 7000;
+    ytPlayer.position = 7;
+    recordListening(YT.PlayerState.PLAYING);
+    ytPlayer.state = YT.PlayerState.PAUSED;
+    onPlayerStateChange({ data: YT.PlayerState.PAUSED });
+    window.testNow += 1000;
+    ytPlayer.state = YT.PlayerState.PLAYING;
+    onPlayerStateChange({ data: YT.PlayerState.PLAYING });
+    window.testNow += 7000;
+    ytPlayer.position = 14;
+    recordListening(YT.PlayerState.PLAYING);
+    ytPlayer.state = YT.PlayerState.ENDED;
+    onPlayerStateChange({ data: YT.PlayerState.ENDED });
+    await listeningHistory.queue;
+    return listeningHistory.getAll();
+  });
+  assert.equal(history.videos[0].plays, 1);
+  assert.deepEqual(history.spans.map(({ start, end }) => ({ start, end })), [{ start: 0, end: 14 }]);
 });

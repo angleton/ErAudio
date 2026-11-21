@@ -788,6 +788,7 @@ function seekToMarker(index) {
 function playTrack(list, track, startSeconds) {
   cancelNudgePreview(true);
   if (track !== playingTrack) stopSpeedRamp();
+  listeningHistory.endSession();
   playingList = list;
   playingTrack = track;
   updateNowPlaying();
@@ -811,6 +812,7 @@ function loadTrackIntoPlayer(list, track) {
     playTrack(list, track);
     return;
   }
+  listeningHistory.endSession();
   playingList = list;
   playingTrack = track;
   updateNowPlaying();

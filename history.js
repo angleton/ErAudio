@@ -104,8 +104,7 @@
       this.queue = Promise.resolve();
       this.current = null;
       this.last = null;
-      this.sessionVideo = null;
-      this.sessionCounted = false;
+      this.session = null;
       this.onChange = null;
     }
 
@@ -217,8 +216,8 @@
         if (span.id === undefined) span.id = await request(store.add(record));
         else store.put({ ...record, id: span.id });
         await transactionDone(tx);
-        const countPlay = !this.sessionCounted && this.sessionVideo === span.videoId;
-        if (countPlay) this.sessionCounted = true;
+        const countPlay = !span.session.counted;
+        if (countPlay) span.session.counted = true;
         const meta = span.getMeta?.();
         if (meta || countPlay) {
           await this.writeVideo(meta || { videoId: span.videoId }, { incrementPlays: countPlay });
@@ -261,10 +260,7 @@
     }
 
     start(videoId, position, getMeta, now) {
-      if (videoId !== this.sessionVideo) {
-        this.sessionVideo = videoId;
-        this.sessionCounted = false;
-      }
+      if (videoId !== this.session?.videoId) this.session = { videoId, counted: false };
       const last = this.last;
       this.last = null;
       // Resuming right where the previous span ended (pause/resume, buffering) continues that span.
@@ -279,6 +275,8 @@
       }
       this.current = {
         videoId, start: position, end: position, playedAt: now, lastTick: now, lastFlush: now, getMeta,
+        // Queued writes can finish after this playback session has ended.
+        session: this.session,
       };
     }
 
@@ -302,14 +300,13 @@
     endSession() {
       this.close();
       this.last = null;
-      this.sessionVideo = null;
-      this.sessionCounted = false;
+      this.session = null;
     }
 
     clear() {
       this.current = null;
       this.last = null;
-      this.sessionCounted = false;
+      this.session = null;
       return this.enqueue(async () => {
         if (!this.available) return;
         const tx = this.db.transaction(['videos', 'spans'], 'readwrite');
