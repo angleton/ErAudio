@@ -33,6 +33,68 @@ const assets = new Map([
   ['/styles.css', ['styles.css', 'text/css']],
 ]);
 
+test('the interface fills the viewport while retaining usable controls in smaller windows', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+
+  const dimensions = () => page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+    return {
+      width: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      height: document.documentElement.clientHeight,
+      scrollHeight: document.documentElement.scrollHeight,
+      app: { width: rect('.winamp-container').width, height: rect('.winamp-container').height },
+      spectrum: rect('#live-spectrum').height,
+      videos: rect('#playlist-list').height,
+      history: rect('#history-list').height,
+      timerFont: getComputedStyle(document.querySelector('#time-display')).fontSize,
+    };
+  });
+  const normal = await dimensions();
+  assert.equal(normal.app.width, normal.width);
+  assert.equal(normal.scrollWidth, normal.width);
+  assert.equal(normal.scrollHeight, normal.height);
+
+  await page.setViewportSize({ width: 1100, height: 1100 });
+  const taller = await dimensions();
+  assert.ok(taller.spectrum > normal.spectrum + 250);
+  assert.equal(taller.timerFont, normal.timerFont);
+  assert.equal(taller.scrollHeight, taller.height);
+
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  const lists = await dimensions();
+  await page.setViewportSize({ width: 1100, height: 1600 });
+  const tallerLists = await dimensions();
+  assert.ok(tallerLists.videos > lists.videos + 100);
+  assert.ok(tallerLists.history > lists.history + 100);
+  assert.equal(tallerLists.scrollHeight, tallerLists.height);
+
+  await page.getByRole('button', { name: 'PL', exact: true }).click();
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 360 });
+  const small = await dimensions();
+  assert.equal(small.app.width, small.width);
+  assert.equal(small.scrollWidth, small.width);
+  assert.ok(small.scrollHeight > small.height);
+  assert.equal(small.timerFont, normal.timerFont);
+  const lastControl = page.locator('#history-clear');
+  await lastControl.scrollIntoViewIfNeeded();
+  const box = await lastControl.boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= small.width);
+});
+
 test('starts idle and persists video additions and context-menu removals', { timeout: 20000 }, async (t) => {
   const origin = await serve(t, async (req, res) => {
     if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');

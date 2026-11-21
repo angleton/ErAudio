@@ -8,12 +8,14 @@
   <script src="spectrum.js" defer></script>
   <script src="preview.js" defer></script>
   <style>
+    body { align-items: center; justify-content: center; padding: 20px; }
     .preview { width: min(520px, 100%); display: grid; gap: 12px; }
     .preview h1 { font-size: 20px; }
     .preview p { line-height: 1.5; }
     .preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     .preview-controls input { flex: 1 1 160px; }
     .preview a { color: #ffcc00; }
+    @media (max-width: 560px) { body { align-items: flex-start; padding: 10px; } }
   </style>
 </head>
 <body>
@@ -21,7 +23,9 @@
     <h1>ErAudio Spectrum Preview</h1>
     <p>Simulated levels only. No audio, YouTube, sign-in, or sharing is needed.</p>
     <div class="vis-container">
-      <canvas id="live-spectrum" role="img" aria-label="Simulated audio spectrum, bass on the left and treble on the right"></canvas>
+      <div class="spectrum-area">
+        <canvas id="live-spectrum" role="img" aria-label="Simulated audio spectrum, bass on the left and treble on the right"></canvas>
+      </div>
     </div>
     <div class="preview-controls">
       <label for="preview-bands">Frequency bands</label>
