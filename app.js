@@ -1001,7 +1001,7 @@ document.addEventListener('visibilitychange', resetLiveTempo);
 liveLevelButton.disabled = !tabCaptureAvailable;
 liveLevelButton.addEventListener('click', requestLiveLevels);
 if (!tabCaptureAvailable) {
-  liveLevelStatus.textContent = 'BPM and the live spectrum need tab audio sharing. Use a supported desktop browser on HTTPS or localhost.';
+  liveLevelStatus.textContent = 'The visualizer and BPM need tab audio sharing. Use a supported desktop browser on HTTPS or localhost.';
 }
 
 async function requestLiveLevels() {
@@ -1032,10 +1032,10 @@ async function requestLiveLevels() {
     if (!pickerPending) liveLevelButton.disabled = false;
   }
 
-  const stoppedMessage = 'Tab audio sharing stopped. Use Share Tab Audio to restore BPM and the live spectrum.';
+  const stoppedMessage = 'Tab audio sharing stopped. Use Share Tab Audio for Visualizer to restore the visualizer and BPM.';
   const onPageHide = () => stop(stoppedMessage);
   window.addEventListener('pagehide', onPageHide);
-  liveLevelStatus.textContent = 'Waiting for tab audio sharing to enable BPM and the live spectrum.';
+  liveLevelStatus.textContent = 'Waiting for tab audio sharing to enable the visualizer and BPM.';
 
   try {
     // The per-page handle rejects other sources, including other ErAudio tabs.
@@ -1064,13 +1064,13 @@ async function requestLiveLevels() {
       return;
     }
     if (capturedHandle !== handle) {
-      stop('BPM and the live spectrum need audio from this ErAudio tab. Use Share Tab Audio to try again.');
+      stop('The visualizer and BPM need audio from this ErAudio tab. Use Share Tab Audio for Visualizer to try again.');
       return;
     }
     capture.getVideoTracks().forEach((track) => track.stop());
     const [audio] = capture.getAudioTracks();
     if (!audio || audio.readyState === 'ended') {
-      stop('No tab audio was shared. To enable BPM and the live spectrum, use Share Tab Audio and turn on audio sharing in the picker.');
+      stop('No tab audio was shared. Use Share Tab Audio for Visualizer and turn on audio sharing in the picker to enable the visualizer and BPM.');
       return;
     }
     audio.addEventListener('ended', () => stop(stoppedMessage), { once: true });
@@ -1121,7 +1121,7 @@ async function requestLiveLevels() {
     const denied = error.name === 'NotAllowedError';
     if (!denied) console.warn('Could not start the live level meter.', error);
     const reason = denied ? 'tab sharing was not allowed' : 'could not start tab audio';
-    stop(`BPM and the live spectrum are unavailable: ${reason}. Playback still works; use Share Tab Audio to try again.`);
+    stop(`The visualizer and BPM are unavailable: ${reason}. Playback still works; use Share Tab Audio for Visualizer to try again.`);
   }
 }
 

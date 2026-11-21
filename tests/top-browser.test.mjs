@@ -217,7 +217,10 @@ test('live spectrum uses the shared renderer and stops sampling while paused', {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => {
     let handle;
-    const audio = { readyState: 'live', stop() {}, addEventListener() {} };
+    const audio = {
+      readyState: 'live', stop() {},
+      addEventListener(event, callback) { if (event === 'ended') window.stopSharedAudio = callback; },
+    };
     const video = { stop() {}, getCaptureHandle: () => ({ handle }) };
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
@@ -252,7 +255,9 @@ test('live spectrum uses the shared renderer and stops sampling while paused', {
     return route.abort();
   });
   await page.goto(origin);
-  await page.evaluate(() => requestLiveLevels());
+  const share = page.getByRole('button', { name: 'SHARE TAB AUDIO FOR VISUALIZER' });
+  assert.match(await page.locator('#live-level-status').textContent(), /Enable the visualizer and BPM/);
+  await share.click();
   await page.waitForFunction(() => window.spectrumReads > 2);
   assert.equal(await page.locator('#live-level-setup').isHidden(), true);
   assert.equal(await page.locator('#live-spectrum').evaluate((canvas) =>
@@ -263,6 +268,9 @@ test('live spectrum uses the shared renderer and stops sampling while paused', {
   assert.equal(await page.evaluate(() => window.spectrumReads), readsAtPause);
   await page.evaluate(() => { liveLevelsPaused = false; });
   await page.waitForFunction((previous) => window.spectrumReads > previous, readsAtPause);
+  await page.evaluate(() => window.stopSharedAudio());
+  assert.equal(await share.isVisible(), true);
+  assert.match(await page.locator('#live-level-status').textContent(), /restore the visualizer and BPM/);
   assert.deepEqual(errors, []);
 });
 
