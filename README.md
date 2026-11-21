@@ -33,7 +33,7 @@ The main player combines YouTube playback and transport controls with a position
 
 The time and title displays are the same height, with a full-width [live audio spectrum](#enable-live-audio-levels) above the position bar.
 
-The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v3.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
+The main title bar displays **ErAudio**, the YouTube login or account name, and the current version, **v5.0**. The optional Pitchfork window, opened with **DJ**, contains playback-speed adjustments, two independent BPM counters, BPM matching, speed ramps, and beat-based nudging. **VID** opens the video list, while **PL** opens detected chapters and timestamps. The interface remains audio-first; YouTube playback uses an embedded player rather than a visible video screen.
 
 ![ErAudio player showing saved locations, Pitchfork controls, videos, and chapters](screenshot-ui.png)
 <br>
@@ -59,7 +59,7 @@ Open [`visualizer/preview.html`](./visualizer/preview.html) directly in a browse
 
 ## 🚀 Project Overview & Architecture
 
-### Current Stage: Version 3.0
+### Current Stage: Version 5.0
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
   The interface fills the browser window; the spectrum and open lists expand when more height is available. In smaller windows, scroll to reach the remaining controls. Browser zoom remains available to adjust the overall size.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
