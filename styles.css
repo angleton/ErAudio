@@ -1007,6 +1007,12 @@ body {
   padding: 2px 4px;
 }
 
+.playlist-source-status {
+  color: #b6c8b6;
+  font: 11px/1.4 var(--font-mono);
+  margin: 4px 0;
+}
+
 .playlist-list {
   width: 100%;
   background: #080f08;
@@ -1212,6 +1218,11 @@ body {
   font-size: 9px;
   padding: 2px 6px;
   cursor: pointer;
+}
+
+#videos-window .pl-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .pl-info {

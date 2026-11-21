@@ -46,6 +46,9 @@ const maxSavedLocations = 50;
 const playlistSelect = document.querySelector('#playlist-select');
 const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
+const playlistStatus = document.querySelector('#playlist-status');
+const addVideoButton = document.querySelector('[data-action="add-url"]');
+const removeVideoButton = document.querySelector('[data-action="remove-track"]');
 const addedTracksStorageKey = 'eraudio:added-tracks';
 const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeLoginLabel = document.querySelector('#youtube-login-label');
@@ -83,6 +86,8 @@ try {
 const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 let youtubeAccessToken = '';
 let youtubeAuthGeneration = 0;
+let playlistSession = 0;
+let playlistRequest = 0;
 
 const favoriteLists = [
   {
@@ -195,9 +200,15 @@ function currentList() {
 function renderFavoritesList(listId) {
   const selectedList = favoriteLists.find((list) => list.id === listId) || favoriteLists[0];
   currentListId = selectedList.id;
+  const readOnly = selectedList !== favoriteLists[0];
+  addVideoButton.disabled = readOnly;
+  removeVideoButton.disabled = readOnly;
+  playlistList.setAttribute('aria-label', selectedList.name);
   playlistList.replaceChildren(...selectedList.tracks.map((track, index) => {
     const item = document.createElement('button');
-    item.className = `playlist-item${track === playingTrack ? ' active' : ''}${track.selected ? ' selected' : ''}`;
+    const active = track === playingTrack || (readOnly && selectedList.id === playingList?.id
+      && track.playlistItemId && track.playlistItemId === playingTrack?.playlistItemId);
+    item.className = `playlist-item${active ? ' active' : ''}${track.selected ? ' selected' : ''}`;
     item.type = 'button';
     item.setAttribute('aria-pressed', String(Boolean(track.selected)));
     item.dataset.track = String(index + 1);
@@ -205,13 +216,15 @@ function renderFavoritesList(listId) {
     item.textContent = `${index + 1}. ${track.title} [${track.duration}]`;
     return item;
   }));
-  playlistInfo.textContent = `${selectedList.name.toUpperCase()} / ${selectedList.tracks.length} TRACKS / ${formatPlaylistDuration(selectedList.tracks)} TOTAL`;
+  playlistInfo.textContent = readOnly
+    ? `${selectedList.name.toUpperCase()} / ${selectedList.tracks.length} TRACKS / READ-ONLY`
+    : `${selectedList.name.toUpperCase()} / ${selectedList.tracks.length} TRACKS / ${formatPlaylistDuration(selectedList.tracks)} TOTAL`;
   saveAddedTracks();
   announceEvent({ type: 'playlist', name: selectedList.name });
 }
 
 function saveAddedTracks() {
-  const added = favoriteLists.flatMap((list) => list.tracks.filter((track) => track.added));
+  const added = favoriteLists[0].tracks.filter((track) => track.added);
   writeStoredValue(addedTracksStorageKey, JSON.stringify(added.map(({ title, videoId, duration }) => (
     { title, videoId, duration }
   ))));
@@ -220,7 +233,7 @@ function saveAddedTracks() {
 function restoreAddedTracks() {
   try {
     const saved = JSON.parse(readStoredValue(addedTracksStorageKey) || '[]');
-    const seen = new Set(favoriteLists.flatMap((list) => list.tracks.map((track) => track.videoId)));
+    const seen = new Set(favoriteLists[0].tracks.map((track) => track.videoId));
     saved.forEach((entry) => {
       if (typeof entry?.videoId !== 'string' || seen.has(entry.videoId)) return;
       seen.add(entry.videoId);
@@ -258,53 +271,112 @@ function parseIsoDurationSeconds(value) {
   return Number.isSafeInteger(totalSeconds) && totalSeconds > 0 ? totalSeconds : null;
 }
 
-async function youtubeApi(path, params, { apiKey = '' } = {}) {
+async function youtubeApi(path, params, { apiKey = '', accessToken = youtubeAccessToken } = {}) {
   const url = new URL(`https://www.googleapis.com/youtube/v3/${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
   if (apiKey) url.searchParams.set('key', apiKey);
-  const headers = apiKey ? {} : { Authorization: `Bearer ${youtubeAccessToken}` };
+  const headers = apiKey ? {} : { Authorization: `Bearer ${accessToken}` };
   const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`YouTube API ${path} failed (${response.status})`);
   return response.json();
 }
 
-async function fetchAllPages(path, params) {
+async function fetchAllPages(path, params, { accessToken = youtubeAccessToken, isCurrent = () => true } = {}) {
   const items = [];
   let pageToken = '';
   do {
-    const page = await youtubeApi(path, pageToken ? { ...params, pageToken } : params);
-    items.push(...page.items);
+    const page = await youtubeApi(path, pageToken ? { ...params, pageToken } : params, { accessToken });
+    if (!isCurrent()) return null;
+    if (page.items !== undefined && !Array.isArray(page.items)) throw new Error('Invalid playlist response');
+    items.push(...(page.items || []));
     pageToken = page.nextPageToken || '';
   } while (pageToken);
   return items;
 }
 
-function setPlaylistPlaceholder(message) {
-  playlistSelect.replaceChildren(new Option(message, ''));
-  playlistSelect.disabled = true;
+function resetAccountPlaylists(message) {
+  playlistSession++;
+  playlistRequest++;
+  favoriteLists.splice(1);
+  playlistSelect.replaceChildren(new Option('Local Videos', favoriteLists[0].id));
+  playlistSelect.value = favoriteLists[0].id;
+  if (currentListId !== favoriteLists[0].id) renderFavoritesList(favoriteLists[0].id);
+  playlistStatus.textContent = message;
 }
 
-async function loadAccountPlaylists(generation) {
-  setPlaylistPlaceholder('Loading playlists...');
-  const channels = await youtubeApi('channels', { part: 'snippet', mine: 'true' });
-  if (generation !== youtubeAuthGeneration) return;
+async function loadAccountPlaylists(generation, session, accessToken) {
+  const isCurrent = () => generation === youtubeAuthGeneration && session === playlistSession;
+  const channels = await youtubeApi('channels', { part: 'snippet', mine: 'true' }, { accessToken });
+  if (!isCurrent()) return;
   const channel = channels.items?.[0];
   if (!channel) throw new Error('No YouTube channel found for this account.');
   setYouTubeAccount(channel.snippet.title);
 
-  const playlists = await fetchAllPages('playlists', { part: 'snippet', mine: 'true', maxResults: '50' });
-  if (generation !== youtubeAuthGeneration) return;
-  if (!playlists.length) {
-    setPlaylistPlaceholder('No playlists found');
+  const playlists = await fetchAllPages('playlists', { part: 'snippet', mine: 'true', maxResults: '50' }, {
+    accessToken, isCurrent,
+  });
+  if (!isCurrent()) return;
+  if (playlists.some((playlist) => typeof playlist.id !== 'string' || typeof playlist.snippet?.title !== 'string')) {
+    throw new Error('Invalid playlist response');
+  }
+  playlistSelect.replaceChildren(new Option('Local Videos', favoriteLists[0].id), ...playlists.map((playlist) => (
+    new Option(playlist.snippet.title, `youtube:${playlist.id}`)
+  )));
+  playlistSelect.value = currentListId;
+  playlistStatus.textContent = playlists.length
+    ? 'Select a YouTube playlist to view its videos. YouTube playlists are read-only.'
+    : 'No YouTube playlists found. Local Videos is still available.';
+}
+
+playlistSelect.addEventListener('change', async () => {
+  const selectedId = playlistSelect.value;
+  const request = ++playlistRequest;
+  if (selectedId === favoriteLists[0].id) {
+    renderFavoritesList(selectedId);
+    playlistStatus.textContent = youtubeAccessToken
+      ? 'Local Videos is separate from your YouTube playlists.'
+      : 'Sign in to browse YouTube playlists.';
     return;
   }
-  const placeholder = new Option('Select a playlist', '', true, true);
-  placeholder.disabled = true;
-  playlistSelect.replaceChildren(placeholder, ...playlists.map((playlist) => (
-    new Option(playlist.snippet.title, playlist.id)
-  )));
-  playlistSelect.disabled = false;
-}
+  const option = playlistSelect.selectedOptions[0];
+  const session = playlistSession;
+  const accessToken = youtubeAccessToken;
+  const isCurrent = () => request === playlistRequest && session === playlistSession;
+  playlistStatus.textContent = `Loading ${option.textContent}...`;
+  try {
+    const items = await fetchAllPages('playlistItems', {
+      part: 'snippet,contentDetails', playlistId: selectedId.slice('youtube:'.length), maxResults: '50',
+    }, { accessToken, isCurrent });
+    if (!isCurrent()) return;
+    let skipped = 0;
+    const tracks = [];
+    for (const item of items) {
+      const videoId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
+      if (!/^[A-Za-z0-9_-]{11}$/.test(videoId || '')) {
+        skipped++;
+        continue;
+      }
+      tracks.push({
+        videoId, title: item.snippet?.title || `YouTube video ${videoId}`,
+        duration: '--:--', playlistItemId: item.id,
+      });
+    }
+    const list = { id: selectedId, name: option.textContent, tracks };
+    const index = favoriteLists.findIndex((candidate) => candidate.id === selectedId);
+    if (index < 0) favoriteLists.push(list);
+    else favoriteLists[index] = list;
+    renderFavoritesList(selectedId);
+    playlistStatus.textContent = skipped
+      ? `Read-only YouTube playlist. ${skipped} unavailable item${skipped === 1 ? '' : 's'} omitted.`
+      : tracks.length ? 'Read-only YouTube playlist. Select Local Videos to edit your local list.'
+        : 'This YouTube playlist has no videos.';
+  } catch (error) {
+    if (!isCurrent()) return;
+    playlistSelect.value = currentListId;
+    playlistStatus.textContent = `Could not load playlist: ${error.message}. Your previous list is unchanged.`;
+    announceEvent({ type: 'error', name: playlistStatus.textContent });
+  }
+});
 
 let tokenClient = null;
 let silentAttempt = false;
@@ -332,13 +404,15 @@ function getTokenClient() {
         return;
       }
       loginNotice.hidden = true;
+      resetAccountPlaylists('Loading YouTube playlists...');
       youtubeAccessToken = tokenResponse.access_token;
+      const session = playlistSession;
       ensureMarkers(playingTrack);
       try {
-        await loadAccountPlaylists(generation);
+        await loadAccountPlaylists(generation, session, youtubeAccessToken);
       } catch (error) {
-        if (generation !== youtubeAuthGeneration) return;
-        setPlaylistPlaceholder('Could not load playlists');
+        if (generation !== youtubeAuthGeneration || session !== playlistSession) return;
+        playlistStatus.textContent = 'Could not load YouTube playlists. Local Videos is still available.';
         showLoginError(`Could not load YouTube playlists: ${error.message}`);
       }
     },
@@ -406,7 +480,7 @@ function resetAccountSession() {
   youtubeLoginLabel.textContent = 'YOUTUBE LOGIN';
   youtubeLoginButton.dataset.tooltip = 'Sign in to YouTube';
   youtubeLoginButton.setAttribute('aria-label', 'Sign in to YouTube');
-  setPlaylistPlaceholder('Sign in to load playlists');
+  resetAccountPlaylists('Sign in to browse YouTube playlists.');
 }
 
 youtubeSettingsButton.addEventListener('click', () => showCredentialsDialog());
@@ -754,6 +828,10 @@ function stopPlayback() {
 }
 
 function removeVideos(list, shouldRemove) {
+  if (list !== favoriteLists[0]) {
+    playlistStatus.textContent = 'YouTube playlists are read-only. Select Local Videos to remove videos.';
+    return;
+  }
   const remaining = list.tracks.filter((track) => !shouldRemove(track));
   if (remaining.length === list.tracks.length) return;
   if (list.tracks.includes(playingTrack) && !remaining.includes(playingTrack)) {
@@ -1417,7 +1495,7 @@ function playHistoryEntry({ videoId, start, title }) {
     ytPlayer.playVideo();
     return;
   }
-  const list = favoriteLists.find((candidate) => candidate.tracks.some((track) => track.videoId === videoId));
+  const list = favoriteLists[0].tracks.some((track) => track.videoId === videoId) ? favoriteLists[0] : null;
   const track = list?.tracks.find((candidate) => candidate.videoId === videoId)
     ?? { videoId, title, duration: '--:--' };
   playTrack(list ?? null, track, start);
@@ -1674,13 +1752,17 @@ function initYouTubePlayer() {
 }
 
 function addTrack(videoId) {
-  const list = currentList();
+  const list = favoriteLists[0];
+  const wasViewingLocal = currentListId === list.id && playlistSelect.value === list.id;
+  playlistRequest++;
+  playlistSelect.value = list.id;
   let track = list.tracks.find((candidate) => candidate.videoId === videoId);
   if (!track) {
     track = { title: `YouTube video ${videoId}`, videoId, duration: '--:--', added: true };
     list.tracks.push(track);
-    renderFavoritesList(list.id);
   }
+  renderFavoritesList(list.id);
+  if (!wasViewingLocal) playlistStatus.textContent = 'URLs are added to Local Videos.';
   if (track.title === `YouTube video ${videoId}`) resolveTrackTitle(track);
   return { list, track };
 }
@@ -2428,7 +2510,7 @@ function closeCopyMenu(restoreFocus = false) {
       videoId: list === playlistList ? item.dataset.videoId : playingTrack?.videoId,
       position: list === markerList ? currentMarkerEntries()[Number(item.dataset.marker)]?.start : null,
     };
-    removeVideoMenuItem.hidden = !track;
+    removeVideoMenuItem.hidden = !track || videoList !== favoriteLists[0];
     copyMenu.hidden = false;
     const itemRect = item.getBoundingClientRect();
     const x = event.clientX || itemRect.left;
@@ -2469,7 +2551,7 @@ copyMenu.addEventListener('click', async (event) => {
   const selection = copySelection;
   if (button === removeVideoMenuItem) {
     const { videoList, track } = selection;
-    if (!track || videoList !== currentList() || !videoList.tracks.includes(track)) {
+    if (!track || videoList !== favoriteLists[0] || videoList !== currentList() || !videoList.tracks.includes(track)) {
       closeCopyMenu(true);
       announceEvent({ type: 'error', name: 'That video is no longer in the list.' });
       return;
