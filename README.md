@@ -51,6 +51,10 @@ While playback is paused, the colored spectrum holds its last frame, but the whi
 
 The **BPM** readout to the right of **LOCATIONS**, above **DJ**, estimates the tempo of the shared audio at the current playback speed. If audio isn't shared, use **Share Tab Audio**; no Google sign-in is needed. The readout shows a gray `-- BPM` until it detects a tempo, then turns yellow during playback. It needs at least six seconds of steady playback in the visible tab and returns to gray when paused or while reacquiring after a seek or speed change. Brief delays between animation frames no longer restart detection; longer gaps do. While the audio remains active, the last confident estimate stays visible for up to three seconds through dips in confidence. A moving spectrum confirms that audio is shared, but it doesn't guarantee a tempo estimate. The detector checks for quieter beats between strong accents to avoid reporting half tempo, though some rhythms can still register at half or double tempo. The estimate does not change the manual Pitchfork BPM counters or playback speed.
 
+### Visualizer preview and customization
+
+Open [`visualizer/preview.html`](./visualizer/preview.html) directly in a browser to try simulated levels without audio, YouTube, sign-in, or tab sharing. The preview and player share the same renderer. See the [visualizer guide](./visualizer/README.md) for customization and tests.
+
 ---
 
 ## 🚀 Project Overview & Architecture

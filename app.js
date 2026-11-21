@@ -1011,20 +1011,13 @@ async function requestLiveLevels() {
       Math.ceil(hz * tempoAnalyzer.fftSize / context.sampleRate)));
     const levels = new Float32Array(tempoEdges.length - 1);
     const bins = new Float32Array(analyzer.frequencyBinCount).fill(-Infinity);
-    const lowHz = 30;
-    const highHz = Math.min(16000, context.sampleRate / 2);
-    const hzPerBin = context.sampleRate / analyzer.fftSize;
-    const peakHoldMs = 200;
-    const peakFallPerMs = 0.0008;
-    let bandEdges = [];
-    let heldPeaks;
-    let holdUntil;
     drawing = spectrum.getContext('2d');
     if (!drawing) throw new Error('Canvas drawing is unavailable.');
     await context.resume();
     if (stopped) return;
     liveLevelSetup.hidden = true;
-    let lastFrameTime = performance.now();
+    const startTime = performance.now();
+    const visualizer = new ErAudioSpectrum(spectrum, drawing, context.sampleRate, analyzer.fftSize, startTime);
     function drawSpectrum(now) {
       if (tempoPlaying && !scrubbing && !nudgePreview && !document.hidden) {
         tempoAnalyzer.getFloatFrequencyData(tempoBins);
@@ -1033,69 +1026,11 @@ async function requestLiveLevels() {
         }
         showLiveTempo(liveTempo.update(context.currentTime * 1000, levels));
       }
-      const ratio = window.devicePixelRatio || 1;
-      const width = Math.max(1, Math.round(spectrum.clientWidth * ratio));
-      const height = Math.max(1, Math.round(spectrum.clientHeight * ratio));
-      const bandCount = spectrumBandCount;
-      if (bandEdges.length !== bandCount + 1) {
-        // Logarithmic bands spread bass and treble across the display.
-        bandEdges = Array.from({ length: bandCount + 1 }, (_, index) =>
-          Math.min(bins.length, Math.ceil(lowHz * (highHz / lowHz) ** (index / bandCount) / hzPerBin)));
-        heldPeaks = new Float32Array(bandCount);
-        holdUntil = new Float64Array(bandCount);
-      }
-      if (spectrum.width !== width) spectrum.width = width;
-      if (spectrum.height !== height) spectrum.height = height;
       if (!liveLevelsPaused) analyzer.getFloatFrequencyData(bins);
-      drawing.clearRect(0, 0, width, height);
-      const step = width / bandCount;
-      const dotRadius = Math.min(0.75 * ratio, step / 4, height / 2);
-      const colors = drawing.createLinearGradient(0, 0, width, 0);
-      let spectrumTop = height;
-      drawing.beginPath();
-      drawing.moveTo(0, height);
-      for (let band = 0; band < bandCount; band++) {
-        let peak = -Infinity;
-        for (let bin = bandEdges[band]; bin < bandEdges[band + 1]; bin++) {
-          peak = Math.max(peak, bins[bin]);
-        }
-        if (peak === -Infinity && bandEdges[band] < bins.length) {
-          peak = bins[bandEdges[band]];
-        }
-        const level = Math.min(1, Math.max(0, (peak + 90) / 65));
-        spectrumTop = height * (1 - level);
-        const center = (band + 0.5) / bandCount;
-        if (band === 0) drawing.lineTo(0, spectrumTop);
-        drawing.lineTo(center * width, spectrumTop);
-        const hue = Math.round(120 * (1 - level));
-        colors.addColorStop(center, `hsl(${hue} 100% 55%)`);
-        const fallingMs = Math.max(0, now - Math.max(lastFrameTime, holdUntil[band]));
-        const fallingPeak = Math.max(0, heldPeaks[band] - fallingMs * peakFallPerMs);
-        if (!liveLevelsPaused && level > 0 && level >= fallingPeak) {
-          heldPeaks[band] = level;
-          holdUntil[band] = now + peakHoldMs;
-        } else {
-          heldPeaks[band] = fallingPeak;
-        }
-      }
-      drawing.lineTo(width, spectrumTop);
-      drawing.lineTo(width, height);
-      drawing.closePath();
-      drawing.fillStyle = colors;
-      drawing.fill();
-      drawing.fillStyle = '#fff';
-      for (let band = 0; band < bandCount; band++) {
-        if (heldPeaks[band] > 0) {
-          const y = Math.max(dotRadius, height * (1 - heldPeaks[band]) - dotRadius);
-          drawing.beginPath();
-          drawing.arc((band + 0.5) * step, y, dotRadius, 0, 2 * Math.PI);
-          drawing.fill();
-        }
-      }
-      lastFrameTime = now;
+      visualizer.draw(bins, spectrumBandCount, now, liveLevelsPaused, window.devicePixelRatio || 1);
       frame = requestAnimationFrame(drawSpectrum);
     }
-    drawSpectrum(lastFrameTime);
+    drawSpectrum(startTime);
   } catch (error) {
     pickerPending = false;
     if (stopped) {

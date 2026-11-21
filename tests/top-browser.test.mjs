@@ -29,6 +29,7 @@ const assets = new Map([
   ['/history.js', ['history.js', 'text/javascript']],
   ['/history-sync.js', ['history-sync.js', 'text/javascript']],
   ['/tempo.js', ['tempo.js', 'text/javascript']],
+  ['/visualizer/spectrum.js', ['visualizer/spectrum.js', 'text/javascript']],
   ['/styles.css', ['styles.css', 'text/css']],
 ]);
 
@@ -137,6 +138,70 @@ test('starts idle and persists video additions and context-menu removals', { tim
   await page.evaluate(() => showLiveTempo(130));
   assert.equal(await page.locator('#bpm-left .pf-bpm-reading').textContent(), '128');
   assert.equal(await page.locator('#bpm-right .pf-bpm-reading').textContent(), '130');
+});
+
+test('live spectrum uses the shared renderer and stops sampling while paused', { timeout: 15000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    let handle;
+    const audio = { readyState: 'live', stop() {}, addEventListener() {} };
+    const video = { stop() {}, getCaptureHandle: () => ({ handle }) };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        setCaptureHandleConfig(config) { handle = config.handle; },
+        async getDisplayMedia() {
+          return {
+            getVideoTracks: () => [video], getAudioTracks: () => [audio], getTracks: () => [video, audio],
+          };
+        },
+      },
+    });
+    window.MediaStream = class {};
+    window.spectrumReads = 0;
+    window.AudioContext = class {
+      sampleRate = 44100;
+      state = 'running';
+      createAnalyser() {
+        return {
+          fftSize: 0,
+          get frequencyBinCount() { return this.fftSize / 2; },
+          getFloatFrequencyData(bins) { window.spectrumReads++; bins.fill(-55); },
+        };
+      }
+      createMediaStreamSource() { return { connect() {} }; }
+      async resume() {}
+      async close() { this.state = 'closed'; }
+    };
+  });
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin === origin) return route.continue();
+    return route.abort();
+  });
+  await page.goto(origin);
+  await page.evaluate(() => requestLiveLevels());
+  await page.waitForFunction(() => window.spectrumReads > 2);
+  assert.equal(await page.locator('#live-level-setup').isHidden(), true);
+  assert.equal(await page.locator('#live-spectrum').evaluate((canvas) =>
+    canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)
+      .data.some((value, index) => index % 4 === 3 && value > 0)), true);
+  const readsAtPause = await page.evaluate(() => { liveLevelsPaused = true; return window.spectrumReads; });
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.spectrumReads), readsAtPause);
+  await page.evaluate(() => { liveLevelsPaused = false; });
+  await page.waitForFunction((previous) => window.spectrumReads > previous, readsAtPause);
+  assert.deepEqual(errors, []);
 });
 
 const ids = { a: 'aaaaaaaaaaa', b: 'bbbbbbbbbbb', z: 'zzzzzzzzzzz' };

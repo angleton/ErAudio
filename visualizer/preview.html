@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ErAudio Spectrum Preview</title>
+  <link rel="stylesheet" href="../styles.css">
+  <script src="spectrum.js" defer></script>
+  <script src="preview.js" defer></script>
+  <style>
+    .preview { width: min(520px, 100%); display: grid; gap: 12px; }
+    .preview h1 { font-size: 20px; }
+    .preview p { line-height: 1.5; }
+    .preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .preview-controls input { flex: 1 1 160px; }
+    .preview a { color: #ffcc00; }
+  </style>
+</head>
+<body>
+  <main class="preview">
+    <h1>ErAudio Spectrum Preview</h1>
+    <p>Simulated levels only. No audio, YouTube, sign-in, or sharing is needed.</p>
+    <div class="vis-container">
+      <canvas id="live-spectrum" role="img" aria-label="Simulated audio spectrum, bass on the left and treble on the right"></canvas>
+    </div>
+    <div class="preview-controls">
+      <label for="preview-bands">Frequency bands</label>
+      <input id="preview-bands" type="range" min="16" max="512" step="1" value="192">
+      <output id="preview-band-value" for="preview-bands">192</output>
+      <button class="pl-btn" id="preview-pause" type="button" aria-pressed="false">Pause</button>
+    </div>
+    <p id="preview-error" role="alert" hidden></p>
+    <p>Changes to the preview's band count do not change the player's saved setting. See the <a href="README.md">visualizer guide</a>.</p>
+  </main>
+</body>
+</html>
