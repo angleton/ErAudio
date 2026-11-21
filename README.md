@@ -1,5 +1,7 @@
 # ErAudio YouTube Web Player (with Pitchfork High-Granularity Control)
 
+**ErAudio:** /ɛr ˈɔdi.oʊ/ (“air-AW-dee-oh”)
+
 A retro YouTube audio web player interface inspired by the classic **Winamp 2.x skin**, branded as **ErAudio**, and paired with a **Pitchfork**-style playback speed control.
 
 ---
