@@ -8,6 +8,7 @@
   const FLUSH_INTERVAL_MS = 15000;
   const EXPORT_TYPE = 'eraudio-listening-history';
   const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+  const SESSION_ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 
   const round = (value) => Math.round(value * 10) / 10;
 
@@ -46,6 +47,65 @@
       });
       return { listens, seconds, coverage: length > 0 ? seconds / length : 0 };
     });
+  }
+
+  function periodStart(period, now) {
+    const date = new Date(now);
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    switch (period) {
+      case 'today': return new Date(year, month, day).getTime();
+      case 'week': return new Date(year, month, day - date.getDay()).getTime();
+      case 'month': return new Date(year, month, 1).getTime();
+      case 'year': return new Date(year, 0, 1).getTime();
+      default: throw new Error('Invalid listening history period.');
+    }
+  }
+
+  // Older spans have only a start time; newer ones also support approximate boundary splitting.
+  function filterPeriod({ videos, spans }, period, now = Date.now()) {
+    if (period === 'all') return { videos, spans };
+    const start = periodStart(period, now);
+    const selected = [];
+    const sessions = new Map();
+    const incomplete = new Set();
+    for (const span of spans) {
+      let filtered = span;
+      if (Number.isFinite(span.playedUntil) && span.playedUntil > span.playedAt) {
+        const from = Math.max(start, span.playedAt);
+        const to = Math.min(now, span.playedUntil);
+        if (to <= from) continue;
+        const scale = (span.end - span.start) / (span.playedUntil - span.playedAt);
+        filtered = { ...span, start: span.start + (from - span.playedAt) * scale,
+          end: span.start + (to - span.playedAt) * scale };
+      } else if (span.playedAt < start || span.playedAt > now) continue;
+      selected.push(filtered);
+      if (!span.sessionId) {
+        incomplete.add(span.videoId);
+      } else if (span.sessionStartedAt >= start && span.sessionStartedAt <= now) {
+        if (!sessions.has(span.videoId)) sessions.set(span.videoId, new Set());
+        sessions.get(span.videoId).add(span.sessionId);
+      }
+    }
+    const ids = new Set(selected.map((span) => span.videoId));
+    const byId = new Map(videos.map((video) => [video.videoId, video]));
+    return {
+      videos: Array.from(ids, (videoId) => ({
+        ...byId.get(videoId), videoId, plays: sessions.get(videoId)?.size || 0,
+        incompletePlays: incomplete.has(videoId),
+      })),
+      spans: selected,
+    };
+  }
+
+  function spanFields(span) {
+    const { videoId, start, end, playedAt, playedUntil, sessionId, sessionStartedAt } = span;
+    return {
+      videoId, start, end, playedAt,
+      ...(playedUntil !== undefined ? { playedUntil } : {}),
+      ...(sessionId !== undefined ? { sessionId, sessionStartedAt } : {}),
+    };
   }
 
   function heatBuckets(spans, duration, count) {
@@ -208,9 +268,8 @@
     flushSpan(span) {
       if (!this.available || span.end - span.start < MIN_SPAN_SECONDS) return Promise.resolve();
       return this.enqueue(async () => {
-        const record = {
-          videoId: span.videoId, start: round(span.start), end: round(span.end), playedAt: span.playedAt,
-        };
+        const record = spanFields({ ...span, start: round(span.start), end: round(span.end),
+          sessionId: span.session.id, sessionStartedAt: span.session.startedAt });
         const tx = this.db.transaction('spans', 'readwrite');
         const store = tx.objectStore('spans');
         if (span.id === undefined) span.id = await request(store.add(record));
@@ -248,6 +307,7 @@
         }
         span.end = Math.max(span.end, position);
         span.lastTick = now;
+        span.playedUntil = Math.max(span.playedAt, now);
         span.getMeta = getMeta;
         if (now - span.lastFlush >= FLUSH_INTERVAL_MS) {
           span.lastFlush = now;
@@ -260,7 +320,9 @@
     }
 
     start(videoId, position, getMeta, now) {
-      if (videoId !== this.session?.videoId) this.session = { videoId, counted: false };
+      if (videoId !== this.session?.videoId) {
+        this.session = { videoId, counted: false, id: crypto.randomUUID(), startedAt: now };
+      }
       const last = this.last;
       this.last = null;
       // Resuming right where the previous span ended (pause/resume, buffering) continues that span.
@@ -275,6 +337,7 @@
       }
       this.current = {
         videoId, start: position, end: position, playedAt: now, lastTick: now, lastFlush: now, getMeta,
+        playedUntil: now,
         // Queued writes can finish after this playback session has ended.
         session: this.session,
       };
@@ -324,7 +387,7 @@
         version: 1,
         exportedAt: new Date().toISOString(),
         videos,
-        spans: spans.map(({ videoId, start, end, playedAt }) => ({ videoId, start, end, playedAt })),
+        spans: spans.map(spanFields),
       };
     }
 
@@ -343,7 +406,12 @@
           || span.start < 0 || span.end <= span.start || !Number.isFinite(span.playedAt)) {
           throw new Error('The listening history file contains invalid entries. Nothing was imported.');
         }
-        return { videoId: span.videoId, start: round(span.start), end: round(span.end), playedAt: span.playedAt };
+        if ((span.playedUntil !== undefined && (!Number.isFinite(span.playedUntil) || span.playedUntil < span.playedAt))
+          || ((span.sessionId !== undefined || span.sessionStartedAt !== undefined)
+            && (!SESSION_ID.test(span.sessionId) || !Number.isFinite(span.sessionStartedAt) || span.sessionStartedAt < 0))) {
+          throw new Error('The listening history file contains invalid entries. Nothing was imported.');
+        }
+        return spanFields({ ...span, start: round(span.start), end: round(span.end) });
       });
       const videos = data.videos.map((video) => {
         if (!video || !VIDEO_ID.test(video.videoId)) {
@@ -364,15 +432,24 @@
         const tx = this.db.transaction(['videos', 'spans'], 'readwrite');
         const spanStore = tx.objectStore('spans');
         const videoStore = tx.objectStore('videos');
-        const keyOf = (span) => `${span.videoId}|${span.start}|${span.end}|${span.playedAt}`;
-        const known = new Set((await request(spanStore.getAll())).map(keyOf));
+        const keyOf = (span) => `${span.videoId}|${span.start}|${span.playedAt}`;
+        const known = new Map((await request(spanStore.getAll())).map((span) => [keyOf(span), span]));
         let added = 0;
-        spans.forEach((span) => {
-          if (known.has(keyOf(span))) return;
-          known.add(keyOf(span));
-          spanStore.add(span);
-          added += 1;
-        });
+        for (const span of spans) {
+          const previous = known.get(keyOf(span));
+          if (!previous) {
+            const id = await request(spanStore.add(span));
+            known.set(keyOf(span), { ...span, id });
+            added += 1;
+          } else if (span.end > previous.end || (span.sessionId && !previous.sessionId)
+            || (span.playedUntil !== undefined && span.playedUntil > (previous.playedUntil ?? -1))) {
+            const merged = { ...previous, ...span, end: Math.max(previous.end, span.end),
+              ...(previous.playedUntil !== undefined || span.playedUntil !== undefined
+                ? { playedUntil: Math.max(previous.playedUntil ?? 0, span.playedUntil ?? 0) } : {}) };
+            known.set(keyOf(span), merged);
+            spanStore.put(merged);
+          }
+        }
         for (const video of videos) {
           const existing = await request(videoStore.get(video.videoId));
           videoStore.put(existing ? {
@@ -400,6 +477,8 @@
     heatBuckets,
     heatColor,
     heatGradient,
+    filterPeriod,
+    spanFields,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else globalThis.ErAudioHistory = api;

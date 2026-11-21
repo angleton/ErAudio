@@ -280,6 +280,69 @@ function fixture(entries) {
   };
 }
 
+test('TOP filters calendar periods and preserves dated plays in backups', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ timezoneId: 'America/New_York' });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+  const result = await page.evaluate(async () => {
+    await localHistoryReady;
+    const today = Date.parse('2026-03-09T10:00:00-04:00');
+    const yesterday = Date.parse('2026-03-08T10:00:00-04:00');
+    Date.now = () => Date.parse('2026-03-09T12:00:00-04:00');
+    const data = {
+      type: 'eraudio-listening-history', version: 1,
+      videos: [
+        { videoId: 'aaaaaaaaaaa', title: 'Recent', duration: 30, chapters: [], timestamps: [], plays: 2, lastPlayed: today },
+        { videoId: 'bbbbbbbbbbb', title: 'Older', duration: 30, chapters: [], timestamps: [], plays: 1, lastPlayed: yesterday },
+        { videoId: 'zzzzzzzzzzz', title: 'Legacy', duration: 30, chapters: [], timestamps: [], plays: 5, lastPlayed: today },
+      ],
+      spans: [
+        { videoId: 'aaaaaaaaaaa', start: 0, end: 10, playedAt: today, playedUntil: today + 10000,
+          sessionId: '00000000-0000-0000-0000-000000000001', sessionStartedAt: today },
+        { videoId: 'aaaaaaaaaaa', start: 0, end: 10, playedAt: yesterday },
+        { videoId: 'bbbbbbbbbbb', start: 0, end: 10, playedAt: yesterday },
+        { videoId: 'zzzzzzzzzzz', start: 0, end: 10, playedAt: today },
+      ],
+    };
+    const legacy = structuredClone(data);
+    delete legacy.spans[0].sessionId;
+    delete legacy.spans[0].sessionStartedAt;
+    delete legacy.spans[0].playedUntil;
+    const first = await localHistory.importData(legacy);
+    const second = await localHistory.importData(data);
+    await localHistory.importData(legacy);
+    const exported = await localHistory.exportData();
+    return { first, second, exported };
+  });
+  assert.equal(result.first.spans, 4);
+  assert.equal(result.second.spans, 0);
+  assert.equal(result.exported.spans[0].sessionId, '00000000-0000-0000-0000-000000000001');
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  const period = page.getByLabel('TIME PERIOD');
+  assert.equal(await period.inputValue(), 'all');
+  await period.selectOption('today');
+  await page.locator('#history-view').click();
+  await page.waitForFunction(() => document.querySelectorAll('#history-list button').length === 2);
+  assert.match(await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"]').innerText(), /PLAYS 1 \/ TIME 00:10/);
+  assert.match(await page.locator('#history-list [data-history-location="zzzzzzzzzzz:0"]').innerText(), /PLAYS ≥0 \/ TIME 00:10/);
+  assert.equal(await page.locator('#history-list [data-history-location="bbbbbbbbbbb:0"]').count(), 0);
+  assert.equal(await page.locator('#history-period-note').isVisible(), true);
+  await period.selectOption('week');
+  await page.waitForFunction(() => document.querySelectorAll('#history-list button').length === 3);
+  await period.selectOption('all');
+  await page.waitForFunction(() => document.querySelector('#history-list [data-history-location="zzzzzzzzzzz:0"] .history-detail')?.textContent === 'PLAYS 5 / TIME 00:10');
+  assert.equal(await page.locator('#history-period-note').isHidden(), true);
+});
+
 function waitForTop(page, mode, entries) {
   const expected = entries.map(([name, count, seconds, start = 0], rank) => [
     `${ids[name]}:${start}`,
@@ -400,6 +463,19 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     await waitForTop(page, 'LISTENS', segments);
     await view.click();
     await waitForTop(page, 'PLAYS', [['b', 2, 20], ['z', 2, 20], ['a', 1, 10]]);
+  }));
+  const fixedNow = await first.page.evaluate(() => new Date(2026, 2, 9, 12).getTime());
+  await Promise.all([first, second].map(({ page }) => page.evaluate((now) => { Date.now = () => now; }, fixedNow)));
+  const recent = fixture([['a', fixedNow - 3600000]]);
+  Object.assign(recent.spans[0], {
+    sessionId: '00000000-0000-0000-0000-000000000001',
+    sessionStartedAt: fixedNow - 3600000, playedUntil: fixedNow - 3590000,
+  });
+  await importHistory(first.page, recent);
+  await reopenTop(second);
+  await Promise.all([first, second].map(async ({ page }) => {
+    await page.getByLabel('TIME PERIOD').selectOption('today');
+    await waitForTop(page, 'PLAYS', [['a', 1, 10]]);
   }));
   await first.signOut.click();
   await first.signIn.waitFor({ state: 'visible' });

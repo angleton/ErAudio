@@ -226,6 +226,7 @@
       <div class="playlist-body">
         <div class="history-list" id="history-list" role="list" aria-label="Most listened videos and segments"></div>
         <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
+        <p class="history-note" id="history-period-note" hidden>Periods use local time; weeks start Sunday. Boundary times are estimated. Plays count when a session starts; ≥ means older play counts are incomplete.</p>
         <div id="history-sync" hidden>
           <p class="history-note" id="history-sync-status" role="status">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
           <div id="history-google"><div id="history-google-button"></div></div>
@@ -236,6 +237,14 @@
 
       <div class="history-actions">
         <button class="pl-btn" id="history-view" type="button">VIEW: SEGMENTS</button>
+        <label for="history-period">TIME PERIOD</label>
+        <select id="history-period">
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="week">This week</option>
+          <option value="month">This month</option>
+          <option value="year">This year</option>
+        </select>
         <button class="pl-btn" id="history-export" type="button">EXPORT</button>
         <button class="pl-btn" id="history-import" type="button">IMPORT</button>
         <button class="pl-btn" id="history-clear" type="button">CLEAR</button>

@@ -50,8 +50,14 @@ function normalize(row, device) {
   if (typeof data?.videoId !== 'string' || !videoId.test(data.videoId)) return null;
   if (row.type === 'span' && nonnegative(data.start) && nonnegative(data.end) && data.end > data.start
     && nonnegative(data.playedAt)) {
-    const { videoId, start, end, playedAt } = data;
-    return { key: `s:${videoId}:${start}:${playedAt}`, payload: JSON.stringify({ videoId, start, end, playedAt }), span: true };
+    const { videoId, start, end, playedAt, playedUntil, sessionId, sessionStartedAt } = data;
+    if ((playedUntil !== undefined && (!nonnegative(playedUntil) || playedUntil < playedAt))
+      || ((sessionId !== undefined || sessionStartedAt !== undefined)
+        && (typeof sessionId !== 'string' || !uuid.test(sessionId) || !nonnegative(sessionStartedAt)))) return null;
+    const payload = { videoId, start, end, playedAt,
+      ...(playedUntil !== undefined ? { playedUntil } : {}),
+      ...(sessionId !== undefined ? { sessionId, sessionStartedAt } : {}) };
+    return { key: `s:${videoId}:${start}:${playedAt}`, payload: JSON.stringify(payload), span: true };
   }
   if (row.type === 'video' && typeof data.title === 'string' && data.title.length <= 300
     && nonnegative(data.duration) && Number.isSafeInteger(data.plays) && data.plays >= 0
@@ -91,7 +97,7 @@ export default {
           await db.prepare('INSERT OR IGNORE INTO history_accounts (account) VALUES (?)').bind(account).run();
           state = await db.prepare('SELECT epoch, revision FROM history_accounts WHERE account = ?').bind(account).first();
         }
-        return reply({ account, email, ...state });
+        return reply({ account, email, ...state, periodHistory: true });
       }
       if (request.method === 'GET' && url.pathname === '/rows') {
         const [epoch, from, until, id] = ['epoch', 'from', 'until', 'id']
@@ -139,7 +145,12 @@ export default {
             INSERT INTO history_rows (account, item_key, revision, payload)
             SELECT account, ?1, revision + 1, json(?2) FROM history_accounts WHERE account = ?3 AND epoch = ?4
             ON CONFLICT(account, item_key) DO UPDATE SET revision = excluded.revision, payload = ${span
-              ? `json_set(history_rows.payload, '$.end', max(json_extract(history_rows.payload, '$.end'), json_extract(excluded.payload, '$.end')))`
+              ? `json_patch(json_set(json_patch(history_rows.payload, excluded.payload),
+                  '$.end', max(json_extract(history_rows.payload, '$.end'), json_extract(excluded.payload, '$.end'))),
+                  CASE WHEN coalesce(json_extract(history_rows.payload, '$.playedUntil'),
+                    json_extract(excluded.payload, '$.playedUntil')) IS NULL THEN '{}'
+                  ELSE json_object('playedUntil', max(coalesce(json_extract(history_rows.payload, '$.playedUntil'), 0),
+                    coalesce(json_extract(excluded.payload, '$.playedUntil'), 0))) END)`
               : `json_set(CASE WHEN json_extract(history_rows.payload, '$.lastPlayed') > json_extract(excluded.payload, '$.lastPlayed')
                   THEN history_rows.payload ELSE excluded.payload END, '$.plays',
                   max(json_extract(history_rows.payload, '$.plays'), json_extract(excluded.payload, '$.plays')))`}

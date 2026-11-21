@@ -246,7 +246,7 @@ async function checkPlaylistHistory(t, endFirst) {
   await openVideo(page, 'aaaaaaaaaaa');
   await page.evaluate(async (endFirst) => {
     await localHistoryReady;
-    window.testNow = Date.now();
+    window.testNow = new Date(2026, 2, 9, 12).getTime();
     Date.now = () => window.testNow;
     ytPlayer.duration = 60;
     ytPlayer.position = 0;
@@ -280,10 +280,14 @@ async function checkPlaylistHistory(t, endFirst) {
   assert.equal(history.videos.length, 1);
   assert.equal(history.videos[0].videoId, 'aaaaaaaaaaa');
   assert.equal(history.videos[0].plays, 2);
+  assert.notEqual(history.spans[0].sessionId, history.spans[1].sessionId);
+  assert.ok(history.spans.every((span) => span.playedUntil > span.playedAt && span.sessionStartedAt <= span.playedAt));
   assert.deepEqual(history.spans.map(({ videoId, start, end }) => ({ videoId, start, end })), [
     { videoId: 'aaaaaaaaaaa', start: 0, end: 7 },
     { videoId: 'aaaaaaaaaaa', start: 0, end: 7 },
   ]);
+  const today = await page.evaluate((data) => ErAudioHistory.filterPeriod(data, 'today'), history);
+  assert.equal(today.videos[0].plays, 2);
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'LISTENS 2 / TIME 00:14');
   await page.locator('#history-view').click();

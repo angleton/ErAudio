@@ -520,8 +520,21 @@ body {
 .history-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
   padding: 0 6px;
+}
+
+.history-actions label,
+.history-actions select {
+  color: var(--accent-gold);
+  font: 10px var(--font-mono);
+}
+
+.history-actions select {
+  background: #080f08;
+  border: 1px solid #003300;
+  padding: 2px 4px;
 }
 
 .saved-locations {

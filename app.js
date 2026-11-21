@@ -1177,6 +1177,8 @@ const historyList = document.querySelector('#history-list');
 const historyInfo = document.querySelector('#history-info');
 const historyMessage = document.querySelector('#history-message');
 const historyViewButton = document.querySelector('#history-view');
+const historyPeriod = document.querySelector('#history-period');
+const historyPeriodNote = document.querySelector('#history-period-note');
 const historyFile = document.querySelector('#history-file');
 const historyGoogle = document.querySelector('#history-google');
 const historySignOut = document.querySelector('#history-sign-out');
@@ -1266,7 +1268,9 @@ async function syncHistory() {
       if (state.epoch !== sync.epoch) return;
       await sync.pull(state);
     }
-    showHistorySync(`Private history synced${sync.email ? ` as ${sync.email}` : ''}.`);
+    showHistorySync(sync.periodHistory
+      ? `Private history synced${sync.email ? ` as ${sync.email}` : ''}.`
+      : 'History synced, but the history service needs an update to sync period play details.');
     if (cleared) historyStatus('Your account history was cleared on another browser.');
     refreshHistoryViews(null);
   } catch (error) {
@@ -1364,6 +1368,7 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(() => {
   if (!document.hidden || playingTrack) syncHistory();
+  if (!historyWindow.hidden && historyPeriod.value !== 'all') renderHistory();
 }, 60000);
 
 function formatDuration(totalSeconds) {
@@ -1460,7 +1465,8 @@ function historyEntries(videos, spans) {
     const total = videoSpans.reduce((sum, span) => sum + (span.end - span.start), 0);
     if (historyView === 'videos') {
       if (video.plays || total) {
-        entries.push({ videoId: video.videoId, start: 0, title, label: '', listens: video.plays || 0, seconds: total });
+        entries.push({ videoId: video.videoId, start: 0, title, label: '', listens: video.plays || 0,
+          incompletePlays: video.incompletePlays, seconds: total });
       }
       return;
     }
@@ -1507,6 +1513,7 @@ async function renderHistory() {
   if (historyWindow.hidden) return;
   const renderId = ++historyRenderId;
   historyViewButton.textContent = historyView === 'segments' ? 'VIEW: SEGMENTS' : 'VIEW: VIDEOS';
+  historyPeriodNote.hidden = historyPeriod.value === 'all';
   const placeholder = (text) => {
     const empty = document.createElement('div');
     empty.className = 'playlist-empty';
@@ -1518,15 +1525,18 @@ async function renderHistory() {
     historyInfo.textContent = 'STORAGE UNAVAILABLE';
     return;
   }
-  const { videos, spans } = await readHistory();
+  const history = await readHistory();
   if (renderId !== historyRenderId) return;
+  const { videos, spans } = ErAudioHistory.filterPeriod(history, historyPeriod.value);
   const entries = historyEntries(videos, spans);
   const totalSeconds = spans.reduce((sum, span) => sum + (span.end - span.start), 0);
   const totalPlays = videos.reduce((sum, video) => sum + (video.plays || 0), 0);
   historyInfo.textContent = videos.length || spans.length
-    ? `${videos.length} VIDEOS / ${totalPlays} PLAYS / ${formatDuration(totalSeconds)}` : 'NO HISTORY';
+    ? `${videos.length} VIDEOS / ${videos.some((video) => video.incompletePlays) ? '≥' : ''}${totalPlays} PLAYS / ${formatDuration(totalSeconds)}`
+    : historyPeriod.value === 'all' ? 'NO HISTORY' : 'NO HISTORY IN PERIOD';
   if (!entries.length) {
-    placeholder('Nothing listened to yet. Play a video for at least a few seconds.');
+    placeholder(historyPeriod.value === 'all' ? 'Nothing listened to yet. Play a video for at least a few seconds.'
+      : 'Nothing listened to in this period.');
     return;
   }
   const focusedLocation = historyList.contains(document.activeElement)
@@ -1543,7 +1553,7 @@ async function renderHistory() {
     button.append(`${index + 1}. ${entry.title}${entry.label ? ` / ${entry.label}` : ''}`);
     const detail = document.createElement('span');
     detail.className = 'history-detail';
-    detail.textContent = `${historyView === 'videos' ? 'PLAYS' : 'LISTENS'} ${entry.listens} / TIME ${formatDuration(entry.seconds)}`;
+    detail.textContent = `${historyView === 'videos' ? 'PLAYS' : 'LISTENS'} ${entry.incompletePlays ? '≥' : ''}${entry.listens} / TIME ${formatDuration(entry.seconds)}`;
     button.append(detail);
     button.addEventListener('click', () => playHistoryEntry(entry));
     item.append(button);
@@ -1567,6 +1577,8 @@ historyViewButton.addEventListener('click', () => {
   historyView = historyView === 'segments' ? 'videos' : 'segments';
   renderHistory();
 });
+
+historyPeriod.addEventListener('change', renderHistory);
 
 document.querySelector('#history-export').addEventListener('click', async () => {
   let url;

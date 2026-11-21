@@ -1,5 +1,10 @@
 (() => {
   const spanKey = ({ videoId, start, playedAt }) => `s:${videoId}:${start}:${playedAt}`;
+  const spanFields = ({ videoId, start, end, playedAt, playedUntil, sessionId, sessionStartedAt }) => ({
+    videoId, start, end, playedAt,
+    ...(playedUntil !== undefined ? { playedUntil } : {}),
+    ...(sessionId !== undefined ? { sessionId, sessionStartedAt } : {}),
+  });
   const videoFields = ({ videoId, title, duration, chapters, timestamps, plays, lastPlayed }) =>
     ({ videoId, title, duration, chapters, timestamps, plays, lastPlayed });
 
@@ -7,7 +12,11 @@
     const records = new Map(rows);
     for (const data of local.spans) {
       const key = spanKey(data);
-      if (!records.has(key) || records.get(key).end < data.end) records.set(key, data);
+      const remote = records.get(key);
+      if (!remote) records.set(key, spanFields(data));
+      else records.set(key, { ...remote, ...spanFields(data), end: Math.max(remote.end, data.end),
+        ...(remote.playedUntil !== undefined || data.playedUntil !== undefined
+          ? { playedUntil: Math.max(remote.playedUntil ?? 0, data.playedUntil ?? 0) } : {}) });
     }
     for (const data of local.videos) {
       const key = `v:${device}:${data.videoId}`;
@@ -72,7 +81,8 @@
       return this.request('/state');
     }
 
-    async pull({ epoch, revision }) {
+    async pull({ epoch, revision, periodHistory }) {
+      this.periodHistory = periodHistory === true;
       if (epoch === this.epoch && revision === this.revision) return;
       const current = epoch === this.epoch;
       const rows = new Map(current ? this.rows : []);
@@ -106,10 +116,14 @@
         batch.push(json);
         size += bytes;
       };
-      for (const { videoId, start, end, playedAt } of spans) {
-        const data = { videoId, start, end, playedAt };
+      for (const span of spans) {
+        const { videoId, start, end, playedAt } = span;
+        const data = this.periodHistory ? spanFields(span) : { videoId, start, end, playedAt };
         const remote = this.rows.get(spanKey(data));
-        if (!remote || remote.end < end) await append('span', data);
+        if (!remote || remote.end < end || (this.periodHistory
+          && ((data.sessionId && !remote.sessionId) || (data.playedUntil ?? 0) > (remote.playedUntil ?? 0)))) {
+          await append('span', data);
+        }
       }
       for (const video of videos) {
         const data = videoFields(video);

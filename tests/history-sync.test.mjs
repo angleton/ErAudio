@@ -37,6 +37,7 @@ test('isolates accounts, merges two browsers and rejects uploads from before a c
   }] });
   const refresh = async (browser) => browser.pull(await browser.state());
   const firstHistory = history(Array.from({ length: 104 }, (_, i) => span(i, i + 10, i + 100)), 2);
+  Object.assign(firstHistory.spans[0], { sessionId: crypto.randomUUID(), sessionStartedAt: 100, playedUntil: 110 });
   await refresh(first);
   await first.upload(firstHistory);
   await refresh(second);
@@ -49,8 +50,25 @@ test('isolates accounts, merges two browsers and rejects uploads from before a c
   const merged = client.combine(first.rows, firstHistory, first.device);
   assert.equal(merged.spans.length, 105);
   assert.equal(merged.spans.find(({ start }) => start === 0).end, 15);
+  assert.equal(merged.spans.find(({ start }) => start === 0).sessionId, firstHistory.spans[0].sessionId);
   assert.equal(merged.videos[0].plays, 3);
   assert.equal(await first.upload(firstHistory), false);
+
+  const extra = { ...span(2000, 2010, 2000), playedUntil: 2010,
+    sessionId: crypto.randomUUID(), sessionStartedAt: 2000 };
+  firstHistory.spans.push(extra);
+  await first.pull({ ...await first.state(), periodHistory: false });
+  await first.upload(firstHistory);
+  await refresh(first);
+  assert.equal(first.rows.get(`s:${videoId}:2000:2000`).sessionId, undefined);
+  assert.equal(first.rows.get(`s:${videoId}:2000:2000`).playedUntil, undefined);
+  await first.upload(firstHistory);
+  await refresh(second);
+  assert.equal(second.rows.get(`s:${videoId}:2000:2000`).sessionId, extra.sessionId);
+  assert.equal(second.rows.get(`s:${videoId}:2000:2000`).playedUntil, 2010);
+  await assert.rejects(first.request('/rows', 'POST', JSON.stringify({
+    device: first.device, epoch: first.epoch, rows: [{ type: 'span', data: { ...extra, sessionId: 'invalid' } }],
+  })), { status: 400 });
 
   await refresh(otherAccount);
   assert.notEqual((await first.state()).account, (await otherAccount.state()).account);
