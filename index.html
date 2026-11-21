@@ -28,18 +28,18 @@
 
       <!-- Main Display Screen (Green/Yellow LCD) -->
       <div class="display-panel">
-        <button class="timer-display" id="timer-display" type="button" aria-label="Show remaining time" aria-pressed="false" aria-describedby="time-display" title="Switch between elapsed and remaining time">
-          <span id="playback-indicator" aria-hidden="true" hidden>▶</span>
-          <span class="digits" id="time-display">00:00</span>
-        </button>
-        <div class="display-right">
-          <div class="marquee-container">
-            <div class="marquee-text" id="track-title">ErAudio - press ⏏ to open a YouTube video</div>
-          </div>
-        </div>
         <div class="vis-container">
           <div class="spectrum-area">
             <canvas id="live-spectrum" role="img" tabindex="0" aria-label="Live audio spectrum, bass on the left and treble on the right"></canvas>
+            <div class="display-overlay">
+              <button class="timer-display" id="timer-display" type="button" aria-label="Show remaining time" aria-pressed="false" aria-describedby="time-display" title="Switch between elapsed and remaining time">
+                <span id="playback-indicator" aria-hidden="true" hidden>▶</span>
+                <span class="digits" id="time-display">00:00</span>
+              </button>
+              <div class="marquee-container">
+                <div class="marquee-text" id="track-title">ErAudio - press ⏏ to open a YouTube video</div>
+              </div>
+            </div>
           </div>
           <div id="live-level-setup">
             <div class="live-level-actions">

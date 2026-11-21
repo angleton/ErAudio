@@ -140,6 +140,59 @@ async function openVideo(page, videoId) {
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
 
+test('timer and title overlay the spectrum without losing playback controls', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(() => {
+    ytPlayer.duration = 180;
+    ytPlayer.position = 45;
+    onPlayerStateChange({ data: YT.PlayerState.PLAYING });
+    updateTimeDisplay(45, 180);
+  });
+  const timer = page.locator('#timer-display');
+  assert.equal(await page.locator('#playback-indicator').isVisible(), true);
+  assert.equal(await page.locator('#time-display').textContent(), '00:45');
+  const layout = await page.evaluate(() => {
+    const canvas = document.querySelector('#live-spectrum').getBoundingClientRect();
+    const timer = document.querySelector('#timer-display').getBoundingClientRect();
+    const title = document.querySelector('.marquee-container').getBoundingClientRect();
+    return {
+      inside: [timer, title].every((rect) => rect.top >= canvas.top && rect.bottom <= canvas.bottom
+        && rect.left >= canvas.left && rect.right <= canvas.right),
+      animated: getComputedStyle(document.querySelector('#track-title')).animationName,
+      timerBackground: getComputedStyle(document.querySelector('#timer-display')).backgroundColor,
+      titleBackground: getComputedStyle(document.querySelector('.marquee-container')).backgroundColor,
+    };
+  });
+  assert.equal(layout.inside, true);
+  assert.equal(layout.animated, 'marquee');
+  assert.equal(layout.timerBackground, 'rgba(0, 0, 0, 0)');
+  assert.equal(layout.titleBackground, 'rgba(0, 0, 0, 0)');
+
+  await timer.click();
+  assert.equal(await page.locator('#time-display').textContent(), '-02:15');
+  assert.equal(await timer.getAttribute('aria-pressed'), 'true');
+  await timer.press('Enter');
+  assert.equal(await page.locator('#time-display').textContent(), '00:45');
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PAUSED }));
+  assert.equal(await page.locator('#playback-indicator').isHidden(), true);
+
+  const title = await page.locator('.marquee-container').boundingBox();
+  await page.mouse.click(title.x + title.width / 2, title.y + title.height / 2, { button: 'right' });
+  assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
+  await page.keyboard.press('Escape');
+  await page.locator('#live-spectrum').focus();
+  await page.keyboard.press('Shift+F10');
+  assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 320, height: 480 });
+  const narrowTimer = await timer.boundingBox();
+  const narrowSpectrum = await page.locator('#live-spectrum').boundingBox();
+  assert.ok(narrowTimer.x >= narrowSpectrum.x && narrowTimer.x + narrowTimer.width <= narrowSpectrum.x + narrowSpectrum.width);
+  await timer.click();
+  assert.equal(await page.locator('#time-display').textContent(), '-02:15');
+});
+
 test('YouTube playlists are read-only views and preserve the local list and playing queue', { timeout: 20000 }, async (t) => {
   const { page, requests } = await setup(t);
   const select = page.locator('#playlist-select');

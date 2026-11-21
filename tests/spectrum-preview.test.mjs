@@ -68,3 +68,63 @@ test('standalone preview works offline, pauses and resumes, and changes band cou
   assert.deepEqual(errors, []);
   assert.deepEqual(remoteRequests, []);
 });
+
+test('minimum bands show whole lights at varying levels and sizes while maximum bands stay smooth', async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(new URL('../visualizer/preview.html', import.meta.url).href);
+  const result = await page.evaluate(() => {
+    const sample = document.createElement('canvas');
+    document.body.append(sample);
+    const context = sample.getContext('2d');
+    const levels = [0, 0.049, 0.051, 0.37, 0.86, 1];
+    const mismatches = [];
+    for (const [cssWidth, cssHeight, ratio] of [[512, 160, 1], [509, 157, 1], [509, 157, 2]]) {
+      sample.style.width = `${cssWidth}px`;
+      sample.style.height = `${cssHeight}px`;
+      const renderer = new ErAudioSpectrum(sample, context, 48000, 32768, 0);
+      const bins = new Float32Array(16384).fill(-90);
+      renderer.draw(bins, 16, 0, false, ratio);
+      levels.forEach((level, index) => {
+        const band = index + 8;
+        bins.fill(-90 + level * 65, renderer.bandEdges[band], renderer.bandEdges[band + 1]);
+      });
+      renderer.draw(bins, 16, 1, false, ratio);
+      const { width, height } = sample;
+      const step = width / 16;
+      const preferredRowHeight = Math.max(2 * ratio, Math.min(16 * ratio, step * 0.75));
+      const rowCount = Math.max(1, Math.round(height / preferredRowHeight));
+      const rowHeight = height / rowCount;
+      const { data } = context.getImageData(0, 0, width, height);
+      levels.forEach((level, index) => {
+        const band = index + 8;
+        for (let row = 0; row < rowCount; row++) {
+          for (const xPart of [0.2, 0.8]) {
+            for (const yPart of [0.3, 0.7]) {
+              const x = Math.floor((band + xPart) * step);
+              const y = Math.floor(height - (row + 1 - yPart) * rowHeight);
+              const alpha = data[(y * width + x) * 4 + 3];
+              const expected = row < Math.round(level * rowCount) ? 255 : 0;
+              if (alpha !== expected) mismatches.push({ cssWidth, cssHeight, ratio, band, row, x, y, alpha, expected });
+            }
+          }
+        }
+      });
+    }
+
+    sample.style.width = '512px';
+    sample.style.height = '160px';
+    const renderer = new ErAudioSpectrum(sample, context, 48000, 32768, 0);
+    const bins = new Float32Array(16384).fill(-90 + 0.37 * 65);
+    renderer.draw(bins, 512, 0, false, 1);
+    const smooth = context.getImageData(8, 98, 1, 5).data;
+    const smoothAlphas = Array.from({ length: 5 }, (_, index) => smooth[index * 4 + 3]);
+    sample.remove();
+    return { mismatches, smoothAlphas };
+  });
+  assert.deepEqual(result.mismatches, []);
+  assert.deepEqual(result.smoothAlphas.slice(0, 2), [0, 0]);
+  assert.ok(result.smoothAlphas[2] > 0 && result.smoothAlphas[2] < 255);
+  assert.deepEqual(result.smoothAlphas.slice(3), [255, 255]);
+});

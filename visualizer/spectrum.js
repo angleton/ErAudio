@@ -30,11 +30,17 @@
           Math.min(bins.length, Math.ceil(lowHz * (this.highHz / lowHz) ** (index / bandCount) / this.hzPerBin)));
         this.heldPeaks = new Float32Array(bandCount);
         this.holdUntil = new Float64Array(bandCount);
+        this.bandTops = new Float32Array(bandCount);
       }
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
       drawing.clearRect(0, 0, width, height);
       const step = width / bandCount;
+      const ledStrength = bandCount < ledTransitionBands
+        ? Math.min(1, (ledTransitionBands - bandCount) / (ledTransitionBands - ledMinimumBands)) : 0;
+      const preferredRowHeight = Math.max(2 * ratio, Math.min(ledMaxHeight * ratio, step * 0.75));
+      const rowCount = Math.max(1, Math.round(height / preferredRowHeight));
+      const rowHeight = height / rowCount;
       const dotRadius = Math.min(0.75 * ratio, step / 4, height / 2);
       const colors = drawing.createLinearGradient(0, 0, width, 0);
       let spectrumTop = height;
@@ -50,6 +56,8 @@
         }
         const level = Math.min(1, Math.max(0, (peak - quietDb) / (loudDb - quietDb)));
         spectrumTop = height * (1 - level);
+        const ledTop = height - Math.round(level * rowCount) * rowHeight;
+        this.bandTops[band] = spectrumTop + (ledTop - spectrumTop) * ledStrength;
         const center = (band + 0.5) / bandCount;
         if (band === 0) drawing.lineTo(0, spectrumTop);
         drawing.lineTo(center * width, spectrumTop);
@@ -67,21 +75,36 @@
       drawing.lineTo(width, spectrumTop);
       drawing.lineTo(width, height);
       drawing.closePath();
+      if (ledStrength) {
+        drawing.beginPath();
+        drawing.moveTo(0, height);
+        for (let band = 0; band < bandCount; band++) {
+          const top = this.bandTops[band];
+          const previous = this.bandTops[Math.max(0, band - 1)];
+          const next = this.bandTops[Math.min(bandCount - 1, band + 1)];
+          const left = top + ((previous - top) / 2) * (1 - ledStrength);
+          const right = top + ((next - top) / 2) * (1 - ledStrength);
+          drawing.lineTo(band * step, left);
+          drawing.lineTo((band + 0.5) * step, top);
+          drawing.lineTo((band + 1) * step, right);
+        }
+        drawing.lineTo(width, height);
+        drawing.closePath();
+      }
       drawing.fillStyle = colors;
       drawing.fill();
       if (bandCount < ledTransitionBands) {
-        const strength = Math.min(1, (ledTransitionBands - bandCount) / (ledTransitionBands - ledMinimumBands));
-        const rowHeight = Math.max(2 * ratio, Math.min(ledMaxHeight * ratio, step * 0.75));
         const columnGap = Math.min(ledMaxGap * ratio, step * 0.25);
         const rowGap = Math.min(ledMaxGap * ratio, rowHeight * 0.25);
         drawing.save();
         drawing.globalCompositeOperation = 'destination-out';
-        drawing.globalAlpha = strength;
+        drawing.globalAlpha = ledStrength;
         drawing.beginPath();
         for (let band = 1; band < bandCount; band++) {
           drawing.rect(band * step - columnGap / 2, 0, columnGap, height);
         }
-        for (let y = height - rowHeight; y > 0; y -= rowHeight) {
+        for (let row = 1; row < rowCount; row++) {
+          const y = height - row * rowHeight;
           drawing.rect(0, y - rowGap / 2, width, rowGap);
         }
         drawing.fill();

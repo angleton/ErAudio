@@ -317,12 +317,20 @@ body {
   border: 2px solid var(--panel-border-dark);
   box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.9);
   padding: 6px;
-  display: grid;
+  display: flex;
   flex: 1 0 auto;
-  grid-template-columns: 168px minmax(0, 1fr);
-  grid-template-rows: 38px auto;
-  gap: 6px 8px;
   border-radius: 2px;
+}
+
+.display-overlay {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 8px;
+  height: 38px;
+  background: linear-gradient(180deg, #000000bb, #00000066 75%, transparent);
+  pointer-events: none;
 }
 
 #playback-indicator {
@@ -341,12 +349,13 @@ body {
   font-family: var(--font-digital);
   font-size: 38px;
   color: var(--lcd-green);
-  text-shadow: 0 0 6px var(--lcd-green-glow);
+  text-shadow: 0 0 3px #000000, 0 0 6px var(--lcd-green-glow);
   line-height: 32px;
   letter-spacing: 2px;
-  background: #081208;
+  background: transparent;
   padding: 2px 6px;
-  border: 1px solid #004400;
+  border: 0;
+  pointer-events: auto;
   text-align: center;
 }
 
@@ -370,18 +379,9 @@ body {
   text-shadow: 0 0 4px #ccff00aa;
 }
 
-.display-right {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .marquee-container {
-  flex: 1;
   display: flex;
   align-items: center;
-  background: #081208;
-  border: 1px solid #004400;
   padding: 3px 6px;
   overflow: hidden;
   white-space: nowrap;
@@ -392,7 +392,7 @@ body {
   font-family: var(--font-digital);
   font-size: 18px;
   color: var(--lcd-green);
-  text-shadow: 0 0 4px var(--lcd-green-glow);
+  text-shadow: 0 0 3px #000000, 0 0 4px var(--lcd-green-glow);
   display: inline-block;
   animation: marquee 12s linear infinite;
 }
@@ -403,7 +403,8 @@ body {
 }
 
 .vis-container {
-  grid-column: 1 / -1;
+  flex: 1 1 0;
+  min-width: 0;
   background: #040a04;
   border: 1px solid #003300;
   min-height: 36px;
