@@ -74,21 +74,47 @@ test('the interface fills the viewport while retaining usable controls in smalle
 
   await page.getByRole('button', { name: 'VID', exact: true }).click();
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  const historyBox = await page.locator('#history-window').boundingBox();
+  const mainBox = await page.locator('.main-window').boundingBox();
+  const videosBox = await page.locator('#videos-window').boundingBox();
+  assert.ok(historyBox.y + historyBox.height <= mainBox.y);
+  assert.ok(mainBox.y + mainBox.height <= videosBox.y);
+  assert.equal(await page.evaluate(() => Boolean(
+    document.querySelector('#history-window').compareDocumentPosition(document.querySelector('.main-window'))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+  )), true);
   const lists = await dimensions();
   await page.setViewportSize({ width: 1100, height: 1600 });
   const tallerLists = await dimensions();
   assert.ok(tallerLists.videos > lists.videos + 100);
   assert.ok(tallerLists.history > lists.history + 100);
   assert.equal(tallerLists.scrollHeight, tallerLists.height);
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  assert.equal(await page.locator('#history-window').isHidden(), true);
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  assert.equal(await page.locator('#history-window').isVisible(), true);
 
   await page.getByRole('button', { name: 'PL', exact: true }).click();
   await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
   await page.setViewportSize({ width: 320, height: 360 });
+  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  const historyTop = await page.locator('#history-window').evaluate((element) => element.getBoundingClientRect().top);
+  assert.ok(historyTop >= 0 && historyTop < 10, 'opening TOP brings its top into view');
   const small = await dimensions();
   assert.equal(small.app.width, small.width);
   assert.equal(small.scrollWidth, small.width);
   assert.ok(small.scrollHeight > small.height);
   assert.equal(small.timerFont, normal.timerFont);
+  const smallHistory = await page.locator('#history-window').boundingBox();
+  const smallMain = await page.locator('.main-window').boundingBox();
+  const smallDj = await page.locator('#pitchfork-window').boundingBox();
+  const smallVideos = await page.locator('#videos-window').boundingBox();
+  const smallChapters = await page.locator('#playlist-window').boundingBox();
+  assert.ok(smallHistory.y + smallHistory.height <= smallMain.y);
+  assert.ok(smallMain.y + smallMain.height <= smallDj.y);
+  assert.ok(smallDj.y + smallDj.height <= smallVideos.y);
+  assert.ok(smallVideos.y + smallVideos.height <= smallChapters.y);
   const lastControl = page.locator('#history-clear');
   await lastControl.scrollIntoViewIfNeeded();
   const box = await lastControl.boundingBox();

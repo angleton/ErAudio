@@ -2524,7 +2524,10 @@ document.addEventListener('click', (event) => {
     document.getElementById(targetId).hidden = !isActive;
     if (targetId === 'history-window') {
       renderHistory();
-      if (!historyWindow.hidden) syncHistory();
+      if (!historyWindow.hidden) {
+        historyWindow.scrollIntoView({ block: 'start' });
+        syncHistory();
+      }
     }
   }
 
