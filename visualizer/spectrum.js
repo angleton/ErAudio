@@ -6,6 +6,10 @@
   const peakHoldMs = 200;
   const peakFallPerMs = 0.0008;
   const peakColor = '#fff';
+  const ledTransitionBands = 256;
+  const ledMinimumBands = 16;
+  const ledMaxGap = 3;
+  const ledMaxHeight = 16;
 
   class SpectrumVisualizer {
     constructor(canvas, drawing, sampleRate, fftSize, now) {
@@ -65,6 +69,24 @@
       drawing.closePath();
       drawing.fillStyle = colors;
       drawing.fill();
+      if (bandCount < ledTransitionBands) {
+        const strength = Math.min(1, (ledTransitionBands - bandCount) / (ledTransitionBands - ledMinimumBands));
+        const rowHeight = Math.max(2 * ratio, Math.min(ledMaxHeight * ratio, step * 0.75));
+        const columnGap = Math.min(ledMaxGap * ratio, step * 0.25);
+        const rowGap = Math.min(ledMaxGap * ratio, rowHeight * 0.25);
+        drawing.save();
+        drawing.globalCompositeOperation = 'destination-out';
+        drawing.globalAlpha = strength;
+        drawing.beginPath();
+        for (let band = 1; band < bandCount; band++) {
+          drawing.rect(band * step - columnGap / 2, 0, columnGap, height);
+        }
+        for (let y = height - rowHeight; y > 0; y -= rowHeight) {
+          drawing.rect(0, y - rowGap / 2, width, rowGap);
+        }
+        drawing.fill();
+        drawing.restore();
+      }
       drawing.fillStyle = peakColor;
       for (let band = 0; band < bandCount; band++) {
         if (this.heldPeaks[band] > 0) {

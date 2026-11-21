@@ -4,7 +4,7 @@ The player and the standalone preview use the same spectrum renderer. The player
 
 ## Try it
 
-Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 16–512 bands. Use **Pause** to hold the colored fill while the white peak dots fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
+Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 16–512 bands. Below 256 bands, gaps gradually appear and the display becomes a grid of larger LED-like blocks as the count decreases. Use **Pause** to hold the colored fill while the white peak dots fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
 
 Edit a file, save it, and reload the preview to see the change. Edits to the shared renderer affect both the preview and the player.
 
@@ -25,6 +25,7 @@ In [spectrum.js](./spectrum.js):
 - **Fill colors:** In `draw()`, change the `hue` calculation or the `hsl(...)` color passed to `colors.addColorStop()`. The current calculation goes from green for quiet levels toward red for loud levels.
 - **Peak dots:** Change `peakColor` near the top of the file. Change `dotRadius` or the `drawing.arc()` call in `draw()` to adjust their size or shape.
 - **Filled shape:** The `drawing.lineTo()` calls trace the top and bottom of the filled spectrum. Change those calls to draw a different outline.
+- **LED-like blocks:** Change `ledTransitionBands`, `ledMaxGap`, or `ledMaxHeight` to adjust when the gaps appear and how large the blocks become. The gaps fade in as the band count approaches `ledMinimumBands`.
 - **Peak timing:** Increase `peakHoldMs` to keep dots at their peaks longer; increase `peakFallPerMs` to make them fall faster. For example, changing `peakHoldMs` from `200` to `400` doubles the hold time.
 - **Height and frequency response:** `quietDb` and `loudDb` set the decibel range mapped to heights from zero to full. `lowHz` and `highHzLimit` set the displayed frequency range. Band edges are logarithmic, spreading bass and treble across the canvas.
 
