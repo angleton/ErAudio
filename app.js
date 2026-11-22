@@ -624,9 +624,12 @@ titleMarquee.addEventListener('contextmenu', (event) => {
 titleMarquee.addEventListener('pointerdown', (event) => {
   if ((event.button !== 0 && event.button !== 2) || titleDrag) return;
   clearTimeout(titleResumeTimer);
+  const primary = event.button === 0;
+  const transform = getComputedStyle(trackTitleDisplay).transform;
+  const offset = primary && transform !== 'none' ? new DOMMatrixReadOnly(transform).m41 : 0;
   titleMarquee.setPointerCapture(event.pointerId);
-  titleDrag = { id: event.pointerId, x: event.clientX, buttonMask: event.button === 0 ? 1 : 2 };
-  trackTitleDisplay.style.setProperty('--marquee-offset', '0px');
+  titleDrag = { id: event.pointerId, x: event.clientX, buttonMask: primary ? 1 : 2, startOffset: offset, offset, moved: false };
+  trackTitleDisplay.style.setProperty('--marquee-offset', `${offset}px`);
   titleMarquee.classList.add('manual-scroll');
 });
 
@@ -636,19 +639,35 @@ titleMarquee.addEventListener('pointermove', (event) => {
     titleMarquee.releasePointerCapture(event.pointerId);
     return;
   }
+  const dx = event.clientX - titleDrag.x;
+  if (dx === 0 && !titleDrag.moved) return;
+  titleDrag.moved = true;
   const style = getComputedStyle(titleMarquee);
   const width = titleMarquee.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const overflow = Math.max(0, trackTitleDisplay.getBoundingClientRect().width - width);
-  // Even a very long title can reach its end before the pointer hits the left edge.
-  const speed = Math.max(1, overflow / Math.max(1, titleDrag.x));
-  const offset = Math.max(-overflow, Math.min(0, (event.clientX - titleDrag.x) * speed));
-  trackTitleDisplay.style.setProperty('--marquee-offset', `${offset}px`);
+  const { startOffset, buttonMask } = titleDrag;
+  const speed = buttonMask === 1 ? 1 : Math.max(1, overflow / Math.max(1, titleDrag.x));
+  // A grab may start while the automatic scroll is entering or leaving the clip.
+  const minOffset = Math.min(-overflow, startOffset);
+  const maxOffset = Math.max(0, startOffset);
+  titleDrag.offset = Math.max(minOffset, Math.min(maxOffset, startOffset + dx * speed));
+  trackTitleDisplay.style.setProperty('--marquee-offset', `${titleDrag.offset}px`);
 });
 
 titleMarquee.addEventListener('lostpointercapture', (event) => {
   if (event.pointerId !== titleDrag?.id) return;
+  const { buttonMask, moved, offset } = titleDrag;
   titleDrag = null;
-  titleResumeTimer = setTimeout(() => titleMarquee.classList.remove('manual-scroll'), 1500);
+  if (!moved) trackTitleDisplay.style.setProperty('--marquee-offset', '0px');
+  const resume = () => {
+    const width = trackTitleDisplay.getBoundingClientRect().width;
+    // The CSS animation travels from +width to -width.
+    const progress = width ? (1 - (moved ? offset : 0) / width) / 2 : 0;
+    trackTitleDisplay.style.setProperty('--marquee-progress', Math.max(0, Math.min(1, progress)));
+    titleMarquee.classList.remove('manual-scroll');
+  };
+  if (buttonMask === 1 && moved) resume();
+  else titleResumeTimer = setTimeout(resume, 1500);
 });
 
 function updateNowPlaying() {

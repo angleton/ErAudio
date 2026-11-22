@@ -258,6 +258,7 @@ test('the track title handles both mouse buttons without toggling playback', { t
     const clip = container.getBoundingClientRect();
     const style = getComputedStyle(container);
     return {
+      left: title.left,
       leading: title.left - clip.left - parseFloat(style.paddingLeft),
       trailing: title.right - clip.right + parseFloat(style.paddingRight),
       animation: getComputedStyle(element).animationName,
@@ -275,21 +276,46 @@ test('the track title handles both mouse buttons without toggling playback', { t
     element.addEventListener('animationstart', resolve, { once: true });
   }));
 
-  for (const button of ['left', 'right']) {
-    await page.mouse.move(x, y);
-    await page.mouse.down({ button });
-    await page.mouse.move(0, y, { steps: 5 });
-    const end = await bounds();
-    assert.ok(end.leading < 0);
-    assert.ok(Math.abs(end.trailing) < 1, `title end is ${end.trailing}px from the right inset`);
-    await page.mouse.move(x, y, { steps: 5 });
-    assert.deepEqual(await bounds(), start);
-    await page.mouse.move(0, y, { steps: 5 });
-    await page.mouse.up({ button });
-    assert.deepEqual(await bounds(), end);
-    assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
-    assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
-  }
+  // Freeze the title partway through scrolling so the grab position is reproducible.
+  await trackTitle.evaluate((element) => {
+    const [animation] = element.getAnimations();
+    animation.pause();
+    animation.currentTime = 300;
+  });
+  const beforeDrag = await bounds();
+  assert.ok(beforeDrag.leading < -1);
+  assert.equal(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.id, { x, y }), 'track-title');
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  assert.ok(Math.abs((await bounds()).leading - beforeDrag.leading) < 1);
+  await page.mouse.move(x - 60, y);
+  assert.ok(Math.abs((await bounds()).leading - beforeDrag.leading + 60) < 1);
+  await page.mouse.move(x - 30, y);
+  const releasedAt = await bounds();
+  assert.ok(Math.abs(releasedAt.leading - beforeDrag.leading + 30) < 1);
+  await page.mouse.move(x - 30, container.y + container.height + 5);
+  await page.mouse.up();
+  const resumedOffset = (time) => trackTitle.evaluate((element, time) => {
+    const [animation] = element.getAnimations();
+    animation.currentTime = time;
+    return element.getBoundingClientRect().left;
+  }, time);
+  const resumedAt = await resumedOffset(0);
+  assert.ok(Math.abs(resumedAt - releasedAt.left) < 1);
+  assert.ok(await resumedOffset(100) < resumedAt - 1);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  assert.deepEqual(await bounds(), start);
+  await page.mouse.move(0, y, { steps: 5 });
+  const end = await bounds();
+  assert.ok(end.leading < 0);
+  assert.ok(Math.abs(end.trailing) < 1, `title end is ${end.trailing}px from the right inset`);
+  await page.mouse.up({ button: 'right' });
+  assert.deepEqual(await bounds(), end);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#track-title')).animationName === 'marquee');
 });
 

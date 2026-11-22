@@ -422,16 +422,19 @@ body {
   white-space: nowrap;
   pointer-events: auto;
   cursor: grab;
+  user-select: none;
 }
 
 .marquee-text {
+  --marquee-duration: 12s;
   flex: none;
   font-family: var(--font-digital);
   font-size: 18px;
   color: var(--lcd-green);
   text-shadow: 0 0 3px #000000, 0 0 4px var(--lcd-green-glow);
   display: inline-block;
-  animation: marquee 12s linear infinite;
+  animation: marquee var(--marquee-duration) linear infinite;
+  animation-delay: calc(-1 * var(--marquee-duration) * var(--marquee-progress, 0));
 }
 
 .marquee-container.manual-scroll .marquee-text {
