@@ -1362,10 +1362,14 @@ historySyncHelp.addEventListener('click', () => {
       : 'Show listening history sync information');
 });
 
-function setupPanelResize(panel, handle, heightKey) {
+function setupPanelResize(panel, handle, heightKey, { fitControls = false } = {}) {
   function applyHeight(height) {
     panel.classList.add('panel-sized');
     panel.style.height = `${Math.max(0, Math.round(height))}px`;
+    if (fitControls && panel.scrollHeight > panel.clientHeight) {
+      const borderHeight = panel.offsetHeight - panel.clientHeight;
+      panel.style.height = `${panel.scrollHeight + borderHeight}px`;
+    }
   }
 
   function saveHeight() {
@@ -1405,7 +1409,8 @@ function setupPanelResize(panel, handle, heightKey) {
 }
 
 setupPanelResize(historyWindow, historyResize, 'eraudio:history-window-height');
-setupPanelResize(document.querySelector('.main-window'), document.querySelector('#player-resize'), 'eraudio:player-window-height');
+setupPanelResize(document.querySelector('.main-window'), document.querySelector('#player-resize'),
+  'eraudio:player-window-height', { fitControls: true });
 
 function reportHistorySyncError(error) {
   console.warn('Listening history sync failed:', error.message);

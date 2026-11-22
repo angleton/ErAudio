@@ -311,13 +311,15 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
+  min-height: 0;
+  max-height: 100dvh;
+  overflow-y: auto;
   gap: 6px;
   padding: 6px;
 }
 
 .main-window.panel-sized {
   flex: 0 0 auto;
-  min-height: min-content;
 }
 
 /* LCD DISPLAY PANEL */

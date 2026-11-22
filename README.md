@@ -65,7 +65,7 @@ Open [`visualizer/preview.html`](./visualizer/preview.html) directly in a browse
 
 ### Current Stage: Version 5.0
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
-  The interface fills the browser window; the spectrum and open lists expand when more height is available. Drag the main player's bottom edge to change its height, or focus the resize handle and press **Up** or **Down**. The chosen height is saved in this browser. In smaller windows, scroll to reach the remaining controls. Browser zoom remains available to adjust the overall size.
+  The interface fills the browser window; the spectrum and open lists expand when more height is available. Drag the main player's bottom edge to change its height, or focus the resize handle and press **Up** or **Down**. The chosen height is saved in this browser and capped at the visible browser height. In smaller windows, scroll to reach the remaining controls. Browser zoom remains available to adjust the overall size.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
 * **Granular Controls:** The horizontal speed slider spans the bottom of Pitchfork, from -50% (`0.5x`) to +50% (`1.5x`), with normal speed (0%) at its midpoint. Values are rounded to `0.0001x`, and the arrow keys adjust by that amount; YouTube playback uses the rates supported by the video.
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.

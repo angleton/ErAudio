@@ -168,6 +168,17 @@ test('the main player can grow and shrink with every panel open', { timeout: 200
     assert.ok(box.y >= bounds.y && box.y + box.height <= bounds.y + bounds.height, `${selector} stays inside the player`);
   }
   assert.ok((await page.locator('#live-spectrum').boundingBox()).height >= 80);
+
+  await page.setViewportSize({ width: 360, height: min + 25 });
+  for (let i = 0; i < 5; i++) await handle.press('ArrowDown');
+  assert.equal(await height(), min + 25);
+  await page.reload();
+  assert.equal(await height(), min + 25);
+
+  await page.setViewportSize({ width: 360, height: 160 });
+  assert.equal(await height(), 160);
+  await handle.scrollIntoViewIfNeeded();
+  assert.ok(await panel.evaluate((element) => element.scrollTop > 0));
 });
 
 test('a populated TOP list can shrink to one or two visible entries', { timeout: 20000 }, async (t) => {
