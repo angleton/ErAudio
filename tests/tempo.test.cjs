@@ -87,6 +87,28 @@ test('uses weaker alternating beats without doubling a genuine slow tempo', () =
   assert.equal(feed(detector, 10000, 14000, alternating), 124);
 });
 
+test('a tap hint can resolve half/double tempo but expires and is discarded on reset', () => {
+  const detector = new LiveTempo();
+  const slowBeat = beat(62);
+  const alternating = (time) => 0.65 + 0.2 * slowBeat(time) + 0.064 * slowBeat(time + 60000 / 124);
+  assert.equal(feed(detector, 0, 10000, alternating), 124);
+  detector.setTempoHint(62);
+  assert.equal(feed(detector, 10000, 12000, alternating), 62);
+  assert.equal(feed(detector, 12000, 22000, alternating), 62);
+  assert.equal(feed(detector, 22000, 27000, alternating), 124);
+  detector.setTempoHint(62);
+  detector.reset();
+  assert.equal(feed(detector, 27000, 35000, alternating), 124);
+});
+
+test('a tap hint does not create an unsupported audio tempo or an estimate in silence', () => {
+  const detector = new LiveTempo();
+  assert.equal(feed(detector, 0, 8000, beat(120)), 120);
+  detector.setTempoHint(90);
+  assert.equal(feed(detector, 8000, 9500, beat(120)), 120);
+  assert.equal(feed(detector, 9500, 12500, () => 0), null);
+});
+
 test('holds the last tempo through a brief confidence dip, then clears it if the beat does not return', () => {
   const detector = new LiveTempo();
   const pulse = beat(120);

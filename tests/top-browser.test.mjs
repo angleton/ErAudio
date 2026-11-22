@@ -353,6 +353,46 @@ test('starts idle and persists video additions and context-menu removals', { tim
   await page.evaluate(() => showLiveTempo(130));
   assert.equal(await page.locator('#bpm-left .pf-bpm-reading').textContent(), '128');
   assert.equal(await page.locator('#bpm-right .pf-bpm-reading').textContent(), '130');
+
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+  const tapAt = (id, at) => page.evaluate(({ id, at }) => {
+    const originalNow = performance.now;
+    performance.now = () => at;
+    try {
+      document.getElementById(id).click();
+    } finally {
+      performance.now = originalNow;
+    }
+  }, { id, at });
+  await tapAt('bpm-left', 5000);
+  await tapAt('bpm-left', 5500);
+  const mainBpm = page.locator('#live-bpm');
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  assert.equal(await page.locator('#bpm-left .pf-bpm-reading').textContent(), '120');
+  await page.evaluate(() => showLiveTempo(135));
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  assert.equal(await page.locator('#bpm-right .pf-bpm-reading').textContent(), '135');
+  await page.evaluate(() => {
+    playerIsPlaying = true;
+    liveTempo.update(0, new Float32Array(3));
+  });
+  await tapAt('bpm-left', 6000);
+  assert.equal(await page.evaluate(() => liveTempo.tempoHint), null);
+  await tapAt('bpm-left', 6500);
+  assert.equal(await page.evaluate(() => liveTempo.tempoHint?.bpm), 120);
+  await tapAt('bpm-right', 7000);
+  await tapAt('bpm-right', 7750);
+  assert.equal(await mainBpm.textContent(), '80 BPM');
+  assert.equal(await page.locator('#bpm-left .pf-bpm-reading').textContent(), '120');
+  await page.clock.runFor(2999);
+  assert.equal(await mainBpm.textContent(), '80 BPM');
+  await page.clock.runFor(1);
+  assert.equal(await mainBpm.textContent(), '135 BPM');
+  assert.equal(await page.locator('#bpm-right').innerText(), '80\nMANUAL');
+  await page.clock.fastForward(7001);
+  assert.equal(await page.locator('#bpm-right').innerText(), '135\nAUTO');
 });
 
 test('live spectrum uses the shared renderer and stops sampling while paused', { timeout: 15000 }, async (t) => {

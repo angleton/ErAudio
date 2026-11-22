@@ -1038,6 +1038,8 @@ let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
 let playerIsPlaying = false;
 let detectedBpm = null;
+let tappedBpm = null;
+let tappedBpmTimer;
 let spectrumBandSettingBeforeEdit = spectrumBandCount;
 
 function updateSpectrumBandSetting(value) {
@@ -1130,17 +1132,33 @@ document.addEventListener('pointerdown', (event) => {
   if (!spectrumSettings.hidden && !spectrumSettings.contains(event.target)) closeSpectrumSettings();
 });
 
-function showLiveTempo(bpm) {
-  detectedBpm = bpm;
+function renderMainBpm() {
+  const bpm = tappedBpm ?? detectedBpm;
   const label = `${bpm ?? '--'} BPM`;
   if (liveBpm.textContent !== label) liveBpm.textContent = label;
   liveBpm.classList.toggle('active', bpm !== null);
+  liveBpm.title = tappedBpm !== null ? 'Manually tapped tempo'
+    : 'Estimated tempo of the shared tab audio at the current playback speed';
+}
+
+function showLiveTempo(bpm) {
+  if (detectedBpm === bpm) return;
+  detectedBpm = bpm;
+  renderMainBpm();
   refreshAutoBpmButtons();
+}
+
+function clearTappedBpm() {
+  clearTimeout(tappedBpmTimer);
+  tappedBpm = null;
+  renderMainBpm();
 }
 
 function resetLiveTempo() {
   liveTempo.reset();
   showLiveTempo(null);
+  clearTappedBpm();
+  bpmTaps.forEach((taps) => { taps.length = 0; });
 }
 
 function seekPlayback(position) {
@@ -3193,6 +3211,7 @@ const bpmManualTimers = new Map();
 const bpmMessage = document.querySelector('#bpm-message');
 const defaultNudgeBpm = 130;
 const bpmManualTimeoutMs = 10000;
+const tappedBpmDisplayTimeoutMs = 3000;
 
 function nudgeError(message) {
   nudgeMessage.textContent = message;
@@ -3343,6 +3362,8 @@ function resetBpm() {
   bpmEditors.forEach((close) => close(false));
   bpmValues.clear();
   bpmTaps.forEach((taps) => { taps.length = 0; });
+  clearTappedBpm();
+  liveTempo.clearTempoHint();
   document.querySelectorAll('[data-bpm]').forEach(useAutoBpm);
   bpmMessage.textContent = '';
 }
@@ -3388,6 +3409,23 @@ document.querySelectorAll('[data-pf]').forEach((button) => {
 // Each BPM button is a tap counter: taps within the gap window are averaged into a BPM.
 const bpmMaxGapMs = 2500;
 const bpmMaxTaps = 8;
+const tempoHintTapCount = 4;
+
+function updateTappedTempo(bpm, taps) {
+  tappedBpm = bpm;
+  clearTimeout(tappedBpmTimer);
+  tappedBpmTimer = setTimeout(clearTappedBpm, tappedBpmDisplayTimeoutMs);
+  renderMainBpm();
+
+  if (!playerIsPlaying || taps.length < tempoHintTapCount) return;
+  const recent = taps.slice(-tempoHintTapCount);
+  const intervals = recent.slice(1).map((tap, index) => tap - recent[index]);
+  const average = (recent.at(-1) - recent[0]) / intervals.length;
+  if (average > 0 && intervals.every((interval) => Math.abs(interval - average) <= average * 0.12)) {
+    liveTempo.setTempoHint(60000 / average);
+  }
+}
+
 document.querySelectorAll('[data-bpm]').forEach((button) => {
   const taps = [];
   let editor = null;
@@ -3467,6 +3505,7 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
     }
     bpmMessage.textContent = '';
     useManualBpm(button, displayedBpm);
+    updateTappedTempo(displayedBpm, taps);
     announceEvent({ type: 'bpm', name: button.id, value: bpm.toFixed(1) });
   });
 });

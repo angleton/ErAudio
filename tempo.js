@@ -7,8 +7,9 @@
   const confidenceHoldMs = 3000;
   const maxInterpolationMs = 120;
   const maxGapMs = 500;
+  const tempoHintMs = 15000;
 
-  function estimateTempo(onsets) {
+  function estimateTempo(onsets, hintBpm) {
     const observed = onsets.filter((value) => value !== null);
     const mean = observed.reduce((sum, value) => sum + value, 0) / observed.length;
     const signal = onsets.slice(1, -1).map((value, i) => {
@@ -43,6 +44,13 @@
     const half = peaks.find((lag) => Math.abs(2 * lag - peak) <= 2
       && scores[lag] >= Math.max(0.34, scores[peak] * 0.45));
     if (half !== undefined) peak = half;
+    if (hintBpm !== undefined) {
+      // A tap can resolve competing peaks, but cannot supply missing audio evidence.
+      const hinted = peaks.filter((lag) => scores[lag] >= Math.max(0.34, best * 0.45)
+        && Math.abs(60000 / (lag * sampleMs) - hintBpm) <= hintBpm * 0.08)
+        .sort((a, b) => scores[b] - scores[a])[0];
+      if (hinted !== undefined) peak = hinted;
+    }
     const left = scores[peak - 1];
     const center = scores[peak];
     const right = scores[peak + 1];
@@ -70,6 +78,17 @@
       this.lastConfidentAt = -Infinity;
       this.nextEstimate = 0;
       this.bpm = null;
+      this.clearTempoHint();
+    }
+
+    clearTempoHint() {
+      this.tempoHint = null;
+    }
+
+    setTempoHint(bpm) {
+      if (!this.previous || !Number.isFinite(bpm) || bpm < 55 || bpm > 200) return;
+      this.tempoHint = { bpm, expiresAt: this.previous.now + tempoHintMs };
+      this.nextEstimate = 0;
     }
 
     update(now, bands) {
@@ -105,7 +124,8 @@
       this.previous.bands.set(bands);
       if (now - this.lastOnset <= 2000 && this.onsets.length >= 300 && now >= this.nextEstimate) {
         this.nextEstimate = now + 1000;
-        const estimate = estimateTempo(this.onsets);
+        const hint = this.tempoHint;
+        const estimate = estimateTempo(this.onsets, hint && now < hint.expiresAt ? hint.bpm : undefined);
         if (estimate !== null) {
           this.bpm = estimate;
           this.lastConfidentAt = now;
