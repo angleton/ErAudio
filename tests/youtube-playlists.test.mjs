@@ -295,12 +295,17 @@ test('the track title handles both mouse buttons without toggling playback', { t
   assert.ok(Math.abs(leftEdge.trailing) < 1, `title end is ${leftEdge.trailing}px from the right inset`);
   await page.mouse.move(Math.ceil(container.x + container.width), y);
   const rightEdge = await bounds();
-  assert.ok(Math.abs(rightEdge.leading) < 1, `title start is ${rightEdge.leading}px from the left inset`);
-  await page.mouse.move(x - 30, y);
+  const rightInset = await trackTitle.evaluate((element) => {
+    const clip = element.parentElement;
+    return clip.getBoundingClientRect().right - parseFloat(getComputedStyle(clip).paddingRight);
+  });
+  assert.ok(Math.abs(rightEdge.left - rightInset) < 1, `title start is ${rightEdge.left - rightInset}px from the right inset`);
+  const releaseX = Math.ceil(container.x + container.width) - 12;
+  await page.mouse.move(releaseX, y);
   const releasedAt = await bounds();
-  assert.ok(releasedAt.leading < beforeDrag.leading);
-  assert.ok(releasedAt.leading > leftEdge.leading);
-  await page.mouse.move(x - 30, container.y + container.height + 5);
+  assert.ok(releasedAt.leading > 0, 'the title can be released past the left inset');
+  assert.ok(releasedAt.left < rightEdge.left);
+  await page.mouse.move(releaseX, container.y + container.height + 5);
   await page.mouse.up();
   const resumedOffset = (time) => trackTitle.evaluate((element, time) => {
     const [animation] = element.getAnimations();

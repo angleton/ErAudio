@@ -644,11 +644,14 @@ titleMarquee.addEventListener('pointermove', (event) => {
   titleDrag.moved = true;
   const style = getComputedStyle(titleMarquee);
   const width = titleMarquee.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-  const overflow = Math.max(0, trackTitleDisplay.getBoundingClientRect().width - width);
+  const titleWidth = trackTitleDisplay.getBoundingClientRect().width;
+  const overflow = Math.max(0, titleWidth - width);
   const { startOffset, buttonMask } = titleDrag;
+  // Let the beginning reach the right inset without exceeding the animation's entry offset.
+  const rightLimit = buttonMask === 1 ? Math.min(width, titleWidth) : 0;
   // A grab may start while the automatic scroll is entering or leaving the clip.
   const minOffset = Math.min(-overflow, startOffset);
-  const maxOffset = Math.max(0, startOffset);
+  const maxOffset = Math.max(rightLimit, startOffset);
   let speed;
   if (buttonMask === 1) {
     // Keep 1:1 motion when it fits, but let long titles reach either end within the marquee.
