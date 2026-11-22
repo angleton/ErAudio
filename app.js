@@ -1365,6 +1365,7 @@ historySyncHelp.addEventListener('click', () => {
 const historyHeightKey = 'eraudio:history-window-height';
 
 function setHistoryHeight(height) {
+  historyWindow.classList.add('history-sized');
   historyWindow.style.height = `${Math.max(0, Math.round(height))}px`;
   const appliedHeight = Math.round(historyWindow.getBoundingClientRect().height);
   historyWindow.style.height = `${appliedHeight}px`;
@@ -1377,7 +1378,10 @@ function setHistoryHeight(height) {
 
 try {
   const storedHeight = Number(localStorage.getItem(historyHeightKey));
-  if (Number.isFinite(storedHeight) && storedHeight > 0) historyWindow.style.height = `${storedHeight}px`;
+  if (Number.isFinite(storedHeight) && storedHeight > 0) {
+    historyWindow.style.height = `${storedHeight}px`;
+    historyWindow.classList.add('history-sized');
+  }
 } catch (error) {
   console.warn('Could not restore listening history window height:', error.message);
 }

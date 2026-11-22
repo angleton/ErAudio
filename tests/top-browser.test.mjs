@@ -121,6 +121,73 @@ test('the interface fills the viewport while retaining usable controls in smalle
   assert.ok(box.x >= 0 && box.x + box.width <= small.width);
 });
 
+test('a populated TOP list can shrink to one or two visible entries', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+  await page.evaluate(async () => {
+    await localHistoryReady;
+    const now = Date.now();
+    const videos = Array.from({ length: 12 }, (_, index) => ({
+      videoId: `video${String(index).padStart(6, '0')}`,
+      title: `Test video ${index + 1}`,
+      duration: 60,
+    }));
+    await localHistory.importData({
+      type: 'eraudio-listening-history', version: 1, videos,
+      spans: videos.map(({ videoId }) => ({ videoId, start: 0, end: 30, playedAt: now })),
+    });
+  });
+
+  const openTop = async () => {
+    await page.getByRole('button', { name: 'TOP', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('#history-list [role="listitem"]').length === 12);
+  };
+  const panel = page.locator('#history-window');
+  const handle = page.locator('#history-resize');
+  const list = page.locator('#history-list');
+  const visibleRows = () => list.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return [...element.children].filter((row) => {
+      const { top, bottom } = row.getBoundingClientRect();
+      return top >= bounds.top && bottom <= bounds.bottom;
+    }).length;
+  });
+  await openTop();
+  const before = await panel.boundingBox();
+  assert.ok(await visibleRows() > 2);
+  await handle.scrollIntoViewIfNeeded();
+  const grip = await handle.boundingBox();
+  const x = grip.x + grip.width / 2;
+  const y = grip.y + grip.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, Math.max(1, y - before.height), { steps: 10 });
+  await page.mouse.up();
+
+  const rows = await visibleRows();
+  assert.ok(rows >= 1 && rows <= 2, `expected 1 or 2 complete rows after shrinking, got ${rows}`);
+  assert.equal(await list.evaluate((element) => element.scrollHeight > element.clientHeight), true);
+  await page.locator('#history-clear').click({ trial: true });
+  const compactHeight = (await panel.boundingBox()).height;
+  await page.reload();
+  await openTop();
+  assert.equal((await panel.boundingBox()).height, compactHeight);
+  await page.setViewportSize({ width: 1100, height: 1200 });
+  assert.equal((await panel.boundingBox()).height, compactHeight);
+  for (let i = 0; i < 8; i++) await handle.press('ArrowDown');
+  assert.ok(await visibleRows() > rows);
+});
+
 test('starts idle and persists video additions and context-menu removals', { timeout: 20000 }, async (t) => {
   const origin = await serve(t, async (req, res) => {
     if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');

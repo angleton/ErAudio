@@ -501,10 +501,13 @@ body {
 }
 
 .history-window {
-  flex: 0 0 auto;
   height: 260px;
   min-height: min-content;
   max-height: 80vh;
+}
+
+.history-window.history-sized {
+  flex: 0 0 auto;
 }
 
 .history-window .playlist-body {
