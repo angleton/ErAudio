@@ -377,6 +377,90 @@ test('TOP filters calendar periods and preserves dated plays in backups', { time
   assert.equal(await page.locator('#history-period-note').isHidden(), true);
 });
 
+test('playing video and segment highlights follow playback across the lists', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+  await page.evaluate(async () => {
+    await localHistoryReady;
+    const markers = parseDescriptionMarkers('0:00 Opening\n0:20 Middle\n0:40 End', 60);
+    const videoId = 'aaaaaaaaaaa';
+    await localHistory.importData({
+      type: 'eraudio-listening-history', version: 1,
+      videos: [{ videoId, title: 'Test video', plays: 1, lastPlayed: Date.now(), ...markers }],
+      spans: [{ videoId, start: 0, end: 60, playedAt: Date.now() }],
+    });
+    const { track } = addTrack(videoId);
+    addTrack('bbbbbbbbbbb');
+    window.YT = { PlayerState: { PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5, ENDED: 0 } };
+    ytReady = true;
+    ytPlayer = {
+      state: -1,
+      getVideoData() { return { video_id: this.videoId }; },
+      getCurrentTime() { return this.position; },
+      getDuration() { return 60; },
+      getPlayerState() { return this.state; },
+      setPlaybackRate() {},
+      seekTo(position) { this.position = position; },
+      loadVideoById({ videoId, startSeconds }) {
+        this.videoId = videoId;
+        this.position = startSeconds;
+      },
+      stopVideo() { this.state = -1; },
+    };
+    playTrack(null, { ...track, title: 'Test video', markers }, 5);
+  });
+  for (const name of ['VID', 'PL', 'TOP']) {
+    await page.getByRole('button', { name, exact: true }).click();
+  }
+  await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"]').waitFor();
+  const highlights = () => page.locator('.playlist-item.now-playing').evaluateAll((rows) => rows.map((row) => [
+    row.closest('#history-list, #playlist-list, #marker-list').id,
+    row.dataset.historyLocation ?? row.dataset.videoId ?? row.dataset.marker,
+    row.getAttribute('aria-current'),
+  ]));
+  assert.deepEqual(await highlights(), []);
+  await page.evaluate(() => {
+    ytPlayer.state = YT.PlayerState.PLAYING;
+    onPlayerStateChange({ data: ytPlayer.state });
+  });
+  assert.deepEqual(await highlights(), [
+    ['history-list', 'aaaaaaaaaaa:0', 'time'], ['playlist-list', 'aaaaaaaaaaa', 'true'], ['marker-list', '0', 'time'],
+  ]);
+
+  await page.evaluate(() => seekPlayback(20));
+  await page.locator('#history-list [data-history-location="aaaaaaaaaaa:20"].now-playing').waitFor();
+  assert.deepEqual(await highlights(), [
+    ['history-list', 'aaaaaaaaaaa:20', 'time'], ['playlist-list', 'aaaaaaaaaaa', 'true'], ['marker-list', '1', 'time'],
+  ]);
+  await page.locator('#history-view').click();
+  await page.locator('#history-list [aria-current="true"]').waitFor();
+  assert.deepEqual(await highlights(), [
+    ['history-list', 'aaaaaaaaaaa:0', 'true'], ['playlist-list', 'aaaaaaaaaaa', 'true'], ['marker-list', '1', 'time'],
+  ]);
+
+  await page.evaluate(() => {
+    ytPlayer.state = YT.PlayerState.PAUSED;
+    onPlayerStateChange({ data: ytPlayer.state });
+  });
+  assert.deepEqual(await highlights(), []);
+  await page.evaluate(() => {
+    ytPlayer.state = YT.PlayerState.PLAYING;
+    onPlayerStateChange({ data: ytPlayer.state });
+  });
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  assert.deepEqual(await highlights(), []);
+});
+
 function waitForTop(page, mode, entries) {
   const expected = entries.map(([name, count, seconds, start = 0], rank) => [
     `${ids[name]}:${start}`,

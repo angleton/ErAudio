@@ -117,6 +117,7 @@ let ytReady = false;
 let pendingPlayerPlayback = false;
 let playingTrack = null;
 let playingList = null;
+let playbackHighlight = null;
 let lastPlayedVideoId = null;
 let lastPlayedWasLocal = false;
 let scrubbing = false;
@@ -218,6 +219,7 @@ function renderFavoritesList(listId) {
     item.dataset.track = String(index + 1);
     if (track.videoId) item.dataset.videoId = track.videoId;
     item.textContent = `${index + 1}. ${track.title} [${track.duration}]`;
+    setNowPlaying(item, Boolean(playbackHighlight && track.videoId === playbackHighlight.videoId));
     return item;
   }));
   playlistInfo.textContent = readOnly
@@ -627,6 +629,8 @@ function applyControl(name, value) {
 }
 
 function resetTransportDisplay() {
+  playerIsPlaying = false;
+  setPlaybackHighlight(null);
   resetLiveTempo();
   updateTimeDisplay(0, 0);
   controls.scrubber.value = 0;
@@ -783,6 +787,7 @@ function renderMarkers() {
       : showingChapters ? 'INFERRED CHAPTERS' : 'TIMESTAMPS';
     markerInfo.textContent = `${label} / ${entries.length} ENTRIES${markers.duration ? '' : ' / CHAPTERS UNAVAILABLE'}`;
   }
+  highlightPlayingMarker();
   refreshHeat();
 }
 
@@ -820,16 +825,64 @@ async function ensureMarkers(track) {
   }
 }
 
-function highlightActiveMarker(position) {
+function markerIndexAt(position) {
   const entries = currentMarkerEntries();
-  if (!entries.length) return;
   let index = -1;
   entries.forEach((entry, i) => { if (position >= entry.start) index = i; });
+  return index;
+}
+
+function highlightActiveMarker(position) {
+  const index = markerIndexAt(position);
   if (index === activeMarkerIndex) return;
   activeMarkerIndex = index;
   markerList.querySelectorAll('[data-marker]').forEach((item) => {
     item.classList.toggle('active', Number(item.dataset.marker) === index);
   });
+}
+
+function setNowPlaying(item, isPlaying, current = 'true') {
+  if (!item.classList.toggle('now-playing', isPlaying)) item.removeAttribute('aria-current');
+  else if (item.getAttribute('aria-current') !== current) item.setAttribute('aria-current', current);
+}
+
+function highlightPlayingMarker() {
+  const index = markerSource === 'video' && playbackHighlight && playbackHighlight.videoId === playingTrack?.videoId
+    ? markerIndexAt(playbackHighlight.position) : -1;
+  markerList.querySelectorAll('[data-marker]').forEach((item) => {
+    setNowPlaying(item, !item.disabled && Number(item.dataset.marker) === index, 'time');
+  });
+}
+
+function highlightHistoryEntry(item) {
+  const segment = item.hasAttribute('data-history-end');
+  const isPlaying = Boolean(playbackHighlight && item.dataset.videoId === playbackHighlight.videoId
+    && (!segment || (playbackHighlight.position >= Number(item.dataset.historyStart)
+      && playbackHighlight.position < Number(item.dataset.historyEnd))));
+  setNowPlaying(item, isPlaying, segment ? 'time' : 'true');
+}
+
+function setPlaybackHighlight(next) {
+  const previous = playbackHighlight;
+  if (previous?.videoId === next?.videoId && previous?.position === next?.position) return;
+  playbackHighlight = next;
+  if (previous?.videoId !== next?.videoId) {
+    playlistList.querySelectorAll('[data-video-id]').forEach((item) => {
+      setNowPlaying(item, item.dataset.videoId === next?.videoId);
+    });
+  }
+  highlightPlayingMarker();
+  historyList.querySelectorAll('[data-history-location]').forEach(highlightHistoryEntry);
+}
+
+function refreshPlaybackHighlight(state) {
+  const videoId = playingTrack?.videoId;
+  if (!playerIsPlaying || state !== YT.PlayerState.PLAYING || !videoId
+    || ytPlayer.getVideoData?.()?.video_id !== videoId) {
+    setPlaybackHighlight(null);
+    return;
+  }
+  setPlaybackHighlight({ videoId, position: ytPlayer.getCurrentTime() });
 }
 
 function seekToMarker(index) {
@@ -944,7 +997,7 @@ const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
   && typeof window.AudioContext === 'function';
 let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
-let tempoPlaying = false;
+let playerIsPlaying = false;
 let detectedBpm = null;
 let spectrumBandSettingBeforeEdit = spectrumBandCount;
 
@@ -1159,7 +1212,7 @@ async function requestLiveLevels() {
     const startTime = performance.now();
     const visualizer = new ErAudioSpectrum(spectrum, drawing, context.sampleRate, analyzer.fftSize, startTime);
     function drawSpectrum(now) {
-      if (tempoPlaying && !scrubbing && !nudgePreview && !document.hidden) {
+      if (playerIsPlaying && !scrubbing && !nudgePreview && !document.hidden) {
         tempoAnalyzer.getFloatFrequencyData(tempoBins);
         for (let band = 0; band < levels.length; band++) {
           levels[band] = ErAudioLiveTempo.bandLevel(tempoBins, tempoEdges[band], tempoEdges[band + 1]);
@@ -1310,28 +1363,24 @@ historySyncHelp.addEventListener('click', () => {
 });
 
 const historyHeightKey = 'eraudio:history-window-height';
-const historyHeightMinimum = 220;
 
 function setHistoryHeight(height) {
-  const maximum = Math.max(historyHeightMinimum, Math.floor(window.innerHeight * 0.8));
-  const nextHeight = Math.min(maximum, Math.max(historyHeightMinimum, Math.round(height)));
-  historyWindow.style.height = `${nextHeight}px`;
+  historyWindow.style.height = `${Math.max(0, Math.round(height))}px`;
+  const appliedHeight = Math.round(historyWindow.getBoundingClientRect().height);
+  historyWindow.style.height = `${appliedHeight}px`;
   try {
-    localStorage.setItem(historyHeightKey, String(nextHeight));
-  } catch {
-    // The size still applies when browser storage is unavailable.
+    localStorage.setItem(historyHeightKey, String(appliedHeight));
+  } catch (error) {
+    console.warn('Could not save listening history window height:', error.message);
   }
-  return nextHeight;
 }
 
-let savedHistoryHeight = 260;
 try {
   const storedHeight = Number(localStorage.getItem(historyHeightKey));
-  if (Number.isFinite(storedHeight)) savedHistoryHeight = storedHeight;
-} catch {
-  savedHistoryHeight = 260;
+  if (Number.isFinite(storedHeight) && storedHeight > 0) historyWindow.style.height = `${storedHeight}px`;
+} catch (error) {
+  console.warn('Could not restore listening history window height:', error.message);
 }
-setHistoryHeight(savedHistoryHeight);
 
 let historyResizePointer = null;
 let historyResizeStartY = 0;
@@ -1622,6 +1671,7 @@ function historyEntries(videos, spans) {
       entries.push({
         videoId: video.videoId,
         start: segment.start,
+        end: !video.duration && index === segments.length - 1 ? Infinity : segment.end,
         title,
         label: markers.length && !segment.lead ? `[${formatClock(segment.start)}] ${name}` : name,
         listens: stat.listens,
@@ -1692,6 +1742,12 @@ async function renderHistory() {
     button.className = 'playlist-item history-item';
     button.type = 'button';
     button.dataset.historyLocation = `${entry.videoId}:${entry.start}`;
+    button.dataset.videoId = entry.videoId;
+    if (entry.end !== undefined) {
+      button.dataset.historyStart = String(entry.start);
+      button.dataset.historyEnd = String(entry.end);
+    }
+    highlightHistoryEntry(button);
     if (button.dataset.historyLocation === focusedLocation) nextFocus = button;
     button.append(`${index + 1}. ${entry.title}${entry.label ? ` / ${entry.label}` : ''}`);
     const detail = document.createElement('span');
@@ -1820,8 +1876,9 @@ localHistoryReady.then(() => {
 });
 
 function onPlayerStateChange(event) {
-  tempoPlaying = event.data === YT.PlayerState.PLAYING;
-  if (!tempoPlaying) resetLiveTempo();
+  playerIsPlaying = event.data === YT.PlayerState.PLAYING;
+  if (!playerIsPlaying) resetLiveTempo();
+  refreshPlaybackHighlight(event.data);
   if (event.data !== YT.PlayerState.BUFFERING) {
     liveLevelsPaused = event.data === YT.PlayerState.PAUSED;
     const isPlaying = event.data === YT.PlayerState.PLAYING;
@@ -1857,7 +1914,8 @@ function onPlayerStateChange(event) {
 }
 
 function onPlayerError() {
-  tempoPlaying = false;
+  playerIsPlaying = false;
+  setPlaybackHighlight(null);
   resetLiveTempo();
   liveLevelsPaused = false;
   updatePlayButton(false);
@@ -1903,6 +1961,7 @@ function initYouTubePlayer() {
     if (!ytReady || !playingTrack) return;
     renderSavedLocations();
     const state = ytPlayer.getPlayerState();
+    refreshPlaybackHighlight(state);
     recordListening(state);
     if (state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.PAUSED && state !== YT.PlayerState.CUED) return;
     const duration = ytPlayer.getDuration();
