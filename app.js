@@ -99,7 +99,8 @@ const favoriteLists = [
 ];
 
 const trackTitleDisplay = document.querySelector('#track-title');
-const playButton = document.querySelector('.main-window [data-action="play"]');
+const playButton = document.querySelector('.transport-btn[data-action="play"]');
+const visualizerPlayButton = document.querySelector('#visualizer-play');
 const playbackIndicator = document.querySelector('#playback-indicator');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
@@ -679,6 +680,7 @@ function resetTransportDisplay() {
 function updatePlayButton(isPlaying) {
   playButton.textContent = isPlaying ? '⏸' : '▶';
   playButton.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+  visualizerPlayButton.setAttribute('aria-label', isPlaying ? 'Pause from visualizer' : 'Play from visualizer');
   playButton.classList.toggle('playing', isPlaying);
   playButton.classList.toggle('pulsing', isPlaying);
   playbackIndicator.hidden = !isPlaying;
@@ -1098,7 +1100,7 @@ spectrumBandValue.addEventListener('keydown', (event) => {
     event.preventDefault();
     persistSpectrumBandSetting(spectrumBandValue.valueAsNumber);
     closeSpectrumSettings();
-    spectrum.focus();
+    visualizerPlayButton.focus();
   }
 });
 
@@ -1120,7 +1122,7 @@ spectrumSettings.addEventListener('keydown', (event) => {
     event.preventDefault();
     persistSpectrumBandSetting(spectrumBandSettingBeforeEdit);
     closeSpectrumSettings();
-    spectrum.focus();
+    visualizerPlayButton.focus();
   }
 });
 
@@ -2644,7 +2646,8 @@ document.addEventListener('eraudio:youtube-authenticated', (event) => {
 });
 
 document.addEventListener('click', (event) => {
-  const button = event.target.closest('button');
+  const button = event.target.closest('button')
+    || (spectrumContainer.contains(event.target) ? visualizerPlayButton : null);
   if (!button) return;
 
   if (button.dataset.speed) {

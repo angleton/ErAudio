@@ -472,7 +472,15 @@ body {
   filter: drop-shadow(0 0 2px #ffffff40);
 }
 
-#live-spectrum:focus-visible {
+#visualizer-play {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+#visualizer-play:focus-visible {
   outline-offset: -2px;
 }
 

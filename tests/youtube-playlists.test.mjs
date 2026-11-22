@@ -193,6 +193,7 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   await timer.click();
   assert.equal(await page.locator('#time-display').textContent(), '-02:15');
   assert.equal(await timer.getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
   await timer.press('Enter');
   assert.equal(await page.locator('#time-display').textContent(), '00:45');
   await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PAUSED }));
@@ -203,7 +204,7 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   await page.mouse.click(canvas.x + canvas.width / 2, canvas.y + canvas.height - 5, { button: 'right' });
   assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
   await page.keyboard.press('Escape');
-  await spectrum.focus();
+  await page.locator('#visualizer-play').focus();
   await page.keyboard.press('Shift+F10');
   assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
   await page.keyboard.press('Escape');
@@ -213,6 +214,33 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   assert.ok(narrowTimer.x >= narrowSpectrum.x && narrowTimer.x + narrowTimer.width <= narrowSpectrum.x + narrowSpectrum.width);
   await timer.click();
   assert.equal(await page.locator('#time-display').textContent(), '-02:15');
+});
+
+test('the visualizer uses the transport play and pause actions', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  const syncPlayerUi = () => page.evaluate(() => onPlayerStateChange({ data: ytPlayer.getPlayerState() }));
+  await syncPlayerUi();
+
+  const visualizer = page.locator('#visualizer-play');
+  const transport = page.locator('.transport-btn.play');
+  const box = await visualizer.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 5);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  await syncPlayerUi();
+  assert.equal(await transport.getAttribute('aria-label'), 'Play');
+  assert.equal(await visualizer.getAttribute('aria-label'), 'Play from visualizer');
+  assert.equal(await page.locator('#playback-indicator').isHidden(), true);
+
+  await page.locator('.marquee-container').click();
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  await syncPlayerUi();
+  assert.equal(await transport.getAttribute('aria-label'), 'Pause');
+  assert.equal(await visualizer.getAttribute('aria-label'), 'Pause from visualizer');
+  assert.equal(await page.locator('#playback-indicator').isVisible(), true);
+
+  await visualizer.press('Space');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
 });
 
 test('right-clicking the track title reveals and pans the text before scrolling resumes', { timeout: 20000 }, async (t) => {
