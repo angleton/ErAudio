@@ -279,8 +279,10 @@ test('the track title handles both mouse buttons without toggling playback', { t
   // Freeze the title partway through scrolling so the grab position is reproducible.
   await trackTitle.evaluate((element) => {
     const [animation] = element.getAnimations();
+    const titleWidth = element.getBoundingClientRect().width;
+    const overflow = titleWidth - element.parentElement.clientWidth;
     animation.pause();
-    animation.currentTime = 300;
+    animation.currentTime = animation.effect.getTiming().duration * overflow / (4 * titleWidth);
   });
   const beforeDrag = await bounds();
   assert.ok(beforeDrag.leading < -1);
@@ -288,11 +290,16 @@ test('the track title handles both mouse buttons without toggling playback', { t
   await page.mouse.move(x, y);
   await page.mouse.down();
   assert.ok(Math.abs((await bounds()).leading - beforeDrag.leading) < 1);
-  await page.mouse.move(x - 60, y);
-  assert.ok(Math.abs((await bounds()).leading - beforeDrag.leading + 60) < 1);
+  await page.mouse.move(Math.floor(container.x), y);
+  const leftEdge = await bounds();
+  assert.ok(Math.abs(leftEdge.trailing) < 1, `title end is ${leftEdge.trailing}px from the right inset`);
+  await page.mouse.move(Math.ceil(container.x + container.width), y);
+  const rightEdge = await bounds();
+  assert.ok(Math.abs(rightEdge.leading) < 1, `title start is ${rightEdge.leading}px from the left inset`);
   await page.mouse.move(x - 30, y);
   const releasedAt = await bounds();
-  assert.ok(Math.abs(releasedAt.leading - beforeDrag.leading + 30) < 1);
+  assert.ok(releasedAt.leading < beforeDrag.leading);
+  assert.ok(releasedAt.leading > leftEdge.leading);
   await page.mouse.move(x - 30, container.y + container.height + 5);
   await page.mouse.up();
   const resumedOffset = (time) => trackTitle.evaluate((element, time) => {
