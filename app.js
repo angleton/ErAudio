@@ -2679,21 +2679,19 @@ document.addEventListener('click', (event) => {
   if (button.dataset.action === 'next') stepTrack(1);
   if (button.dataset.action === 'previous') stepTrack(-1);
 
-  if (button.dataset.action?.startsWith('toggle-')) {
-    const isActive = button.classList.toggle('active');
-    button.setAttribute('aria-pressed', String(isActive));
-    const targetId = {
-      'toggle-videos': 'videos-window',
-      'toggle-playlist': 'playlist-window',
-      'toggle-history': 'history-window',
-    }[button.dataset.action] || 'pitchfork-window';
-    document.getElementById(targetId).hidden = !isActive;
-    if (targetId === 'history-window') {
+  const minimizing = button.dataset.action === 'minimize-pane';
+  if (minimizing || button.dataset.action?.startsWith('toggle-')) {
+    const toggle = minimizing ? document.getElementById(button.dataset.paneToggle) : button;
+    const pane = document.getElementById(toggle.getAttribute('aria-controls'));
+    const isActive = !minimizing && pane.hidden;
+    toggle.classList.toggle('active', isActive);
+    toggle.setAttribute('aria-pressed', String(isActive));
+    pane.hidden = !isActive;
+    if (minimizing) toggle.focus();
+    if (pane === historyWindow && isActive) {
       renderHistory();
-      if (!historyWindow.hidden) {
-        historyWindow.scrollIntoView({ block: 'start' });
-        syncHistory();
-      }
+      historyWindow.scrollIntoView({ block: 'start' });
+      syncHistory();
     }
   }
 

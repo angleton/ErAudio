@@ -269,6 +269,30 @@ body {
   text-shadow: 1px 1px 0 #000000;
 }
 
+.pane-title {
+  position: relative;
+  padding-inline-end: 26px;
+}
+
+.pane-minimize {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--panel-border-light);
+  background: var(--panel-bg);
+  color: var(--accent-gold);
+  font: bold 14px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.pane-minimize:hover {
+  background: var(--panel-bg-light);
+}
+
 .title-bar-brand {
   flex-shrink: 0;
   margin-right: 8px;
@@ -917,6 +941,7 @@ body {
 .pitchfork-title {
   justify-content: center;
   gap: 6px;
+  padding-inline-start: 26px;
   background: #23243a;
 }
 

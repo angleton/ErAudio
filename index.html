@@ -19,8 +19,9 @@
   <div class="winamp-container">
     <!-- LISTENING HISTORY WINDOW -->
     <div class="winamp-window playlist-window history-window" id="history-window" hidden>
-      <div class="title-bar">
+      <div class="title-bar pane-title">
         <div class="title-bar-text">ErAudio Listening History</div>
+        <button class="pane-minimize" type="button" data-action="minimize-pane" data-pane-toggle="btn-hist" aria-label="Minimize listening history" title="Minimize listening history">&minus;</button>
       </div>
 
       <div class="playlist-body">
@@ -153,10 +154,10 @@
 
         <!-- Toggle Buttons (VID, PL, Pitchfork) -->
         <div class="toggle-buttons">
-          <button class="toggle-btn tooltip-target" id="btn-vid" type="button" data-action="toggle-videos" data-tooltip="Toggle videos" aria-pressed="false">VID</button>
-          <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle video chapters or timestamps" aria-pressed="false">PL</button>
-          <button class="toggle-btn tooltip-target" id="btn-hist" type="button" data-action="toggle-history" data-tooltip="Toggle most-listened videos and segments" aria-pressed="false">TOP</button>
-          <button class="toggle-btn tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-pressed="false">DJ</button>
+          <button class="toggle-btn tooltip-target" id="btn-vid" type="button" data-action="toggle-videos" data-tooltip="Toggle videos" aria-controls="videos-window" aria-pressed="false">VID</button>
+          <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle video chapters or timestamps" aria-controls="playlist-window" aria-pressed="false">PL</button>
+          <button class="toggle-btn tooltip-target" id="btn-hist" type="button" data-action="toggle-history" data-tooltip="Toggle most-listened videos and segments" aria-controls="history-window" aria-pressed="false">TOP</button>
+          <button class="toggle-btn tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-controls="pitchfork-window" aria-pressed="false">DJ</button>
         </div>
       </div>
       <button class="panel-resize" id="player-resize" type="button" aria-label="Resize main player vertically"></button>
@@ -169,8 +170,9 @@
 
     <!-- PITCHFORK PLUGIN WINDOW -->
     <div class="winamp-window pitchfork-window" id="pitchfork-window" hidden>
-      <div class="title-bar pitchfork-title">
+      <div class="title-bar pitchfork-title pane-title">
         <div class="title-bar-text">PITCHFORK</div>
+        <button class="pane-minimize" type="button" data-action="minimize-pane" data-pane-toggle="btn-pf" aria-label="Minimize Pitchfork" title="Minimize Pitchfork">&minus;</button>
       </div>
 
       <div class="plugin-body">
@@ -220,8 +222,9 @@
 
     <!-- VIDEOS WINDOW -->
     <div class="winamp-window playlist-window" id="videos-window" hidden>
-      <div class="title-bar">
+      <div class="title-bar pane-title">
         <div class="title-bar-text">ErAudio VIDEOS</div>
+        <button class="pane-minimize" type="button" data-action="minimize-pane" data-pane-toggle="btn-vid" aria-label="Minimize videos" title="Minimize videos">&minus;</button>
       </div>
 
       <div class="playlist-body">
@@ -246,8 +249,9 @@
 
     <!-- VIDEO CHAPTERS OR TIMESTAMPS WINDOW -->
     <div class="winamp-window playlist-window" id="playlist-window" hidden>
-      <div class="title-bar">
+      <div class="title-bar pane-title">
         <div class="title-bar-text">ErAudio Video Chapters or Timestamps</div>
+        <button class="pane-minimize" type="button" data-action="minimize-pane" data-pane-toggle="btn-pl" aria-label="Minimize chapters and timestamps" title="Minimize chapters and timestamps">&minus;</button>
       </div>
 
       <div class="playlist-body">

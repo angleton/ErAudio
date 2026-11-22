@@ -259,6 +259,37 @@ test('right-clicking the track title reveals and pans the text before scrolling 
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#track-title')).animationName === 'marquee');
 });
 
+test('optional panes minimize independently and reopen from the main player', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  const panes = [
+    ['btn-hist', 'history-window', 'Minimize listening history'],
+    ['btn-vid', 'videos-window', 'Minimize videos'],
+    ['btn-pl', 'playlist-window', 'Minimize chapters and timestamps'],
+    ['btn-pf', 'pitchfork-window', 'Minimize Pitchfork'],
+  ];
+  assert.equal(await page.locator('.main-window').getByRole('button', { name: /Minimize/ }).count(), 0);
+  for (const [toggleId] of panes) await page.locator(`#${toggleId}`).click();
+  for (const [toggleId, paneId, label] of panes) {
+    const toggle = page.locator(`#${toggleId}`);
+    const pane = page.locator(`#${paneId}`);
+    const title = pane.locator('.title-bar');
+    const minimize = title.getByRole('button', { name: label });
+    const titleBox = await title.boundingBox();
+    const buttonBox = await minimize.boundingBox();
+    assert.ok(titleBox.x + titleBox.width - (buttonBox.x + buttonBox.width) <= 5);
+    await minimize.press('Enter');
+    assert.equal(await pane.isHidden(), true);
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    assert.equal(await toggle.evaluate((button) => button === document.activeElement), true);
+    for (const [, otherId] of panes) {
+      if (otherId !== paneId) assert.equal(await page.locator(`#${otherId}`).isVisible(), true);
+    }
+    await toggle.press('Space');
+    assert.equal(await pane.isVisible(), true);
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+  }
+});
+
 test('last played local video is selected and cued on reload, not an unplayed selection', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
   assert.deepEqual(await page.evaluate(() => window.playerEvents), []);
