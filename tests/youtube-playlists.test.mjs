@@ -45,7 +45,7 @@ function item(id, videoId, title) {
   return { id, snippet: { title }, contentDetails: { videoId } };
 }
 
-async function setup(t) {
+async function setup(t, initScript) {
   const server = createServer(async (req, res) => {
     try {
       if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
@@ -67,6 +67,7 @@ async function setup(t) {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
+  if (initScript) await page.addInitScript(initScript);
   const requests = [];
   let releaseSlow;
   const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
@@ -214,6 +215,75 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   assert.ok(narrowTimer.x >= narrowSpectrum.x && narrowTimer.x + narrowTimer.width <= narrowSpectrum.x + narrowSpectrum.width);
   await timer.click();
   assert.equal(await page.locator('#time-display').textContent(), '-02:15');
+});
+
+test('visualizer fullscreen keeps the timer and title at the top without interrupting playback', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t, () => {
+    let handle;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        setCaptureHandleConfig(config) { handle = config.handle; },
+        async getDisplayMedia() {
+          const context = new AudioContext();
+          const [audio] = context.createMediaStreamDestination().stream.getAudioTracks();
+          const video = { stop() {}, getCaptureHandle: () => ({ handle }) };
+          window.endTestAudioSharing = () => {
+            audio.dispatchEvent(new Event('ended'));
+            return context.close();
+          };
+          return { getAudioTracks: () => [audio], getVideoTracks: () => [video], getTracks: () => [audio, video] };
+        },
+      },
+    });
+  });
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => playingTrack?.title === 'Local video');
+  const fullscreen = page.locator('#visualizer-fullscreen');
+  const canvas = page.locator('#live-spectrum');
+  const timer = page.locator('#timer-display');
+  const title = page.locator('.marquee-container');
+  assert.equal(await fullscreen.isHidden(), true);
+  await fullscreen.evaluate((button) => button.click());
+  assert.equal(await page.evaluate(() => document.fullscreenElement), null);
+  await page.getByRole('button', { name: 'SHARE TAB AUDIO FOR VISUALIZER' }).click();
+  await fullscreen.waitFor({ state: 'visible' });
+  const original = await canvas.boundingBox();
+
+  await fullscreen.click();
+  await page.getByRole('button', { name: 'Exit visualizer fullscreen' }).waitFor();
+  const layout = await page.evaluate(() => {
+    const spectrum = document.querySelector('#live-spectrum').getBoundingClientRect();
+    return { x: spectrum.x, y: spectrum.y, rightGap: innerWidth - spectrum.right,
+      bottomGap: innerHeight - spectrum.bottom };
+  });
+  for (const inset of Object.values(layout)) assert.ok(Math.abs(inset) < 1);
+  const [timerBox, titleBox, buttonBox] = await Promise.all([timer.boundingBox(), title.boundingBox(), fullscreen.boundingBox()]);
+  assert.ok(timerBox.y < 8 && titleBox.y < 8 && titleBox.width > 0);
+  assert.ok(timerBox.x + timerBox.width <= titleBox.x && titleBox.x + titleBox.width <= buttonBox.x);
+  assert.match(await title.innerText(), /Local video/);
+  await timer.click();
+  assert.equal(await timer.getAttribute('aria-pressed'), 'true');
+  await page.mouse.click(100, 100, { button: 'right' });
+  assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
+  assert.equal(await page.locator('#spectrum-bands').evaluate((input) => input === document.activeElement), true);
+  await fullscreen.click();
+  await page.getByRole('button', { name: 'Enter visualizer fullscreen' }).waitFor();
+  assert.deepEqual(await canvas.boundingBox(), original);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+
+  for (const key of ['Escape', 'a', 'Space']) {
+    await fullscreen.click();
+    await page.getByRole('button', { name: 'Exit visualizer fullscreen' }).waitFor();
+    await page.keyboard.press(key);
+    await page.getByRole('button', { name: 'Enter visualizer fullscreen' }).waitFor();
+    assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  }
+
+  await fullscreen.click();
+  await page.getByRole('button', { name: 'Exit visualizer fullscreen' }).waitFor();
+  await page.evaluate(() => window.endTestAudioSharing());
+  await page.waitForFunction(() => document.fullscreenElement === null);
+  assert.equal(await fullscreen.isHidden(), true);
 });
 
 test('the visualizer uses the transport play and pause actions', { timeout: 20000 }, async (t) => {

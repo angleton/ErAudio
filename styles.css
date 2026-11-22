@@ -361,7 +361,7 @@ body {
   position: absolute;
   inset: 0 0 auto;
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-columns: 168px minmax(0, 1fr) auto;
   gap: 8px;
   height: 38px;
   background: linear-gradient(180deg, #000000bb, #00000066 75%, transparent);
@@ -465,6 +465,25 @@ body {
 .spectrum-area {
   min-height: 80px;
   position: relative;
+}
+
+.spectrum-area:fullscreen {
+  background: #040a04;
+}
+
+#visualizer-fullscreen {
+  align-self: center;
+  margin-inline-end: 4px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font: 18px/1 system-ui, sans-serif;
+  pointer-events: auto;
+}
+
+#visualizer-fullscreen:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 #live-spectrum {

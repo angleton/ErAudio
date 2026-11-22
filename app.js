@@ -1047,7 +1047,9 @@ function stepTrack(step, { wrap = true } = {}) {
 const liveLevelStatus = document.querySelector('#live-level-status');
 const liveLevelSetup = document.querySelector('#live-level-setup');
 const spectrum = document.querySelector('#live-spectrum');
+const spectrumArea = document.querySelector('.spectrum-area');
 const spectrumContainer = document.querySelector('.vis-container');
+const visualizerFullscreenButton = document.querySelector('#visualizer-fullscreen');
 const liveLevelButton = document.querySelector('#live-level-share');
 const liveBpm = document.querySelector('#live-bpm');
 const liveTempo = new ErAudioLiveTempo();
@@ -1107,6 +1109,50 @@ function openSpectrumSettings(x, y) {
 
 updateSpectrumBandSetting(spectrumBandCount);
 
+visualizerFullscreenButton.disabled = !document.fullscreenEnabled || typeof spectrumArea.requestFullscreen !== 'function';
+if (visualizerFullscreenButton.disabled) {
+  visualizerFullscreenButton.title = 'Fullscreen is unavailable in this browser view';
+}
+
+async function setVisualizerFullscreen(fullscreen) {
+  try {
+    if (fullscreen) {
+      if (visualizerFullscreenButton.hidden || visualizerFullscreenButton.disabled) return;
+      await spectrumArea.requestFullscreen();
+    } else if (document.fullscreenElement === spectrumArea) {
+      await document.exitFullscreen();
+    }
+  } catch (error) {
+    eventStatus.textContent = 'Could not change visualizer fullscreen mode.';
+    console.warn(eventStatus.textContent, error);
+  }
+}
+
+visualizerFullscreenButton.addEventListener('click', () => {
+  setVisualizerFullscreen(document.fullscreenElement !== spectrumArea);
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if (visualizerFullscreenButton.disabled) return;
+  const fullscreen = document.fullscreenElement === spectrumArea;
+  if (fullscreen && visualizerFullscreenButton.hidden) {
+    setVisualizerFullscreen(false);
+    return;
+  }
+  const label = fullscreen ? 'Exit visualizer fullscreen' : 'Enter visualizer fullscreen';
+  visualizerFullscreenButton.textContent = fullscreen ? '\u00d7' : '\u26f6';
+  visualizerFullscreenButton.setAttribute('aria-label', label);
+  visualizerFullscreenButton.title = label;
+  closeSpectrumSettings();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (document.fullscreenElement !== spectrumArea) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!event.repeat) setVisualizerFullscreen(false);
+}, { capture: true });
+
 spectrumBandInput.addEventListener('input', () => {
   persistSpectrumBandSetting(spectrumBandInput.valueAsNumber);
 });
@@ -1136,6 +1182,7 @@ spectrumBandValue.addEventListener('keydown', (event) => {
 });
 
 spectrumContainer.addEventListener('contextmenu', (event) => {
+  if (spectrumSettings.contains(event.target) || visualizerFullscreenButton.contains(event.target)) return;
   event.preventDefault();
   const paneRect = spectrumContainer.getBoundingClientRect();
   openSpectrumSettings(event.clientX || paneRect.left, event.clientY || paneRect.top);
@@ -1143,9 +1190,10 @@ spectrumContainer.addEventListener('contextmenu', (event) => {
 
 spectrumContainer.addEventListener('keydown', (event) => {
   if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+  if (spectrumSettings.contains(event.target) || visualizerFullscreenButton.contains(event.target)) return;
   event.preventDefault();
-  const paneRect = spectrumContainer.getBoundingClientRect();
-  openSpectrumSettings(paneRect.left, paneRect.bottom);
+  const paneRect = spectrumArea.getBoundingClientRect();
+  openSpectrumSettings(paneRect.left, document.fullscreenElement === spectrumArea ? paneRect.top : paneRect.bottom);
 });
 
 spectrumSettings.addEventListener('keydown', (event) => {
@@ -1232,6 +1280,8 @@ async function requestLiveLevels() {
     resetLiveTempo();
     liveLevelStatus.textContent = message;
     liveLevelSetup.hidden = false;
+    visualizerFullscreenButton.hidden = true;
+    setVisualizerFullscreen(false);
     if (!pickerPending) liveLevelButton.disabled = false;
   }
 
@@ -1314,6 +1364,7 @@ async function requestLiveLevels() {
       frame = requestAnimationFrame(drawSpectrum);
     }
     drawSpectrum(startTime);
+    visualizerFullscreenButton.hidden = visualizerFullscreenButton.disabled;
   } catch (error) {
     pickerPending = false;
     if (stopped) {

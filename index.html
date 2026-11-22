@@ -87,6 +87,15 @@
               <div class="marquee-container">
                 <div class="marquee-text" id="track-title">ErAudio - press ⏏ to open a YouTube video</div>
               </div>
+              <button class="pl-btn" id="visualizer-fullscreen" type="button" aria-label="Enter visualizer fullscreen" title="Enter visualizer fullscreen" disabled hidden>&#x26F6;</button>
+            </div>
+            <div class="spectrum-settings" id="spectrum-settings" role="dialog" aria-label="Spectrum display settings" hidden>
+              <label for="spectrum-bands">FREQUENCY BANDS</label>
+              <div class="spectrum-band-control">
+                <input id="spectrum-bands" type="range" min="16" max="512" step="1" value="192">
+                <input id="spectrum-band-value" type="number" min="16" max="512" step="1" value="192" aria-label="Spectrum band count">
+              </div>
+              <p>Higher values create finer bars and more peak dots.</p>
             </div>
           </div>
           <div id="live-level-setup">
@@ -313,14 +322,6 @@
     <button type="button" role="menuitem" tabindex="-1" data-copy="text">COPY TEXT</button>
     <button type="button" role="menuitem" tabindex="-1" data-copy="link">COPY LINK</button>
     <button type="button" role="menuitem" tabindex="-1" data-remove-video hidden>REMOVE FROM VIDEOS</button>
-  </div>
-  <div class="spectrum-settings" id="spectrum-settings" role="dialog" aria-label="Spectrum display settings" hidden>
-    <label for="spectrum-bands">FREQUENCY BANDS</label>
-    <div class="spectrum-band-control">
-      <input id="spectrum-bands" type="range" min="16" max="512" step="1" value="192">
-      <input id="spectrum-band-value" type="number" min="16" max="512" step="1" value="192" aria-label="Spectrum band count">
-    </div>
-    <p>Higher values create finer bars and more peak dots.</p>
   </div>
   <p class="event-status" id="event-status" role="status" aria-live="polite">Ready for input events.</p>
   <p class="copy-notice" id="copy-notice" aria-hidden="true" hidden>Copied to clipboard</p>
