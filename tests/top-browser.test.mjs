@@ -616,17 +616,34 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
       });
     });
     await page.goto(origin);
-    const top = page.getByRole('button', { name: 'TOP', exact: true });
+    const top = page.locator('#btn-hist');
     await top.click();
     const signIn = page.getByRole('button', { name: 'Sign in with Google', exact: true });
+    const signOut = page.getByRole('button', { name: 'STOP SYNC & SIGN OUT' });
+    const help = page.locator('#history-sync-help');
+    const view = page.locator('#history-view');
+    const assertToolbarOrder = async (accountButton) => {
+      const [accountBox, helpBox, viewBox] = await Promise.all(
+        [accountButton, help, view].map((button) => button.boundingBox()),
+      );
+      assert.ok(accountBox && helpBox && viewBox);
+      assert.ok(accountBox.x + accountBox.width <= helpBox.x && helpBox.x + helpBox.width <= viewBox.x);
+      const centerY = ({ y, height }) => y + height / 2;
+      assert.ok(Math.abs(centerY(accountBox) - centerY(viewBox)) <= 1);
+      assert.ok(Math.abs(centerY(helpBox) - centerY(viewBox)) <= 1);
+    };
+    await signIn.waitFor();
+    await assertToolbarOrder(signIn);
     await signIn.click();
+    await help.click();
     await page.getByText('Private history synced.', { exact: true }).waitFor().catch(async (error) => {
       throw new Error(`Could not sign into local sync: ${await page.locator('#history-sync-status').innerText()}`, { cause: error });
     });
-    const signOut = page.getByRole('button', { name: 'STOP SYNC & SIGN OUT' });
     await page.locator('#history-google button').waitFor({ state: 'hidden' });
     await signOut.waitFor({ state: 'visible' });
-    return { page, top, view: page.locator('#history-view'), signIn, signOut };
+    await help.click();
+    await assertToolbarOrder(signOut);
+    return { page, top, view, signIn, signOut };
   }
 
   async function reopenTop({ top }) {

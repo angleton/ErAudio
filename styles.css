@@ -572,11 +572,10 @@ body {
   font: 10px/1.4 var(--font-mono);
 }
 
-.history-sync-actions {
+.history-sync-actions:not([hidden]) {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
 }
 
 .history-sync-help {

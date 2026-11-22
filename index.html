@@ -31,16 +31,14 @@
           <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
           <p class="history-note" id="history-message" role="status" aria-live="polite"></p>
         </div>
-        <div id="history-sync" hidden>
-          <div class="history-sync-actions">
-            <div id="history-google"><div id="history-google-button"></div></div>
-            <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
-            <button class="pl-btn history-sync-help" id="history-sync-help" type="button" aria-label="Show listening history sync information" aria-controls="history-sync-status" aria-expanded="false" aria-pressed="false">?</button>
-          </div>
-        </div>
       </div>
 
       <div class="history-actions">
+        <div class="history-sync-actions" id="history-sync" hidden>
+          <div id="history-google"><div id="history-google-button"></div></div>
+          <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
+          <button class="pl-btn history-sync-help" id="history-sync-help" type="button" aria-label="Show listening history sync information" aria-controls="history-help-panel" aria-expanded="false" aria-pressed="false">?</button>
+        </div>
         <button class="pl-btn" id="history-view" type="button">VIEW: SEGMENTS</button>
         <label for="history-period">TIME PERIOD</label>
         <select id="history-period">

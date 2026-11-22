@@ -95,6 +95,8 @@ Open [`visualizer/preview.html`](./visualizer/preview.html) directly in a browse
 
 ### Private listening history sync
 
+When sync is configured, the **TOP** controls start with **Sign in with Google** or **STOP SYNC & SIGN OUT**, followed by **?** and **VIEW**. Select **?** to show history help and sync status.
+
 When configured, **TOP** offers a separate **Sign in with Google** button. It is hidden while you’re signed in to history sync and returns when you sign out or need to sign in again. Sign in with the same account in each browser to combine listening spans, play counts, and heat maps. The first sign-in for each account in a browser asks before copying existing local history. Declining keeps it local. ErAudio uploads video IDs, titles and timeline labels, played ranges, timestamps, playback-session identifiers, and counts to Cloudflare D1; there is no public view. YouTube login and permissions are unchanged.
 
 Sync checks about once a minute while the page is in use, and when you open **TOP** or return online. It does not interrupt playback. If the network or service is unavailable after sign-in, new listens are saved in that account's local browser storage and retried. After a reload or sign-in expiration, use the Google button to reconnect. While signed out, ErAudio shows and records only this browser's separate local history. Signing out hides the account history in the app; it does not erase its local database. Use separate browser profiles on a shared computer.
