@@ -232,7 +232,7 @@ test('the visualizer uses the transport play and pause actions', { timeout: 2000
   assert.equal(await visualizer.getAttribute('aria-label'), 'Play from visualizer');
   assert.equal(await page.locator('#playback-indicator').isHidden(), true);
 
-  await page.locator('.marquee-container').click();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 5);
   assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
   await syncPlayerUi();
   assert.equal(await transport.getAttribute('aria-label'), 'Pause');
@@ -243,8 +243,10 @@ test('the visualizer uses the transport play and pause actions', { timeout: 2000
   assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
 });
 
-test('right-clicking the track title reveals and pans the text before scrolling resumes', { timeout: 20000 }, async (t) => {
+test('the track title handles both mouse buttons without toggling playback', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => playingTrack?.title === 'Local video');
   const trackTitle = page.locator('#track-title');
   await trackTitle.evaluate((element) => { element.textContent = 'A long video title with more text to reveal. '.repeat(10); });
   const container = await page.locator('.marquee-container').boundingBox();
@@ -262,28 +264,32 @@ test('right-clicking the track title reveals and pans the text before scrolling 
     };
   });
 
-  await page.mouse.click(x, y, { button: 'right' });
+  await page.mouse.click(x, y, { button: 'left' });
   const start = await bounds();
   assert.equal(start.animation, 'none');
   assert.ok(Math.abs(start.leading) < 1);
   assert.ok(start.trailing > 0);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
   assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
   await trackTitle.evaluate((element) => new Promise((resolve) => {
     element.addEventListener('animationstart', resolve, { once: true });
   }));
 
-  await page.mouse.move(x, y);
-  await page.mouse.down({ button: 'right' });
-  await page.mouse.move(0, y, { steps: 5 });
-  const end = await bounds();
-  assert.ok(end.leading < 0);
-  assert.ok(Math.abs(end.trailing) < 1, `title end is ${end.trailing}px from the right inset`);
-  await page.mouse.move(x, y, { steps: 5 });
-  assert.deepEqual(await bounds(), start);
-  await page.mouse.move(0, y, { steps: 5 });
-  await page.mouse.up({ button: 'right' });
-  assert.deepEqual(await bounds(), end);
-  assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
+  for (const button of ['left', 'right']) {
+    await page.mouse.move(x, y);
+    await page.mouse.down({ button });
+    await page.mouse.move(0, y, { steps: 5 });
+    const end = await bounds();
+    assert.ok(end.leading < 0);
+    assert.ok(Math.abs(end.trailing) < 1, `title end is ${end.trailing}px from the right inset`);
+    await page.mouse.move(x, y, { steps: 5 });
+    assert.deepEqual(await bounds(), start);
+    await page.mouse.move(0, y, { steps: 5 });
+    await page.mouse.up({ button });
+    assert.deepEqual(await bounds(), end);
+    assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+    assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
+  }
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#track-title')).animationName === 'marquee');
 });
 

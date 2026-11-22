@@ -622,17 +622,17 @@ titleMarquee.addEventListener('contextmenu', (event) => {
 });
 
 titleMarquee.addEventListener('pointerdown', (event) => {
-  if (event.button !== 2 || titleDrag) return;
+  if ((event.button !== 0 && event.button !== 2) || titleDrag) return;
   clearTimeout(titleResumeTimer);
   titleMarquee.setPointerCapture(event.pointerId);
-  titleDrag = { id: event.pointerId, x: event.clientX };
+  titleDrag = { id: event.pointerId, x: event.clientX, buttonMask: event.button === 0 ? 1 : 2 };
   trackTitleDisplay.style.setProperty('--marquee-offset', '0px');
   titleMarquee.classList.add('manual-scroll');
 });
 
 titleMarquee.addEventListener('pointermove', (event) => {
   if (event.pointerId !== titleDrag?.id) return;
-  if (!(event.buttons & 2)) {
+  if (!(event.buttons & titleDrag.buttonMask)) {
     titleMarquee.releasePointerCapture(event.pointerId);
     return;
   }
@@ -2646,6 +2646,7 @@ document.addEventListener('eraudio:youtube-authenticated', (event) => {
 });
 
 document.addEventListener('click', (event) => {
+  if (titleMarquee.contains(event.target)) return;
   const button = event.target.closest('button')
     || (spectrumContainer.contains(event.target) ? visualizerPlayButton : null);
   if (!button) return;

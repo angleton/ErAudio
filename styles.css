@@ -421,6 +421,7 @@ body {
   overflow: hidden;
   white-space: nowrap;
   pointer-events: auto;
+  cursor: grab;
 }
 
 .marquee-text {
