@@ -121,6 +121,55 @@ test('the interface fills the viewport while retaining usable controls in smalle
   assert.ok(box.x >= 0 && box.x + box.width <= small.width);
 });
 
+test('the main player can grow and shrink with every panel open', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+  for (const id of ['btn-hist', 'btn-vid', 'btn-pl', 'btn-pf']) await page.locator(`#${id}`).click();
+
+  const panel = page.locator('.main-window');
+  const handle = page.getByRole('button', { name: 'Resize main player vertically' });
+  const height = () => panel.evaluate((element) => element.offsetHeight);
+  const before = await height();
+  const spectrumBefore = (await page.locator('#live-spectrum').boundingBox()).height;
+  await handle.scrollIntoViewIfNeeded();
+  const grip = await handle.boundingBox();
+  const x = grip.x + grip.width / 2;
+  const y = grip.y + grip.height / 2;
+  const distance = 100;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + distance, { steps: 8 });
+  await page.mouse.up();
+  assert.ok(await height() >= before + 95);
+  assert.ok((await page.locator('#live-spectrum').boundingBox()).height >= spectrumBefore + 95);
+  const saved = await height();
+  await page.reload();
+  assert.equal(await height(), saved);
+
+  await page.setViewportSize({ width: 360, height: 700 });
+  for (let i = 0; i < Math.ceil(saved / 10); i++) await handle.press('ArrowUp');
+  const min = await height();
+  assert.ok(min < saved);
+  await handle.press('ArrowUp');
+  assert.equal(await height(), min);
+  const bounds = await panel.boundingBox();
+  for (const selector of ['#live-level-setup', '.control-panel', '#player-resize']) {
+    const box = await page.locator(selector).boundingBox();
+    assert.ok(box.y >= bounds.y && box.y + box.height <= bounds.y + bounds.height, `${selector} stays inside the player`);
+  }
+  assert.ok((await page.locator('#live-spectrum').boundingBox()).height >= 80);
+});
+
 test('a populated TOP list can shrink to one or two visible entries', { timeout: 20000 }, async (t) => {
   const origin = await serve(t, async (req, res) => {
     if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');

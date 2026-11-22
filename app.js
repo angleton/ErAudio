@@ -1362,73 +1362,50 @@ historySyncHelp.addEventListener('click', () => {
       : 'Show listening history sync information');
 });
 
-const historyHeightKey = 'eraudio:history-window-height';
-
-function setHistoryHeight(height) {
-  historyWindow.classList.add('history-sized');
-  historyWindow.style.height = `${Math.max(0, Math.round(height))}px`;
-  const appliedHeight = Math.round(historyWindow.getBoundingClientRect().height);
-  historyWindow.style.height = `${appliedHeight}px`;
-  try {
-    localStorage.setItem(historyHeightKey, String(appliedHeight));
-  } catch (error) {
-    console.warn('Could not save listening history window height:', error.message);
+function setupPanelResize(panel, handle, heightKey) {
+  function applyHeight(height) {
+    panel.classList.add('panel-sized');
+    panel.style.height = `${Math.max(0, Math.round(height))}px`;
   }
+
+  function saveHeight() {
+    const height = Math.round(panel.getBoundingClientRect().height);
+    applyHeight(height);
+    writeStoredValue(heightKey, String(height));
+  }
+
+  const storedHeight = Number(readStoredValue(heightKey));
+  if (Number.isFinite(storedHeight) && storedHeight > 0) applyHeight(storedHeight);
+
+  let drag = null;
+  handle.addEventListener('pointerdown', (event) => {
+    if (drag || event.button !== 0) return;
+    handle.setPointerCapture(event.pointerId);
+    drag = { id: event.pointerId, y: event.pageY, height: panel.getBoundingClientRect().height, moved: false };
+    handle.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== drag?.id || (!drag.moved && event.pageY === drag.y)) return;
+    drag.moved = true;
+    applyHeight(drag.height + event.pageY - drag.y);
+  });
+  handle.addEventListener('lostpointercapture', (event) => {
+    if (event.pointerId !== drag?.id) return;
+    if (drag.moved) saveHeight();
+    drag = null;
+    handle.classList.remove('resizing');
+  });
+  handle.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    const change = event.key === 'ArrowUp' ? -10 : 10;
+    applyHeight(panel.getBoundingClientRect().height + change);
+    saveHeight();
+  });
 }
 
-try {
-  const storedHeight = Number(localStorage.getItem(historyHeightKey));
-  if (Number.isFinite(storedHeight) && storedHeight > 0) {
-    historyWindow.style.height = `${storedHeight}px`;
-    historyWindow.classList.add('history-sized');
-  }
-} catch (error) {
-  console.warn('Could not restore listening history window height:', error.message);
-}
-
-let historyResizePointer = null;
-let historyResizeStartY = 0;
-let historyResizeStartHeight = 0;
-
-historyResize.addEventListener('pointerdown', (event) => {
-  historyResizePointer = event.pointerId;
-  historyResizeStartY = event.clientY;
-  historyResizeStartHeight = historyWindow.getBoundingClientRect().height;
-  historyResize.classList.add('resizing');
-  try {
-    historyResize.setPointerCapture(event.pointerId);
-  } catch {
-    // Pointer capture may be unavailable for synthetic or older pointer events.
-  }
-});
-
-historyResize.addEventListener('pointermove', (event) => {
-  if (event.pointerId !== historyResizePointer) return;
-  setHistoryHeight(historyResizeStartHeight + event.clientY - historyResizeStartY);
-});
-
-historyResize.addEventListener('pointerup', (event) => {
-  if (event.pointerId !== historyResizePointer) return;
-  historyResizePointer = null;
-  historyResize.classList.remove('resizing');
-  try {
-    historyResize.releasePointerCapture(event.pointerId);
-  } catch {
-    // Pointer capture may already have been released by the browser.
-  }
-});
-
-historyResize.addEventListener('pointercancel', () => {
-  historyResizePointer = null;
-  historyResize.classList.remove('resizing');
-});
-
-historyResize.addEventListener('keydown', (event) => {
-  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-  event.preventDefault();
-  const change = event.key === 'ArrowUp' ? -10 : 10;
-  setHistoryHeight(historyWindow.getBoundingClientRect().height + change);
-});
+setupPanelResize(historyWindow, historyResize, 'eraudio:history-window-height');
+setupPanelResize(document.querySelector('.main-window'), document.querySelector('#player-resize'), 'eraudio:player-window-height');
 
 function reportHistorySyncError(error) {
   console.warn('Listening history sync failed:', error.message);

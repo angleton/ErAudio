@@ -315,6 +315,11 @@ body {
   padding: 6px;
 }
 
+.main-window.panel-sized {
+  flex: 0 0 auto;
+  min-height: min-content;
+}
+
 /* LCD DISPLAY PANEL */
 .display-panel {
   background: var(--lcd-bg);
@@ -506,7 +511,7 @@ body {
   max-height: 80vh;
 }
 
-.history-window.history-sized {
+.history-window.panel-sized {
   flex: 0 0 auto;
 }
 
@@ -522,7 +527,7 @@ body {
   margin: 2px 0 0;
 }
 
-.history-resize {
+.panel-resize {
   flex: 0 0 10px;
   width: 100%;
   height: 10px;
@@ -534,8 +539,8 @@ body {
   touch-action: none;
 }
 
-.history-resize::before {
-  content: '';
+.panel-resize::before {
+  content: '\2195';
   display: block;
   font: 12px/8px var(--font-mono);
   opacity: 0;
@@ -543,10 +548,13 @@ body {
   transition: opacity 120ms ease;
 }
 
-.history-resize:hover::before,
-.history-resize:focus-visible::before,
-.history-resize.resizing::before {
-  content: '\2195';
+.main-window .panel-resize::before {
+  opacity: 0.5;
+}
+
+.panel-resize:hover::before,
+.panel-resize:focus-visible::before,
+.panel-resize.resizing::before {
   opacity: 1;
 }
 
