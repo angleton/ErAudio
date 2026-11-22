@@ -18,21 +18,26 @@
 <body>
   <div class="winamp-container">
     <!-- LISTENING HISTORY WINDOW -->
-    <div class="winamp-window playlist-window" id="history-window" hidden>
+    <div class="winamp-window playlist-window history-window" id="history-window" hidden>
       <div class="title-bar">
         <div class="title-bar-text">ErAudio Listening History</div>
       </div>
 
       <div class="playlist-body">
         <div class="history-list" id="history-list" role="list" aria-label="Most listened videos and segments"></div>
-        <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
-        <p class="history-note" id="history-period-note" hidden>Periods use local time; weeks start Sunday. Boundary times are estimated. Plays count when a session starts; ≥ means older play counts are incomplete.</p>
-        <div id="history-sync" hidden>
-          <p class="history-note" id="history-sync-status" role="status">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
-          <div id="history-google"><div id="history-google-button"></div></div>
-          <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
+        <div class="history-help-panel" id="history-help-panel" hidden>
+          <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
+          <p class="history-note" id="history-period-note" hidden>Periods use local time; weeks start Sunday. Boundary times are estimated. Plays count when a session starts; ≥ means older play counts are incomplete.</p>
+          <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
+          <p class="history-note" id="history-message" role="status" aria-live="polite"></p>
         </div>
-        <p class="history-note" id="history-message" role="status" aria-live="polite"></p>
+        <div id="history-sync" hidden>
+          <div class="history-sync-actions">
+            <div id="history-google"><div id="history-google-button"></div></div>
+            <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
+            <button class="pl-btn history-sync-help" id="history-sync-help" type="button" aria-label="Show listening history sync information" aria-controls="history-sync-status" aria-expanded="false" aria-pressed="false">?</button>
+          </div>
+        </div>
       </div>
 
       <div class="history-actions">
@@ -53,6 +58,7 @@
       <div class="playlist-footer">
         <div class="pl-info" id="history-info">NO HISTORY</div>
       </div>
+      <button class="history-resize" id="history-resize" type="button" aria-label="Resize listening history vertically"></button>
     </div>
 
     <!-- MAIN PLAYER WINDOW -->

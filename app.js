@@ -1244,8 +1244,12 @@ const historyFile = document.querySelector('#history-file');
 const historyGoogle = document.querySelector('#history-google');
 const historySignOut = document.querySelector('#history-sign-out');
 const historySyncStatus = document.querySelector('#history-sync-status');
+const historySyncHelp = document.querySelector('#history-sync-help');
+const historyHelpPanel = document.querySelector('#history-help-panel');
+const historyResize = document.querySelector('#history-resize');
 let historySync = null;
 let historySyncBusy = false;
+let historySyncHelpExpanded = false;
 const heatBucketCount = 100;
 const maxHistoryRows = 200;
 let heatRefreshId = 0;
@@ -1294,6 +1298,84 @@ function showHistorySync(message, signIn = !historySync?.token) {
   historySignOut.hidden = !historySync;
   historySignOut.disabled = historySyncBusy;
 }
+
+historySyncHelp.addEventListener('click', () => {
+  historySyncHelpExpanded = !historySyncHelpExpanded;
+  historyHelpPanel.hidden = !historySyncHelpExpanded;
+  historySyncHelp.setAttribute('aria-expanded', String(historySyncHelpExpanded));
+  historySyncHelp.setAttribute('aria-pressed', String(historySyncHelpExpanded));
+  historySyncHelp.setAttribute('aria-label',
+    historySyncHelpExpanded ? 'Hide listening history sync information'
+      : 'Show listening history sync information');
+});
+
+const historyHeightKey = 'eraudio:history-window-height';
+const historyHeightMinimum = 220;
+
+function setHistoryHeight(height) {
+  const maximum = Math.max(historyHeightMinimum, Math.floor(window.innerHeight * 0.8));
+  const nextHeight = Math.min(maximum, Math.max(historyHeightMinimum, Math.round(height)));
+  historyWindow.style.height = `${nextHeight}px`;
+  try {
+    localStorage.setItem(historyHeightKey, String(nextHeight));
+  } catch {
+    // The size still applies when browser storage is unavailable.
+  }
+  return nextHeight;
+}
+
+let savedHistoryHeight = 260;
+try {
+  const storedHeight = Number(localStorage.getItem(historyHeightKey));
+  if (Number.isFinite(storedHeight)) savedHistoryHeight = storedHeight;
+} catch {
+  savedHistoryHeight = 260;
+}
+setHistoryHeight(savedHistoryHeight);
+
+let historyResizePointer = null;
+let historyResizeStartY = 0;
+let historyResizeStartHeight = 0;
+
+historyResize.addEventListener('pointerdown', (event) => {
+  historyResizePointer = event.pointerId;
+  historyResizeStartY = event.clientY;
+  historyResizeStartHeight = historyWindow.getBoundingClientRect().height;
+  historyResize.classList.add('resizing');
+  try {
+    historyResize.setPointerCapture(event.pointerId);
+  } catch {
+    // Pointer capture may be unavailable for synthetic or older pointer events.
+  }
+});
+
+historyResize.addEventListener('pointermove', (event) => {
+  if (event.pointerId !== historyResizePointer) return;
+  setHistoryHeight(historyResizeStartHeight + event.clientY - historyResizeStartY);
+});
+
+historyResize.addEventListener('pointerup', (event) => {
+  if (event.pointerId !== historyResizePointer) return;
+  historyResizePointer = null;
+  historyResize.classList.remove('resizing');
+  try {
+    historyResize.releasePointerCapture(event.pointerId);
+  } catch {
+    // Pointer capture may already have been released by the browser.
+  }
+});
+
+historyResize.addEventListener('pointercancel', () => {
+  historyResizePointer = null;
+  historyResize.classList.remove('resizing');
+});
+
+historyResize.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  const change = event.key === 'ArrowUp' ? -10 : 10;
+  setHistoryHeight(historyWindow.getBoundingClientRect().height + change);
+});
 
 function reportHistorySyncError(error) {
   console.warn('Listening history sync failed:', error.message);
