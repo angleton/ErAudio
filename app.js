@@ -1380,7 +1380,7 @@ const historyWindow = document.querySelector('#history-window');
 const historyList = document.querySelector('#history-list');
 const historyInfo = document.querySelector('#history-info');
 const historyMessage = document.querySelector('#history-message');
-const historyViewButton = document.querySelector('#history-view');
+const historyViewControl = document.querySelector('#history-view');
 const historyPeriod = document.querySelector('#history-period');
 const historyPeriodNote = document.querySelector('#history-period-note');
 const historyFile = document.querySelector('#history-file');
@@ -1397,7 +1397,6 @@ const heatBucketCount = 100;
 const maxHistoryRows = 200;
 let heatRefreshId = 0;
 let historyRenderId = 0;
-let historyView = 'segments';
 
 function changeHistoryStore(store, { erasePrevious = false } = {}) {
   const previous = listeningHistory;
@@ -1721,7 +1720,7 @@ async function refreshHeat() {
   applyMarkerHeat(spans, duration);
 }
 
-function historyEntries(videos, spans) {
+function historyEntries(videos, spans, historyView) {
   const byVideo = new Map(videos.map((video) => [video.videoId, { video, spans: [] }]));
   spans.forEach((span) => {
     if (!byVideo.has(span.videoId)) byVideo.set(span.videoId, { video: { videoId: span.videoId, plays: 0 }, spans: [] });
@@ -1781,7 +1780,6 @@ function playHistoryEntry({ videoId, start, title }) {
 async function renderHistory() {
   if (historyWindow.hidden) return;
   const renderId = ++historyRenderId;
-  historyViewButton.textContent = historyView === 'segments' ? 'VIEW: SEGMENTS' : 'VIEW: VIDEOS';
   historyPeriodNote.hidden = historyPeriod.value === 'all';
   const placeholder = (text) => {
     const empty = document.createElement('div');
@@ -1797,7 +1795,8 @@ async function renderHistory() {
   const history = await readHistory();
   if (renderId !== historyRenderId) return;
   const { videos, spans } = ErAudioHistory.filterPeriod(history, historyPeriod.value);
-  const entries = historyEntries(videos, spans);
+  const historyView = historyViewControl.querySelector(':checked').value;
+  const entries = historyEntries(videos, spans, historyView);
   const totalSeconds = spans.reduce((sum, span) => sum + (span.end - span.start), 0);
   const totalPlays = videos.reduce((sum, video) => sum + (video.plays || 0), 0);
   historyInfo.textContent = videos.length || spans.length
@@ -1848,10 +1847,7 @@ function refreshHistoryViews(videoId) {
 }
 localHistory.onChange = refreshHistoryViews;
 
-historyViewButton.addEventListener('click', () => {
-  historyView = historyView === 'segments' ? 'videos' : 'segments';
-  renderHistory();
-});
+historyViewControl.addEventListener('change', renderHistory);
 
 historyPeriod.addEventListener('change', renderHistory);
 

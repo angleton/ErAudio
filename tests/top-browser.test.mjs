@@ -531,17 +531,22 @@ test('TOP filters calendar periods and preserves dated plays in backups', { time
   const period = page.getByLabel('TIME PERIOD');
   assert.equal(await period.inputValue(), 'all');
   await period.selectOption('today');
-  await page.locator('#history-view').click();
+  await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('#history-list button').length === 2);
   assert.match(await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"]').innerText(), /PLAYS 1 \/ TIME 00:10/);
   assert.match(await page.locator('#history-list [data-history-location="zzzzzzzzzzz:0"]').innerText(), /PLAYS ≥0 \/ TIME 00:10/);
   assert.equal(await page.locator('#history-list [data-history-location="bbbbbbbbbbb:0"]').count(), 0);
-  assert.equal(await page.locator('#history-period-note').isVisible(), true);
+  assert.equal(await page.locator('#history-period-note').evaluate((note) => note.hidden), false);
   await period.selectOption('week');
   await page.waitForFunction(() => document.querySelectorAll('#history-list button').length === 3);
   await period.selectOption('all');
   await page.waitForFunction(() => document.querySelector('#history-list [data-history-location="zzzzzzzzzzz:0"] .history-detail')?.textContent === 'PLAYS 5 / TIME 00:10');
-  assert.equal(await page.locator('#history-period-note').isHidden(), true);
+  assert.equal(await page.locator('#history-period-note').evaluate((note) => note.hidden), true);
+  const clear = page.getByRole('button', { name: 'CLEAR', exact: true });
+  await clear.hover();
+  const [red, green, blue] = await clear.evaluate((button) =>
+    getComputedStyle(button).backgroundColor.match(/\d+/g).map(Number));
+  assert.ok(green > 128 && blue > 128 && red > Math.max(green, blue), 'CLEAR should have a light-red hover background');
 });
 
 test('playing video and segment highlights follow playback across the lists', { timeout: 20000 }, async (t) => {
@@ -609,7 +614,11 @@ test('playing video and segment highlights follow playback across the lists', { 
   assert.deepEqual(await highlights(), [
     ['history-list', 'aaaaaaaaaaa:20', 'time'], ['playlist-list', 'aaaaaaaaaaa', 'true'], ['marker-list', '1', 'time'],
   ]);
-  await page.locator('#history-view').click();
+  const segments = page.getByRole('radio', { name: 'SEGMENTS', exact: true });
+  const videos = page.getByRole('radio', { name: 'VIDEOS', exact: true });
+  assert.equal(await segments.isChecked(), true);
+  await segments.press('ArrowRight');
+  assert.equal(await videos.isChecked(), true);
   await page.locator('#history-list [aria-current="true"]').waitFor();
   assert.deepEqual(await highlights(), [
     ['history-list', 'aaaaaaaaaaa:0', 'true'], ['playlist-list', 'aaaaaaaaaaa', 'true'], ['marker-list', '1', 'time'],
@@ -743,7 +752,7 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     await signOut.waitFor({ state: 'visible' });
     await help.click();
     await assertToolbarOrder(signOut);
-    return { page, top, view, signIn, signOut };
+    return { page, top, signIn, signOut };
   }
 
   async function reopenTop({ top }) {
@@ -761,9 +770,9 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
   await importHistory(second.page, fixture([['a', 300], ['z', 400], ['b', 500, 10]]));
   await reopenTop(first);
   const segments = [['z', 2, 20], ['a', 1, 10], ['b', 1, 10], ['b', 1, 10, 10]];
-  await Promise.all([first, second].map(async ({ page, view }) => {
+  await Promise.all([first, second].map(async ({ page }) => {
     await waitForTop(page, 'LISTENS', segments);
-    await view.click();
+    await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
     await waitForTop(page, 'PLAYS', [['b', 2, 20], ['z', 2, 20], ['a', 1, 10]]);
   }));
   const fixedNow = await first.page.evaluate(() => new Date(2026, 2, 9, 12).getTime());

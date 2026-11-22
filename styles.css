@@ -665,6 +665,51 @@ body {
   padding: 2px 4px;
 }
 
+.history-view {
+  display: inline-flex;
+  padding: 1px;
+  border: 1px solid #666677;
+  border-radius: 999px;
+  background: #202028;
+}
+
+.history-view label {
+  position: relative;
+  color: #cccccc;
+}
+
+.history-view input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.history-view span {
+  display: block;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.history-view input:checked + span {
+  background: #ebcb69;
+  color: #202028;
+}
+
+.history-view input:focus-visible + span {
+  outline: 1px solid var(--lcd-yellow);
+  outline-offset: 1px;
+}
+
+#history-clear:hover {
+  background: #f5abab;
+  border-color: #ffcccc;
+  color: #3b1414;
+}
+
 .saved-locations {
   position: absolute;
   inset: 0 6px auto;

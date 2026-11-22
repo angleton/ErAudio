@@ -620,7 +620,7 @@ async function checkPlaylistHistory(t, endFirst) {
   assert.equal(today.videos[0].plays, 2);
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'LISTENS 2 / TIME 00:14');
-  await page.locator('#history-view').click();
+  await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'PLAYS 2 / TIME 00:14');
   await page.reload();
   await page.waitForFunction(() => ytReady);

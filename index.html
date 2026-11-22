@@ -40,7 +40,10 @@
           <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
           <button class="pl-btn history-sync-help" id="history-sync-help" type="button" aria-label="Show listening history sync information" aria-controls="history-help-panel" aria-expanded="false" aria-pressed="false">?</button>
         </div>
-        <button class="pl-btn" id="history-view" type="button">VIEW: SEGMENTS</button>
+        <div class="history-view" id="history-view" role="radiogroup" aria-label="Listening history view">
+          <label><input type="radio" name="history-view" value="segments" checked><span>SEGMENTS</span></label>
+          <label><input type="radio" name="history-view" value="videos"><span>VIDEOS</span></label>
+        </div>
         <label for="history-period">TIME PERIOD</label>
         <select id="history-period">
           <option value="all">All time</option>
