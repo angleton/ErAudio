@@ -198,11 +198,12 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PAUSED }));
   assert.equal(await page.locator('#playback-indicator').isHidden(), true);
 
-  const title = await page.locator('.marquee-container').boundingBox();
-  await page.mouse.click(title.x + title.width / 2, title.y + title.height / 2, { button: 'right' });
+  const spectrum = page.locator('#live-spectrum');
+  const canvas = await spectrum.boundingBox();
+  await page.mouse.click(canvas.x + canvas.width / 2, canvas.y + canvas.height - 5, { button: 'right' });
   assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
   await page.keyboard.press('Escape');
-  await page.locator('#live-spectrum').focus();
+  await spectrum.focus();
   await page.keyboard.press('Shift+F10');
   assert.equal(await page.locator('#spectrum-settings').isVisible(), true);
   await page.keyboard.press('Escape');
@@ -212,6 +213,50 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   assert.ok(narrowTimer.x >= narrowSpectrum.x && narrowTimer.x + narrowTimer.width <= narrowSpectrum.x + narrowSpectrum.width);
   await timer.click();
   assert.equal(await page.locator('#time-display').textContent(), '-02:15');
+});
+
+test('right-clicking the track title reveals and pans the text before scrolling resumes', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  const trackTitle = page.locator('#track-title');
+  await trackTitle.evaluate((element) => { element.textContent = 'A long video title with more text to reveal. '.repeat(10); });
+  const container = await page.locator('.marquee-container').boundingBox();
+  const x = container.x + container.width / 2;
+  const y = container.y + container.height / 2;
+  const bounds = () => trackTitle.evaluate((element) => {
+    const title = element.getBoundingClientRect();
+    const container = element.parentElement;
+    const clip = container.getBoundingClientRect();
+    const style = getComputedStyle(container);
+    return {
+      leading: title.left - clip.left - parseFloat(style.paddingLeft),
+      trailing: title.right - clip.right + parseFloat(style.paddingRight),
+      animation: getComputedStyle(element).animationName,
+    };
+  });
+
+  await page.mouse.click(x, y, { button: 'right' });
+  const start = await bounds();
+  assert.equal(start.animation, 'none');
+  assert.ok(Math.abs(start.leading) < 1);
+  assert.ok(start.trailing > 0);
+  assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
+  await trackTitle.evaluate((element) => new Promise((resolve) => {
+    element.addEventListener('animationstart', resolve, { once: true });
+  }));
+
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(0, y, { steps: 5 });
+  const end = await bounds();
+  assert.ok(end.leading < 0);
+  assert.ok(Math.abs(end.trailing) < 1, `title end is ${end.trailing}px from the right inset`);
+  await page.mouse.move(x, y, { steps: 5 });
+  assert.deepEqual(await bounds(), start);
+  await page.mouse.move(0, y, { steps: 5 });
+  await page.mouse.up({ button: 'right' });
+  assert.deepEqual(await bounds(), end);
+  assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('#track-title')).animationName === 'marquee');
 });
 
 test('last played local video is selected and cued on reload, not an unplayed selection', { timeout: 20000 }, async (t) => {

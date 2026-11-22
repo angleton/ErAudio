@@ -396,6 +396,7 @@ body {
   padding: 3px 6px;
   overflow: hidden;
   white-space: nowrap;
+  pointer-events: auto;
 }
 
 .marquee-text {
@@ -406,6 +407,11 @@ body {
   text-shadow: 0 0 3px #000000, 0 0 4px var(--lcd-green-glow);
   display: inline-block;
   animation: marquee 12s linear infinite;
+}
+
+.marquee-container.manual-scroll .marquee-text {
+  animation: none;
+  transform: translateX(var(--marquee-offset));
 }
 
 @keyframes marquee {

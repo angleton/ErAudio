@@ -611,6 +611,45 @@ timerButton.addEventListener('click', () => {
   updateTimeDisplay(displayedPosition, displayedDuration);
 });
 
+const titleMarquee = trackTitleDisplay.parentElement;
+let titleDrag = null;
+let titleResumeTimer;
+
+titleMarquee.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+});
+
+titleMarquee.addEventListener('pointerdown', (event) => {
+  if (event.button !== 2 || titleDrag) return;
+  clearTimeout(titleResumeTimer);
+  titleMarquee.setPointerCapture(event.pointerId);
+  titleDrag = { id: event.pointerId, x: event.clientX };
+  trackTitleDisplay.style.setProperty('--marquee-offset', '0px');
+  titleMarquee.classList.add('manual-scroll');
+});
+
+titleMarquee.addEventListener('pointermove', (event) => {
+  if (event.pointerId !== titleDrag?.id) return;
+  if (!(event.buttons & 2)) {
+    titleMarquee.releasePointerCapture(event.pointerId);
+    return;
+  }
+  const style = getComputedStyle(titleMarquee);
+  const width = titleMarquee.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const overflow = Math.max(0, trackTitleDisplay.getBoundingClientRect().width - width);
+  // Even a very long title can reach its end before the pointer hits the left edge.
+  const speed = Math.max(1, overflow / Math.max(1, titleDrag.x));
+  const offset = Math.max(-overflow, Math.min(0, (event.clientX - titleDrag.x) * speed));
+  trackTitleDisplay.style.setProperty('--marquee-offset', `${offset}px`);
+});
+
+titleMarquee.addEventListener('lostpointercapture', (event) => {
+  if (event.pointerId !== titleDrag?.id) return;
+  titleDrag = null;
+  titleResumeTimer = setTimeout(() => titleMarquee.classList.remove('manual-scroll'), 1500);
+});
+
 function updateNowPlaying() {
   renderMarkers();
   renderSavedLocations();
