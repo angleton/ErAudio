@@ -56,7 +56,7 @@ test('standalone preview works offline, pauses and resumes, and changes band cou
         block: data[(8 * 512 + 16) * 4 + 3],
       };
     };
-    const result = { continuous: render(256), subtle: render(255), sparse: render(16) };
+    const result = { continuous: render(512), subtle: render(511), sparse: render(16) };
     sample.remove();
     return result;
   });
@@ -90,7 +90,7 @@ test('minimum bands show whole lights at varying levels and sizes while maximum 
         const band = index + 8;
         bins.fill(-90 + level * 65, renderer.bandEdges[band], renderer.bandEdges[band + 1]);
       });
-      renderer.draw(bins, 16, 1, false, ratio);
+      renderer.draw(bins, 16, 1, true, ratio);
       const { width, height } = sample;
       const step = width / 16;
       const preferredRowHeight = Math.max(2 * ratio, Math.min(16 * ratio, step * 0.75));
@@ -127,4 +127,28 @@ test('minimum bands show whole lights at varying levels and sizes while maximum 
   assert.deepEqual(result.smoothAlphas.slice(0, 2), [0, 0]);
   assert.ok(result.smoothAlphas[2] > 0 && result.smoothAlphas[2] < 255);
   assert.deepEqual(result.smoothAlphas.slice(3), [255, 255]);
+});
+
+test('minimum-band peak fills one white LED-sized rectangle', async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(new URL('../visualizer/preview.html', import.meta.url).href);
+  const colors = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '512px';
+    canvas.style.height = '160px';
+    document.body.append(canvas);
+    const drawing = canvas.getContext('2d');
+    const renderer = new ErAudioSpectrum(canvas, drawing, 48000, 32768, 0);
+    renderer.draw(new Float32Array(16384).fill(-25), 16, 0, false, 1);
+    const pixel = (x, y) => Array.from(drawing.getImageData(x, y, 1, 1).data);
+    const result = [pixel(2, 8), pixel(29, 8), pixel(0, 8), pixel(16, 24)];
+    canvas.remove();
+    return result;
+  });
+  assert.deepEqual(colors[0], [255, 255, 255, 255]);
+  assert.deepEqual(colors[1], [255, 255, 255, 255]);
+  assert.notDeepEqual(colors[2], [255, 255, 255, 255]);
+  assert.notDeepEqual(colors[3], [255, 255, 255, 255]);
 });

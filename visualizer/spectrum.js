@@ -6,8 +6,10 @@
   const peakHoldMs = 200;
   const peakFallPerMs = 0.0008;
   const peakColor = '#fff';
-  const ledTransitionBands = 256;
+  const ledTransitionBands = 512;
   const ledMinimumBands = 16;
+  const ledShapeRate = 8;
+  const ledShapeCompletion = 0.5;
   const ledMaxGap = 3;
   const ledMaxHeight = 16;
 
@@ -38,10 +40,14 @@
       const step = width / bandCount;
       const ledStrength = bandCount < ledTransitionBands
         ? Math.min(1, (ledTransitionBands - bandCount) / (ledTransitionBands - ledMinimumBands)) : 0;
+      const shapeStrength = Math.min(1, (1 - Math.exp(-ledShapeRate * ledStrength))
+        / (1 - Math.exp(-ledShapeRate * ledShapeCompletion)));
       const preferredRowHeight = Math.max(2 * ratio, Math.min(ledMaxHeight * ratio, step * 0.75));
       const rowCount = Math.max(1, Math.round(height / preferredRowHeight));
       const rowHeight = height / rowCount;
       const dotRadius = Math.min(0.75 * ratio, step / 4, height / 2);
+      const columnGap = Math.min(ledMaxGap * ratio, step * 0.25);
+      const rowGap = Math.min(ledMaxGap * ratio, rowHeight * 0.25);
       const colors = drawing.createLinearGradient(0, 0, width, 0);
       let spectrumTop = height;
       drawing.beginPath();
@@ -82,8 +88,8 @@
           const top = this.bandTops[band];
           const previous = this.bandTops[Math.max(0, band - 1)];
           const next = this.bandTops[Math.min(bandCount - 1, band + 1)];
-          const left = top + ((previous - top) / 2) * (1 - ledStrength);
-          const right = top + ((next - top) / 2) * (1 - ledStrength);
+          const left = top + ((previous - top) / 2) * (1 - shapeStrength);
+          const right = top + ((next - top) / 2) * (1 - shapeStrength);
           drawing.lineTo(band * step, left);
           drawing.lineTo((band + 0.5) * step, top);
           drawing.lineTo((band + 1) * step, right);
@@ -94,8 +100,6 @@
       drawing.fillStyle = colors;
       drawing.fill();
       if (bandCount < ledTransitionBands) {
-        const columnGap = Math.min(ledMaxGap * ratio, step * 0.25);
-        const rowGap = Math.min(ledMaxGap * ratio, rowHeight * 0.25);
         drawing.save();
         drawing.globalCompositeOperation = 'destination-out';
         drawing.globalAlpha = ledStrength;
@@ -113,9 +117,19 @@
       drawing.fillStyle = peakColor;
       for (let band = 0; band < bandCount; band++) {
         if (this.heldPeaks[band] > 0) {
-          const y = Math.max(dotRadius, height * (1 - this.heldPeaks[band]) - dotRadius);
+          const dotY = Math.max(dotRadius, height * (1 - this.heldPeaks[band]) - dotRadius);
+          const peakRow = Math.max(0, Math.min(rowCount - 1, Math.ceil(this.heldPeaks[band] * rowCount) - 1));
+          const rowY = height - (peakRow + 0.5) * rowHeight;
+          const y = dotY + (rowY - dotY) * ledStrength;
           drawing.beginPath();
-          drawing.arc((band + 0.5) * step, y, dotRadius, 0, 2 * Math.PI);
+          if (ledStrength === 0) {
+            drawing.arc((band + 0.5) * step, y, dotRadius, 0, 2 * Math.PI);
+          } else {
+            const peakWidth = 2 * dotRadius + (step - columnGap - 2 * dotRadius) * ledStrength;
+            const peakHeight = 2 * dotRadius + (rowHeight - rowGap - 2 * dotRadius) * ledStrength;
+            const radius = Math.min(dotRadius * (1 - ledStrength), peakWidth / 2, peakHeight / 2);
+            drawing.roundRect((band + 0.5) * step - peakWidth / 2, y - peakHeight / 2, peakWidth, peakHeight, radius);
+          }
           drawing.fill();
         }
       }

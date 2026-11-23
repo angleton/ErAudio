@@ -4,7 +4,7 @@ The player and the standalone preview use the same spectrum renderer. The player
 
 ## Try it
 
-Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 16–512 bands. Below 256 bands, gaps gradually appear and the display becomes a grid of larger LED-like blocks as the count decreases. At 16 bands, each block is either fully lit or off. Use **Pause** to hold the colored fill while the white peak dots fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
+Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 16–512 bands. Below 512 bands, gaps gradually appear and the fill quickly develops flat tops; white peak dots gradually become rectangular lights. At 16 bands, the display is a grid of whole LED-like blocks. Use **Pause** to hold the colored fill while the white peak markers fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
 
 Edit a file, save it, and reload the preview to see the change. Edits to the shared renderer affect both the preview and the player.
 
@@ -23,9 +23,9 @@ Edit a file, save it, and reload the preview to see the change. Edits to the sha
 In [spectrum.js](./spectrum.js):
 
 - **Fill colors:** In `draw()`, change the `hue` calculation or the `hsl(...)` color passed to `colors.addColorStop()`. The current calculation goes from green for quiet levels toward red for loud levels.
-- **Peak dots:** Change `peakColor` near the top of the file. Change `dotRadius` or the `drawing.arc()` call in `draw()` to adjust their size or shape.
+- **Peak markers:** Change `peakColor` near the top of the file. `dotRadius` sets the dense-mode dots; the `roundRect()` drawing blends them into full LED blocks as `ledStrength` increases.
 - **Filled shape:** The `drawing.lineTo()` calls trace the top and bottom of the filled spectrum. Change those calls to draw a different outline.
-- **LED-like blocks:** Change `ledTransitionBands`, `ledMaxGap`, or `ledMaxHeight` to adjust when the gaps appear and how large the blocks become. Gaps and whole-block levels gradually replace the continuous fill as the band count approaches `ledMinimumBands`.
+- **LED-like blocks:** Change `ledTransitionBands`, `ledMaxGap`, or `ledMaxHeight` to adjust when gaps appear and how large blocks become. `ledShapeRate` controls how quickly slanted tops flatten, and `ledShapeCompletion` sets how far through the transition tops become completely flat. Gaps and whole-block levels continue to develop gradually toward `ledMinimumBands`.
 - **Peak timing:** Increase `peakHoldMs` to keep dots at their peaks longer; increase `peakFallPerMs` to make them fall faster. For example, changing `peakHoldMs` from `200` to `400` doubles the hold time.
 - **Height and frequency response:** `quietDb` and `loudDb` set the decibel range mapped to heights from zero to full. `lowHz` and `highHzLimit` set the displayed frequency range. Band edges are logarithmic, spreading bass and treble across the canvas.
 
