@@ -3289,10 +3289,8 @@ const bpmValues = new Map();
 const bpmTaps = new Map();
 const bpmEditors = new Map();
 const bpmModes = new Map();
-const bpmManualTimers = new Map();
 const bpmMessage = document.querySelector('#bpm-message');
 const defaultNudgeBpm = 130;
-const bpmManualTimeoutMs = 10000;
 const tappedBpmDisplayTimeoutMs = 3000;
 
 function nudgeError(message) {
@@ -3416,8 +3414,7 @@ function displayBpm(button, value, mode = 'AUTO') {
 }
 
 function useAutoBpm(button) {
-  clearTimeout(bpmManualTimers.get(button.id));
-  bpmManualTimers.delete(button.id);
+  document.getElementById(`${button.id}-auto`).checked = true;
   bpmModes.set(button.id, 'AUTO');
   const value = detectedBpm ?? undefined;
   if (value === undefined) bpmValues.delete(button.id);
@@ -3432,13 +3429,68 @@ function refreshAutoBpmButtons() {
 }
 
 function useManualBpm(button, value) {
+  document.getElementById(`${button.id}-auto`).checked = false;
   bpmModes.set(button.id, 'MANUAL');
   if (value === undefined) bpmValues.delete(button.id);
   else bpmValues.set(button.id, value);
   displayBpm(button, value, 'MANUAL');
-  clearTimeout(bpmManualTimers.get(button.id));
-  bpmManualTimers.set(button.id, setTimeout(() => useAutoBpm(button), bpmManualTimeoutMs));
 }
+
+function setBpmMode(button, automatic) {
+  if ((bpmModes.get(button.id) === 'AUTO') === automatic) return;
+  bpmTaps.get(button.id).length = 0;
+  if (automatic) useAutoBpm(button);
+  else useManualBpm(button, bpmValues.get(button.id));
+}
+
+const bpmAutoMenu = document.querySelector('#bpm-auto-menu');
+const bpmAutoMenuItems = [...bpmAutoMenu.querySelectorAll('[role="menuitem"]')];
+let bpmAutoMenuSource = null;
+
+function closeBpmAutoMenu(restoreFocus = false) {
+  const source = bpmAutoMenuSource;
+  bpmAutoMenu.hidden = true;
+  bpmAutoMenuSource = null;
+  if (restoreFocus && source?.isConnected) source.focus();
+}
+
+function openBpmAutoMenu(source, x, y) {
+  bpmAutoMenuSource = source;
+  bpmAutoMenu.hidden = false;
+  const rect = bpmAutoMenu.getBoundingClientRect();
+  bpmAutoMenu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width))}px`;
+  bpmAutoMenu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - rect.height))}px`;
+  bpmAutoMenuItems[0].focus();
+}
+
+bpmAutoMenu.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeBpmAutoMenu(true);
+  } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const index = bpmAutoMenuItems.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? bpmAutoMenuItems.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + bpmAutoMenuItems.length) % bpmAutoMenuItems.length;
+    bpmAutoMenuItems[next].focus();
+  }
+});
+
+bpmAutoMenu.addEventListener('focusout', (event) => {
+  if (!bpmAutoMenu.contains(event.relatedTarget)) closeBpmAutoMenu();
+});
+
+document.addEventListener('pointerdown', (event) => {
+  if (!bpmAutoMenu.hidden && !bpmAutoMenu.contains(event.target)) closeBpmAutoMenu();
+});
+
+bpmAutoMenu.addEventListener('click', (event) => {
+  const item = event.target.closest('[data-auto]');
+  if (!item || !bpmAutoMenuSource) return;
+  event.stopPropagation();
+  document.querySelectorAll('[data-bpm]').forEach((button) => setBpmMode(button, item.dataset.auto === 'on'));
+  closeBpmAutoMenu(true);
+});
 
 function resetBpm() {
   bpmEditors.forEach((close) => close(false));
@@ -3512,6 +3564,19 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
   const taps = [];
   let editor = null;
   bpmTaps.set(button.id, taps);
+  const autoCheckbox = document.getElementById(`${button.id}-auto`);
+  autoCheckbox.addEventListener('change', () => setBpmMode(button, autoCheckbox.checked));
+  autoCheckbox.parentElement.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    const rect = autoCheckbox.getBoundingClientRect();
+    openBpmAutoMenu(autoCheckbox, event.clientX || rect.left, event.clientY || rect.bottom);
+  });
+  autoCheckbox.addEventListener('keydown', (event) => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    event.preventDefault();
+    const rect = autoCheckbox.getBoundingClientRect();
+    openBpmAutoMenu(autoCheckbox, rect.left, rect.bottom);
+  });
 
   function closeEditor(restoreFocus) {
     if (!editor) return;

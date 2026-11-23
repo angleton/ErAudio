@@ -270,6 +270,7 @@ test('starts idle and persists video additions and context-menu removals', { tim
         window.YT = { Player: class {
           constructor(id, options) { queueMicrotask(() => options.events.onReady()); }
           setVolume() {}
+          setPlaybackRate() {}
           loadVideoById(videoId) { window.videoLoads.push(videoId); }
           getPlayerState() { return -1; }
         }, PlayerState: { PLAYING: 1, PAUSED: 2, CUED: 5 } };
@@ -346,9 +347,20 @@ test('starts idle and persists video additions and context-menu removals', { tim
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'DJ', exact: true }).click();
   await page.evaluate(() => showLiveTempo(128));
+  const leftAuto = page.getByRole('checkbox', { name: 'Left BPM automatic detection' });
+  const rightAuto = page.getByRole('checkbox', { name: 'Right BPM automatic detection' });
+  assert.equal(await leftAuto.isChecked(), true);
+  assert.equal(await rightAuto.isChecked(), true);
   assert.equal(await page.locator('#bpm-left').innerText(), '128\nAUTO');
   assert.equal(await page.locator('#bpm-right').innerText(), '128\nAUTO');
+  await leftAuto.uncheck();
+  assert.equal(await page.locator('#bpm-left').innerText(), '128\nMANUAL');
+  assert.equal(await page.evaluate(() => bpmTaps.get('bpm-left').length), 0);
+  await leftAuto.check();
+  assert.equal(await page.locator('#bpm-left').innerText(), '128\nAUTO');
+  assert.equal(await page.evaluate(() => bpmTaps.get('bpm-left').length), 0);
   await page.locator('#bpm-left').click();
+  assert.equal(await leftAuto.isChecked(), false);
   assert.equal(await page.locator('#bpm-left .pf-bpm-mode').textContent(), 'MANUAL');
   await page.evaluate(() => showLiveTempo(130));
   assert.equal(await page.locator('#bpm-left .pf-bpm-reading').textContent(), '128');
@@ -392,7 +404,74 @@ test('starts idle and persists video additions and context-menu removals', { tim
   assert.equal(await mainBpm.textContent(), '135 BPM');
   assert.equal(await page.locator('#bpm-right').innerText(), '80\nMANUAL');
   await page.clock.fastForward(7001);
+  assert.equal(await page.locator('#bpm-right').innerText(), '80\nMANUAL');
+  assert.equal(await rightAuto.isChecked(), false);
+  assert.equal(await page.locator('#bpm-left').innerText(), '120\nMANUAL');
+  await rightAuto.focus();
+  await page.keyboard.press('Space');
+  assert.equal(await rightAuto.isChecked(), true);
   assert.equal(await page.locator('#bpm-right').innerText(), '135\nAUTO');
+  assert.equal(await page.locator('#bpm-left').innerText(), '120\nMANUAL');
+  assert.equal(await page.evaluate(() => bpmTaps.get('bpm-right').length), 0);
+
+  await page.locator('#bpm-right').click({ button: 'right' });
+  const bpmEditor = page.getByRole('spinbutton', { name: 'Enter right BPM' });
+  await bpmEditor.fill('123.5');
+  await bpmEditor.press('Enter');
+  assert.equal(await rightAuto.isChecked(), false);
+  assert.equal(await page.locator('#bpm-right').innerText(), '123.5\nMANUAL');
+  await page.clock.fastForward(15000);
+  assert.equal(await page.locator('#bpm-right').innerText(), '123.5\nMANUAL');
+  await page.locator('[data-pf="AC"]').click();
+  assert.equal(await leftAuto.isChecked(), true);
+  assert.equal(await rightAuto.isChecked(), true);
+  assert.equal(await page.locator('#bpm-left .pf-bpm-mode').textContent(), 'AUTO');
+  assert.equal(await page.locator('#bpm-right .pf-bpm-mode').textContent(), 'AUTO');
+
+  await leftAuto.click({ button: 'right' });
+  const autoMenu = page.getByRole('menu', { name: 'Both BPM counters' });
+  await autoMenu.getByRole('menuitem', { name: 'AUTO OFF' }).click();
+  assert.equal(await leftAuto.isChecked(), false);
+  assert.equal(await rightAuto.isChecked(), false);
+  assert.equal(await page.locator('#bpm-left').innerText(), '135\nMANUAL');
+  assert.equal(await page.locator('#bpm-right').innerText(), '135\nMANUAL');
+  assert.equal(await page.evaluate(() => bpmTaps.get('bpm-left').length + bpmTaps.get('bpm-right').length), 0);
+  await page.evaluate(() => showLiveTempo(140));
+  assert.equal(await page.locator('#bpm-left').innerText(), '135\nMANUAL');
+  await rightAuto.check();
+  await leftAuto.focus();
+  await page.keyboard.press('Shift+F10');
+  await autoMenu.getByRole('menuitem', { name: 'AUTO ON' }).press('Enter');
+  assert.equal(await leftAuto.isChecked(), true);
+  assert.equal(await rightAuto.isChecked(), true);
+  assert.equal(await page.locator('#bpm-left').innerText(), '140\nAUTO');
+  assert.equal(await page.locator('#bpm-right').innerText(), '140\nAUTO');
+  assert.equal(await leftAuto.evaluate((input) => input === document.activeElement), true);
+  await rightAuto.click({ button: 'right' });
+  await page.keyboard.press('Escape');
+  assert.equal(await autoMenu.isHidden(), true);
+  assert.equal(await rightAuto.evaluate((input) => input === document.activeElement), true);
+  assert.equal(await rightAuto.isChecked(), true);
+
+  await page.setViewportSize({ width: 320, height: 480 });
+  for (const [checkbox, side] of [[leftAuto, 'right'], [rightAuto, 'left']]) {
+    const geometry = await checkbox.evaluate((input) => {
+      const label = input.parentElement.getBoundingClientRect();
+      const control = input.closest('.pf-bpm-control').getBoundingClientRect();
+      const button = input.closest('.pf-bpm-control').querySelector('[data-bpm]').getBoundingClientRect();
+      return { labelLeft: label.left, labelRight: label.right, controlLeft: control.left,
+        controlRight: control.right, labelTop: label.top, labelBottom: label.bottom,
+        buttonLeft: button.left, buttonRight: button.right, buttonTop: button.top, buttonBottom: button.bottom };
+    });
+    assert.ok(geometry.labelLeft >= geometry.controlLeft && geometry.labelRight <= geometry.controlRight);
+    if (side === 'right') assert.ok(geometry.labelLeft >= geometry.buttonRight);
+    else assert.ok(geometry.labelRight <= geometry.buttonLeft);
+    assert.ok(geometry.labelTop < geometry.buttonBottom && geometry.labelBottom > geometry.buttonTop);
+    await checkbox.uncheck();
+    assert.equal(await checkbox.isChecked(), false);
+  }
+  const [leftBox, rightBox] = await Promise.all([leftAuto.boundingBox(), rightAuto.boundingBox()]);
+  assert.ok(rightBox.x - (leftBox.x + leftBox.width) <= 8);
 });
 
 test('live spectrum uses the shared renderer and stops sampling while paused', { timeout: 15000 }, async (t) => {

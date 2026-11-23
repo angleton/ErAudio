@@ -196,8 +196,14 @@
           <button class="pf-btn" type="button" data-step-size="small" data-step-dir="down">-</button>
           <button class="pf-btn" type="button" data-pf="M2=M">M2=M</button>
           <button class="pf-btn" type="button" data-pf="M-M2">M-M2</button>
-          <button class="pf-btn pf-bpm" id="bpm-left" type="button" data-bpm aria-label="Left BPM: not measured. Tap to measure; press Shift+F10 to enter manually.">BPM</button>
-          <button class="pf-btn pf-bpm" id="bpm-right" type="button" data-bpm aria-label="Right BPM: not measured. Tap to measure; press Shift+F10 to enter manually.">BPM</button>
+          <div class="pf-bpm-control">
+            <button class="pf-btn pf-bpm" id="bpm-left" type="button" data-bpm aria-label="Left BPM: not measured. Tap to measure; press Shift+F10 to enter manually.">BPM</button>
+            <label class="pf-bpm-auto" title="Automatically detect left BPM. Right-click for both counters."><input id="bpm-left-auto" type="checkbox" checked aria-label="Left BPM automatic detection" aria-haspopup="menu"></label>
+          </div>
+          <div class="pf-bpm-control">
+            <label class="pf-bpm-auto" title="Automatically detect right BPM. Right-click for both counters."><input id="bpm-right-auto" type="checkbox" checked aria-label="Right BPM automatic detection" aria-haspopup="menu"></label>
+            <button class="pf-btn pf-bpm" id="bpm-right" type="button" data-bpm aria-label="Right BPM: not measured. Tap to measure; press Shift+F10 to enter manually.">BPM</button>
+          </div>
         </div>
 
         <div class="pf-center">
@@ -322,6 +328,10 @@
     <button type="button" role="menuitem" tabindex="-1" data-copy="text">COPY TEXT</button>
     <button type="button" role="menuitem" tabindex="-1" data-copy="link">COPY LINK</button>
     <button type="button" role="menuitem" tabindex="-1" data-remove-video hidden>REMOVE FROM VIDEOS</button>
+  </div>
+  <div class="copy-menu" id="bpm-auto-menu" role="menu" aria-label="Both BPM counters" hidden>
+    <button type="button" role="menuitem" data-auto="on" tabindex="-1">AUTO ON</button>
+    <button type="button" role="menuitem" data-auto="off" tabindex="-1">AUTO OFF</button>
   </div>
   <p class="event-status" id="event-status" role="status" aria-live="polite">Ready for input events.</p>
   <p class="copy-notice" id="copy-notice" aria-hidden="true" hidden>Copied to clipboard</p>
