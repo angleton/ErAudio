@@ -1165,10 +1165,6 @@ body {
   line-height: 1;
 }
 
-.pf-bpm[hidden] {
-  display: none;
-}
-
 .pf-bpm-reading {
   display: block;
 }
@@ -1185,7 +1181,6 @@ body {
   color: #725000;
 }
 
-.pf-bpm-editor,
 .pf-step-editor {
   min-width: 0;
   width: 100%;
@@ -1194,11 +1189,6 @@ body {
   border: 1px solid #4a4a5e;
   font: bold 13px var(--font-mono);
   user-select: text;
-}
-
-.pf-bpm-editor {
-  flex: 1;
-  width: 0;
 }
 
 .pf-message:not(:empty) {

@@ -3287,7 +3287,6 @@ stepButtons.forEach((button) => {
 
 const bpmValues = new Map();
 const bpmTaps = new Map();
-const bpmEditors = new Map();
 const bpmModes = new Map();
 const bpmMessage = document.querySelector('#bpm-message');
 const defaultNudgeBpm = 130;
@@ -3353,7 +3352,7 @@ function handleNudgeStateChange(state) {
 function nudgePosition(direction) {
   const bpm = bpmValues.get('bpm-left') ?? defaultNudgeBpm;
   if (!Number.isFinite(bpm) || bpm <= 0) {
-    nudgeError('Measure or enter the left BPM before nudging.');
+    nudgeError('Measure the left BPM before nudging.');
     return;
   }
   const duration = activeVideoDuration();
@@ -3410,7 +3409,7 @@ function displayBpm(button, value, mode = 'AUTO') {
   button.classList.toggle('manual', mode === 'MANUAL');
   const side = button.id === 'bpm-left' ? 'Left' : 'Right';
   const description = `${value === undefined ? 'not measured' : String(value)}, ${mode.toLowerCase()}`;
-  button.setAttribute('aria-label', `${side} BPM: ${description}. Tap to measure; press Shift+F10 to enter manually.`);
+  button.setAttribute('aria-label', `${side} BPM: ${description}. Tap to measure; press Shift+F10 for mode options.`);
 }
 
 function useAutoBpm(button, { preserveReading = false } = {}) {
@@ -3446,16 +3445,24 @@ function setBpmMode(button, automatic) {
 const bpmAutoMenu = document.querySelector('#bpm-auto-menu');
 const bpmAutoMenuItems = [...bpmAutoMenu.querySelectorAll('[role="menuitem"]')];
 let bpmAutoMenuSource = null;
+let bpmAutoMenuTarget = null;
 
 function closeBpmAutoMenu(restoreFocus = false) {
   const source = bpmAutoMenuSource;
   bpmAutoMenu.hidden = true;
   bpmAutoMenuSource = null;
+  bpmAutoMenuTarget = null;
   if (restoreFocus && source?.isConnected) source.focus();
 }
 
-function openBpmAutoMenu(source, x, y) {
+function openBpmAutoMenu(source, x, y, target = null) {
   bpmAutoMenuSource = source;
+  bpmAutoMenuTarget = target;
+  bpmAutoMenu.setAttribute('aria-label', target
+    ? `${target.id === 'bpm-left' ? 'Left' : 'Right'} BPM counter`
+    : 'Both BPM counters');
+  bpmAutoMenuItems[0].textContent = target ? 'AUTO' : 'AUTO ON';
+  bpmAutoMenuItems[1].textContent = target ? 'MANUAL' : 'AUTO OFF';
   bpmAutoMenu.hidden = false;
   const rect = bpmAutoMenu.getBoundingClientRect();
   bpmAutoMenu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width))}px`;
@@ -3488,12 +3495,12 @@ bpmAutoMenu.addEventListener('click', (event) => {
   const item = event.target.closest('[data-auto]');
   if (!item || !bpmAutoMenuSource) return;
   event.stopPropagation();
-  document.querySelectorAll('[data-bpm]').forEach((button) => setBpmMode(button, item.dataset.auto === 'on'));
+  const buttons = bpmAutoMenuTarget ? [bpmAutoMenuTarget] : document.querySelectorAll('[data-bpm]');
+  buttons.forEach((button) => setBpmMode(button, item.dataset.auto === 'on'));
   closeBpmAutoMenu(true);
 });
 
 function resetBpm() {
-  bpmEditors.forEach((close) => close(false));
   bpmValues.clear();
   bpmTaps.forEach((taps) => { taps.length = 0; });
   clearTappedBpm();
@@ -3562,7 +3569,6 @@ function updateTappedTempo(bpm, taps) {
 
 document.querySelectorAll('[data-bpm]').forEach((button) => {
   const taps = [];
-  let editor = null;
   bpmTaps.set(button.id, taps);
   const autoCheckbox = document.getElementById(`${button.id}-auto`);
   autoCheckbox.addEventListener('change', () => setBpmMode(button, autoCheckbox.checked));
@@ -3578,59 +3584,16 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
     openBpmAutoMenu(autoCheckbox, rect.left, rect.bottom);
   });
 
-  function closeEditor(restoreFocus) {
-    if (!editor) return;
-    const activeEditor = editor;
-    editor = null;
-    activeEditor.remove();
-    button.hidden = false;
-    if (restoreFocus) button.focus();
-  }
-  bpmEditors.set(button.id, closeEditor);
-
-  function saveEditor(restoreFocus) {
-    if (!editor) return;
-    const bpm = editor.valueAsNumber;
-    if (!Number.isFinite(bpm) || bpm <= 0) {
-      bpmMessage.textContent = 'Enter a BPM greater than zero.';
-      announceEvent({ type: 'error', name: bpmMessage.textContent });
-      if (!restoreFocus) closeEditor(false);
-      return;
-    }
-    taps.length = 0;
-    useManualBpm(button, bpm);
-    bpmMessage.textContent = '';
-    announceEvent({ type: 'bpm', name: button.id, value: String(bpm) });
-    closeEditor(restoreFocus);
-  }
-
   button.addEventListener('contextmenu', (event) => {
     event.preventDefault();
-    if (editor) return;
-    editor = document.createElement('input');
-    editor.type = 'number';
-    editor.step = 'any';
-    editor.inputMode = 'decimal';
-    editor.className = 'pf-bpm-editor';
-    editor.setAttribute('aria-label', `Enter ${button.id === 'bpm-left' ? 'left' : 'right'} BPM`);
-    const value = bpmValues.get(button.id);
-    if (value !== undefined) editor.value = String(value);
-    editor.addEventListener('keydown', (keyEvent) => {
-      if (keyEvent.key === 'Enter') {
-        keyEvent.preventDefault();
-        saveEditor(true);
-      } else if (keyEvent.key === 'Escape') {
-        keyEvent.preventDefault();
-        bpmMessage.textContent = '';
-        closeEditor(true);
-      }
-    });
-    editor.addEventListener('blur', () => saveEditor(false));
-    button.after(editor);
-    button.hidden = true;
-    bpmMessage.textContent = '';
-    editor.focus();
-    editor.select();
+    const rect = button.getBoundingClientRect();
+    openBpmAutoMenu(button, event.clientX || rect.left, event.clientY || rect.bottom, button);
+  });
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    event.preventDefault();
+    const rect = button.getBoundingClientRect();
+    openBpmAutoMenu(button, rect.left, rect.bottom, button);
   });
 
   button.addEventListener('click', () => {
