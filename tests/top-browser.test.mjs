@@ -410,9 +410,12 @@ test('starts idle and persists video additions and context-menu removals', { tim
   await rightAuto.focus();
   await page.keyboard.press('Space');
   assert.equal(await rightAuto.isChecked(), true);
-  assert.equal(await page.locator('#bpm-right').innerText(), '135\nAUTO');
+  assert.equal(await page.locator('#bpm-right').innerText(), '80\nAUTO');
   assert.equal(await page.locator('#bpm-left').innerText(), '120\nMANUAL');
   assert.equal(await page.evaluate(() => bpmTaps.get('bpm-right').length), 0);
+  await page.evaluate(() => showLiveTempo(136));
+  assert.equal(await page.locator('#bpm-right').innerText(), '136\nAUTO');
+  await page.evaluate(() => showLiveTempo(135));
 
   await page.locator('#bpm-right').click({ button: 'right' });
   const bpmEditor = page.getByRole('spinbutton', { name: 'Enter right BPM' });
@@ -436,22 +439,37 @@ test('starts idle and persists video additions and context-menu removals', { tim
   assert.equal(await page.locator('#bpm-left').innerText(), '135\nMANUAL');
   assert.equal(await page.locator('#bpm-right').innerText(), '135\nMANUAL');
   assert.equal(await page.evaluate(() => bpmTaps.get('bpm-left').length + bpmTaps.get('bpm-right').length), 0);
+  await page.locator('#bpm-right').click({ button: 'right' });
+  await bpmEditor.fill('123.5');
+  await bpmEditor.press('Enter');
   await page.evaluate(() => showLiveTempo(140));
   assert.equal(await page.locator('#bpm-left').innerText(), '135\nMANUAL');
   await rightAuto.check();
+  assert.equal(await page.locator('#bpm-right').innerText(), '123.5\nAUTO');
   await leftAuto.focus();
   await page.keyboard.press('Shift+F10');
   await autoMenu.getByRole('menuitem', { name: 'AUTO ON' }).press('Enter');
   assert.equal(await leftAuto.isChecked(), true);
   assert.equal(await rightAuto.isChecked(), true);
-  assert.equal(await page.locator('#bpm-left').innerText(), '140\nAUTO');
-  assert.equal(await page.locator('#bpm-right').innerText(), '140\nAUTO');
+  assert.equal(await page.locator('#bpm-left').innerText(), '135\nAUTO');
+  assert.equal(await page.locator('#bpm-right').innerText(), '123.5\nAUTO');
+  await page.evaluate(() => showLiveTempo(141));
+  assert.equal(await page.locator('#bpm-left').innerText(), '141\nAUTO');
+  assert.equal(await page.locator('#bpm-right').innerText(), '141\nAUTO');
   assert.equal(await leftAuto.evaluate((input) => input === document.activeElement), true);
   await rightAuto.click({ button: 'right' });
   await page.keyboard.press('Escape');
   assert.equal(await autoMenu.isHidden(), true);
   assert.equal(await rightAuto.evaluate((input) => input === document.activeElement), true);
   assert.equal(await rightAuto.isChecked(), true);
+  await page.evaluate(() => showLiveTempo(null));
+  await page.locator('#bpm-right').click({ button: 'right' });
+  await bpmEditor.fill('123.5');
+  await bpmEditor.press('Enter');
+  await rightAuto.check();
+  assert.equal(await page.locator('#bpm-right').innerText(), '123.5\nAUTO');
+  await page.evaluate(() => showLiveTempo(142));
+  assert.equal(await page.locator('#bpm-right').innerText(), '142\nAUTO');
 
   await page.setViewportSize({ width: 320, height: 480 });
   for (const [checkbox, side] of [[leftAuto, 'right'], [rightAuto, 'left']]) {

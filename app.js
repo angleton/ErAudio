@@ -3413,10 +3413,10 @@ function displayBpm(button, value, mode = 'AUTO') {
   button.setAttribute('aria-label', `${side} BPM: ${description}. Tap to measure; press Shift+F10 to enter manually.`);
 }
 
-function useAutoBpm(button) {
+function useAutoBpm(button, { preserveReading = false } = {}) {
   document.getElementById(`${button.id}-auto`).checked = true;
   bpmModes.set(button.id, 'AUTO');
-  const value = detectedBpm ?? undefined;
+  const value = preserveReading ? bpmValues.get(button.id) : detectedBpm ?? undefined;
   if (value === undefined) bpmValues.delete(button.id);
   else bpmValues.set(button.id, value);
   displayBpm(button, value, 'AUTO');
@@ -3439,7 +3439,7 @@ function useManualBpm(button, value) {
 function setBpmMode(button, automatic) {
   if ((bpmModes.get(button.id) === 'AUTO') === automatic) return;
   bpmTaps.get(button.id).length = 0;
-  if (automatic) useAutoBpm(button);
+  if (automatic) useAutoBpm(button, { preserveReading: true });
   else useManualBpm(button, bpmValues.get(button.id));
 }
 
@@ -3498,7 +3498,7 @@ function resetBpm() {
   bpmTaps.forEach((taps) => { taps.length = 0; });
   clearTappedBpm();
   liveTempo.clearTempoHint();
-  document.querySelectorAll('[data-bpm]').forEach(useAutoBpm);
+  document.querySelectorAll('[data-bpm]').forEach((button) => useAutoBpm(button));
   bpmMessage.textContent = '';
 }
 
