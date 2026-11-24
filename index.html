@@ -253,7 +253,17 @@
             <option value="favorites">Local Videos</option>
           </select>
         </div>
+        <div class="playlist-source" id="playlist-sort-control" hidden>
+          <label for="playlist-sort">SORT</label>
+          <select id="playlist-sort">
+            <option value="original">Playlist order</option>
+            <option value="views">YouTube views</option>
+            <option value="plays">My play count</option>
+            <option value="time">My listening time</option>
+          </select>
+        </div>
         <p class="playlist-source-status" id="playlist-status" role="status">Sign in to browse YouTube playlists.</p>
+        <p class="playlist-source-status" id="playlist-sort-status" role="status"></p>
         <!-- Playlist Tracks List -->
         <div class="playlist-list" id="playlist-list" aria-label="Local videos"></div>
       </div>

@@ -585,6 +585,145 @@ test('YouTube playlists are read-only views and preserve the local list and play
   assert.ok(requests.filter((request) => request.path === 'playlistItems').every((request) => request.authorization === 'Bearer test-token'));
 });
 
+test('playlist sorting uses view counts and all-time history without changing playback order', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  const statisticsRequests = [];
+  await page.route('**/youtube/v3/videos?*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('part') !== 'statistics') return route.fallback();
+    assert.equal(url.searchParams.has('maxResults'), false);
+    statisticsRequests.push({ ids: url.searchParams.get('id'), authorization: route.request().headers().authorization });
+    return route.fulfill({ json: { items: [
+      { id: 'aaaaaaaaaaa', statistics: { viewCount: '10' } },
+      { id: 'bbbbbbbbbbb', statistics: { viewCount: '100' } },
+    ] } });
+  });
+  await page.evaluate(async () => {
+    await localHistoryReady;
+    await localHistory.importData({
+      type: 'eraudio-listening-history', version: 1,
+      videos: [{ videoId: 'aaaaaaaaaaa', plays: 1 }, { videoId: 'bbbbbbbbbbb', plays: 5 }],
+      spans: [
+        { videoId: 'aaaaaaaaaaa', start: 0, end: 30, playedAt: 1 },
+        { videoId: 'bbbbbbbbbbb', start: 0, end: 10, playedAt: 1 },
+      ],
+    });
+  });
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  assert.equal(await page.locator('#playlist-sort').isHidden(), true);
+  await signIn(page);
+  await page.locator('#playlist-select').selectOption('youtube:list-a');
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
+  const items = page.locator('#playlist-list button');
+  const ids = () => items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track));
+  const sort = page.locator('#playlist-sort');
+  await sort.selectOption('views');
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Display only'));
+  assert.deepEqual(await ids(), ['2', '1', '3']);
+  assert.match(await items.first().textContent(), /VIEWS 100/);
+  assert.deepEqual(statisticsRequests, [{ ids: 'aaaaaaaaaaa,bbbbbbbbbbb', authorization: 'Bearer test-token' }]);
+
+  await items.first().click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Next track' }).click();
+  assert.equal(await page.evaluate(() => playingTrack.playlistItemId), 'item-a3');
+
+  await sort.selectOption('plays');
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .history-detail')?.textContent === 'PLAYS 5');
+  assert.deepEqual(await ids(), ['2', '1', '3']);
+  await sort.selectOption('time');
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .history-detail')?.textContent === 'TIME 00:30');
+  assert.deepEqual(await ids(), ['1', '3', '2']);
+  await page.evaluate(async () => {
+    await localHistory.importData({
+      type: 'eraudio-listening-history', version: 1, videos: [],
+      spans: [{ videoId: 'bbbbbbbbbbb', start: 10, end: 40, playedAt: 2 }],
+    });
+  });
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .history-detail')?.textContent === 'TIME 00:40');
+  assert.deepEqual(await ids(), ['2', '1', '3']);
+  await sort.selectOption('original');
+  assert.deepEqual(await ids(), ['1', '2', '3']);
+  await page.locator('#playlist-select').selectOption('favorites');
+  assert.equal(await sort.isHidden(), true);
+});
+
+test('playlist sorting reports missing statistics and API failures without changing playlist order', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  let fail = false;
+  await page.route('**/youtube/v3/videos?*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('part') !== 'statistics') return route.fallback();
+    if (fail) return route.fulfill({ status: 503, json: { error: 'unavailable' } });
+    return route.fulfill({ json: { items: [{ id: 'bbbbbbbbbbb', statistics: { viewCount: '0' } }] } });
+  });
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await signIn(page);
+  await page.locator('#playlist-select').selectOption('youtube:list-a');
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
+  await page.locator('#playlist-sort').selectOption('views');
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('unavailable'));
+  const items = page.locator('#playlist-list button');
+  assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['2', '1', '3']);
+  assert.match(await items.nth(1).textContent(), /VIEWS UNAVAILABLE/);
+  await page.locator('#playlist-sort').selectOption('original');
+  fail = true;
+  await page.locator('#playlist-sort').selectOption('views');
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Could not sort'));
+  assert.equal(await page.locator('#playlist-sort').inputValue(), 'original');
+  assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['1', '2', '3']);
+  fail = false;
+  await page.locator('#playlist-sort').selectOption('views');
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('unavailable'));
+  await page.locator('#playlist-select').selectOption('youtube:fail');
+  await page.waitForFunction(() => document.querySelector('#playlist-status').textContent.includes('Could not load playlist'));
+  assert.equal(await page.locator('#playlist-sort').inputValue(), 'original');
+  assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['1', '2', '3']);
+});
+
+test('view statistics are batched and late responses cannot reorder another playlist', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  const batches = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  t.after(() => release());
+  await page.route('**/youtube/v3/videos?*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('part') !== 'statistics') return route.fallback();
+    const ids = url.searchParams.get('id').split(',');
+    batches.push(ids);
+    if (batches.length === 4) await gate;
+    return route.fulfill({ json: { items: ids.map((id) => ({ id, statistics: { viewCount: String(Number(id)) } })) } });
+  });
+  await signIn(page);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.evaluate(() => {
+    const tracks = Array.from({ length: 101 }, (_, index) => ({
+      videoId: String(index).padStart(11, '0'), title: `Video ${index}`, duration: '--:--',
+    }));
+    favoriteLists.push({ id: 'youtube:large', name: 'Large', tracks });
+    playlistSelect.add(new Option('Large', 'youtube:large'));
+    playlistSelect.value = 'youtube:large';
+    renderFavoritesList('youtube:large');
+  });
+  await page.locator('#playlist-sort').selectOption('views');
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Display only'));
+  assert.deepEqual(batches.map((batch) => batch.length), [50, 50, 1]);
+  assert.equal(await page.locator('#playlist-list button').first().getAttribute('data-track'), '101');
+
+  await page.locator('#playlist-sort').selectOption('original');
+  await page.locator('#playlist-sort').selectOption('views');
+  await page.waitForTimeout(100);
+  assert.equal(batches.length, 4);
+  await page.locator('#playlist-select').selectOption('youtube:list-b');
+  await page.waitForFunction(() => document.querySelector('#playlist-info').textContent.includes('PLAYLIST B'));
+  release();
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('#playlist-sort').inputValue(), 'original');
+  assert.equal(await page.locator('#playlist-list button').first().getAttribute('data-video-id'), 'ccccccccccc');
+  assert.equal(batches.length, 4);
+});
+
 test('playlist errors and late responses leave the selected local or newer view intact', { timeout: 20000 }, async (t) => {
   const { page, requests, releaseSlow } = await setup(t);
   await page.getByRole('button', { name: 'VID', exact: true }).click();

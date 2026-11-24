@@ -44,6 +44,9 @@ const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
 const maxSavedLocations = 50;
 const playlistSelect = document.querySelector('#playlist-select');
+const playlistSortControl = document.querySelector('#playlist-sort-control');
+const playlistSort = document.querySelector('#playlist-sort');
+const playlistSortStatus = document.querySelector('#playlist-sort-status');
 const playlistList = document.querySelector('#playlist-list');
 const playlistInfo = document.querySelector('#playlist-info');
 const playlistStatus = document.querySelector('#playlist-status');
@@ -89,6 +92,8 @@ let youtubeAccessToken = '';
 let youtubeAuthGeneration = 0;
 let playlistSession = 0;
 let playlistRequest = 0;
+let playlistSortRequest = 0;
+let playlistSortValues = null;
 
 const favoriteLists = [
   {
@@ -207,10 +212,22 @@ function renderFavoritesList(listId) {
   const selectedList = favoriteLists.find((list) => list.id === listId) || favoriteLists[0];
   currentListId = selectedList.id;
   const readOnly = selectedList !== favoriteLists[0];
+  playlistSortControl.hidden = !readOnly;
   addVideoButton.disabled = readOnly;
   removeVideoButton.disabled = readOnly;
   playlistList.setAttribute('aria-label', selectedList.name);
-  playlistList.replaceChildren(...selectedList.tracks.map((track, index) => {
+  const tracks = selectedList.tracks.map((track, index) => ({ track, index }));
+  if (readOnly && playlistSortValues) {
+    tracks.sort((a, b) => {
+      const left = playlistSortValues.get(a.track.videoId);
+      const right = playlistSortValues.get(b.track.videoId);
+      if (left === undefined) return right === undefined ? a.index - b.index : 1;
+      if (right === undefined) return -1;
+      return left === right ? a.index - b.index : left > right ? -1 : 1;
+    });
+  }
+  const focusedTrack = playlistList.contains(document.activeElement) ? document.activeElement.dataset.track : null;
+  playlistList.replaceChildren(...tracks.map(({ track, index }, displayIndex) => {
     const item = document.createElement('button');
     const active = track === playingTrack || (readOnly && selectedList.id === playingList?.id
       && track.playlistItemId && track.playlistItemId === playingTrack?.playlistItemId);
@@ -219,10 +236,20 @@ function renderFavoritesList(listId) {
     item.setAttribute('aria-pressed', String(Boolean(track.selected)));
     item.dataset.track = String(index + 1);
     if (track.videoId) item.dataset.videoId = track.videoId;
-    item.textContent = `${index + 1}. ${track.title} [${track.duration}]`;
+    item.textContent = `${displayIndex + 1}. ${track.title} [${track.duration}]`;
+    if (readOnly && playlistSortValues) {
+      const value = playlistSortValues.get(track.videoId);
+      const detail = document.createElement('span');
+      detail.className = 'history-detail';
+      detail.textContent = value === undefined ? 'VIEWS UNAVAILABLE'
+        : playlistSort.value === 'views' ? `VIEWS ${value.toLocaleString()}`
+          : playlistSort.value === 'plays' ? `PLAYS ${value}` : `TIME ${formatDuration(value)}`;
+      item.append(detail);
+    }
     setNowPlaying(item, Boolean(playbackHighlight && track.videoId === playbackHighlight.videoId));
     return item;
   }));
+  if (focusedTrack) playlistList.querySelector(`[data-track="${focusedTrack}"]`)?.focus({ preventScroll: true });
   playlistInfo.textContent = readOnly
     ? `${selectedList.name.toUpperCase()} / ${selectedList.tracks.length} TRACKS / READ-ONLY`
     : `${selectedList.name.toUpperCase()} / ${selectedList.tracks.length} TRACKS / ${formatPlaylistDuration(selectedList.tracks)} TOTAL`;
@@ -355,6 +382,7 @@ async function fetchAllPages(path, params, { accessToken = youtubeAccessToken, i
 function resetAccountPlaylists(message) {
   playlistSession++;
   playlistRequest++;
+  resetPlaylistSort();
   favoriteLists.splice(1);
   playlistSelect.replaceChildren(new Option('Local Videos', favoriteLists[0].id));
   playlistSelect.value = favoriteLists[0].id;
@@ -389,6 +417,8 @@ async function loadAccountPlaylists(generation, session, accessToken) {
 playlistSelect.addEventListener('change', async () => {
   const selectedId = playlistSelect.value;
   const request = ++playlistRequest;
+  resetPlaylistSort();
+  if (selectedId !== currentListId) renderFavoritesList(currentListId);
   if (selectedId === favoriteLists[0].id) {
     renderFavoritesList(selectedId);
     playlistStatus.textContent = youtubeAccessToken
@@ -1485,6 +1515,83 @@ async function readHistory(videoId) {
   return ErAudioHistorySync.combine(rows, await store.getAll(), sync.device);
 }
 
+function resetPlaylistSort() {
+  playlistSortRequest++;
+  playlistSort.value = 'original';
+  playlistSortValues = null;
+  playlistSortStatus.textContent = '';
+}
+
+async function updatePlaylistSort() {
+  const request = ++playlistSortRequest;
+  const list = currentList();
+  const mode = playlistSort.value;
+  const store = listeningHistory;
+  const sync = historySync;
+  const accessToken = youtubeAccessToken;
+  const isCurrent = () => request === playlistSortRequest && currentList() === list
+    && playlistSelect.value === list.id && playlistSort.value === mode
+    && (mode === 'views' ? youtubeAccessToken === accessToken : listeningHistory === store && historySync === sync);
+  playlistSortValues = null;
+  if (list === favoriteLists[0] || mode === 'original') {
+    playlistSortStatus.textContent = '';
+    renderFavoritesList(list.id);
+    return;
+  }
+  playlistSortStatus.textContent = 'Loading sort data...';
+  renderFavoritesList(list.id);
+  try {
+    const values = new Map();
+    if (mode === 'views') {
+      const ids = [...new Set(list.tracks.map((track) => track.videoId))];
+      for (let i = 0; i < ids.length; i += 50) {
+        const response = await youtubeApi('videos', {
+          part: 'statistics', id: ids.slice(i, i + 50).join(','),
+        }, { accessToken });
+        if (!isCurrent()) return;
+        if (!Array.isArray(response.items)) throw new Error('Invalid YouTube statistics response');
+        for (const item of response.items) {
+          const count = item.statistics?.viewCount;
+          if (typeof item.id === 'string' && typeof count === 'string' && /^\d+$/.test(count)) {
+            values.set(item.id, BigInt(count));
+          }
+        }
+      }
+    } else {
+      await localHistoryReady;
+      if (!isCurrent()) return;
+      if (!store.available) throw new Error('Listening history storage is unavailable');
+      const history = await readHistory();
+      if (!isCurrent()) return;
+      list.tracks.forEach((track) => values.set(track.videoId, 0));
+      if (mode === 'plays') {
+        history.videos.forEach((video) => {
+          if (values.has(video.videoId)) values.set(video.videoId, video.plays || 0);
+        });
+      } else {
+        history.spans.forEach((span) => {
+          if (values.has(span.videoId)) values.set(span.videoId, values.get(span.videoId) + span.end - span.start);
+        });
+      }
+    }
+    if (!isCurrent()) return;
+    playlistSortValues = values;
+    const missing = mode === 'views' && list.tracks.some((track) => !values.has(track.videoId));
+    playlistSortStatus.textContent = missing ? 'Some YouTube view counts are unavailable and appear last. Playback follows playlist order.'
+      : 'Display only; playback follows the original playlist order.';
+    renderFavoritesList(list.id);
+  } catch (error) {
+    if (!isCurrent()) return;
+    console.error('Could not sort the playlist.', error);
+    playlistSort.value = 'original';
+    playlistSortValues = null;
+    playlistSortStatus.textContent = `Could not sort playlist: ${error.message}. Showing playlist order.`;
+    renderFavoritesList(list.id);
+  }
+}
+
+playlistSort.addEventListener('change', updatePlaylistSort);
+
 function showHistorySync(message, signIn = !historySync?.token) {
   historySyncStatus.textContent = message;
   historyGoogle.hidden = !signIn;
@@ -1895,6 +2002,8 @@ function historyStatus(message) {
 function refreshHistoryViews(videoId) {
   if (videoId === null || videoId === playingTrack?.videoId) refreshHeat();
   renderHistory();
+  if (currentListId !== favoriteLists[0].id && playlistSelect.value === currentListId
+    && ['plays', 'time'].includes(playlistSort.value)) updatePlaylistSort();
 }
 localHistory.onChange = refreshHistoryViews;
 

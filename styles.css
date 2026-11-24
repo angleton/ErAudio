@@ -1241,7 +1241,7 @@ body {
   padding: 6px;
 }
 
-.playlist-source {
+.playlist-source:not([hidden]) {
   align-items: center;
   display: flex;
   gap: 6px;
@@ -1267,6 +1267,12 @@ body {
   color: #b6c8b6;
   font: 11px/1.4 var(--font-mono);
   margin: 4px 0;
+}
+
+#playlist-list .history-detail {
+  display: block;
+  color: var(--accent-gold);
+  font-size: 10px;
 }
 
 .playlist-list {
