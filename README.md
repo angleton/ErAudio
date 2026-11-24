@@ -10,7 +10,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 
 ## ▶️ Quick Start (no install needed)
 
-1. **Open the player:** <https://audio.ericangleton.com/> (GitHub Pages fallback: <https://angleton.github.io/ErAudio/>)
+1. **Open the player:** <https://ericangleton.com/eraudio/>
 2. **Start listening:** Click **Open** and enter a YouTube link or video ID; no account needed. On later visits, the last video that played is selected and cued without playing automatically. Press **Play** to start it from the beginning. Previously added videos are still available in **VID**. The selection is stored in this browser; clearing site data removes it. Videos played from YouTube playlists or history are restored individually, not with their original playlist queue.
 3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. See [YouTube API setup](#youtube-api-setup).
 4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, **DJ** opens the speed control, and **TOP** opens your listening history above the main player, ranked by total listening time. Use the **−** button in an optional pane’s top-right corner to hide it, and its main-player button to reopen it.
@@ -28,9 +28,9 @@ Pasting links works this way. For YouTube API features, configure your own crede
 
 ## Privacy and website hosting
 
-Read the [ErAudio Privacy Policy](https://audio.ericangleton.com/privacy.html). The source is [`privacy.html`](./privacy.html), and the player links to it from its footer. GitHub Pages serves this static page alongside the app; no Squarespace file upload or additional DNS record is needed for the `audio` subdomain.
+Read the [ErAudio Privacy Policy](https://ericangleton.com/privacy.html). The source is [`privacy.html`](./privacy.html), and the player links to it from its footer.
 
-Squarespace currently holds the `ericangleton.com` domain registration and DNS; the domain does not host a Squarespace website. The intended site is a GitHub Pages blog and homepage at `ericangleton.com`, with ErAudio under `/eraudio/`. The build and preview instructions below prepare that layout without changing the current live site or DNS. Squarespace can remain the registrar, and email-related DNS records should be preserved during any future web-hosting change.
+Squarespace holds the `ericangleton.com` registration and DNS; GitHub Pages hosts the site, with the homepage and blog at the apex and ErAudio under `/eraudio/`. Squarespace's apex A records point to GitHub Pages. Preserve email-related DNS records if making future web-hosting changes.
 
 ### Build and preview the unified site
 
@@ -42,7 +42,7 @@ npm run site:build
 py -m http.server 8000 --directory dist
 ```
 
-Open <http://localhost:8000> to preview the site. Check the homepage, `/blog/`, `/privacy.html`, and `/eraudio/`. The privacy policy is also copied under `/eraudio/` so the app's relative policy link works at both its current root URL and its future subpath.
+Open <http://localhost:8000> to preview the site. Check the homepage, `/blog/`, `/privacy.html`, and `/eraudio/`. The privacy policy is also copied under `/eraudio/` so the app's relative policy link continues to work.
 
 Write posts as Markdown files in [`site/posts/`](./site/posts/), with front matter such as:
 
@@ -56,7 +56,7 @@ description: A short summary for the blog index.
 
 GitHub Pages is static hosting, so it does not provide built-in comments or sign-in. No comments are enabled yet; a service such as Giscus could add comments later, with GitHub Discussions and a GitHub account required for readers.
 
-The **Build and publish website** GitHub Actions workflow builds on pushes and pull requests to `main`. Publishing is disabled unless the repository Actions variable `PUBLISH_SITE` is set to `true`. Keep it unset while preparing and reviewing the site: this workflow deploys to the repository's single live GitHub Pages site, so enabling it replaces that site's content rather than creating a separate staging site. Review locally first; at cutover, configure the repository's Pages source to **GitHub Actions**, configure the custom domain in Pages, and enable `PUBLISH_SITE`. Change Squarespace DNS only when ready for the cutover, preserving email-related records.
+The **Build and publish website** workflow builds on pushes and pull requests to `main`. When the repository Actions variable `PUBLISH_SITE` is `true`, pushes to `main` and manual workflow runs publish the site. This deploys to the repository's single live GitHub Pages site; it is not a separate staging environment. Set the variable to `false` or remove it to pause publishing.
 
 ---
 
@@ -79,7 +79,7 @@ The main title bar displays **ErAudio**, the YouTube login or account name, and 
 
 1. Open ErAudio over HTTPS or localhost (`file://` does not work for the meter). Click **Share Tab Audio for Visualizer** beside the meter, or start playback with ErAudio's **Play** button to open the picker automatically on your first Play.
 2. In desktop Chrome, Edge, or Brave, choose **This Tab** or the browser's tab category in the picker. Select the ErAudio tab you're using, turn on **Share tab audio** (sometimes **Also share tab audio**), and click **Share**. The audio option is in the picker, not in ErAudio or the browser tab menu. Do not select **Window** or **Entire Screen**.
-3. While sharing is active, a high-resolution continuous spectrum shows real-time levels from bass on the left to treble on the right. The fill rises and changes color from green through yellow to red as each frequency band gets louder. White peak markers briefly hold the peaks, then fall more slowly than the fill; they change gradually from dots to rectangular lights as the band count is reduced. Right-click the visualizer pane to open or close its frequency-band settings, or focus the spectrum and press Shift+F10 to open them. Choose from 8 to 512 frequency bands; the setting is saved in browser storage. The instructions and **Share Tab Audio for Visualizer** button return when sharing stops. If the picker closes before you can share, or if you cancel or share without audio, click **Share Tab Audio for Visualizer** again. You don't need to reload or pause playback. If the browser is unsupported, try the [hosted player](https://angleton.github.io/ErAudio/) in desktop Chrome, Edge, or Brave.
+3. While sharing is active, a high-resolution continuous spectrum shows real-time levels from bass on the left to treble on the right. The fill rises and changes color from green through yellow to red as each frequency band gets louder. White peak markers briefly hold the peaks, then fall more slowly than the fill; they change gradually from dots to rectangular lights as the band count is reduced. Right-click the visualizer pane to open or close its frequency-band settings, or focus the spectrum and press Shift+F10 to open them. Choose from 8 to 512 frequency bands; the setting is saved in browser storage. The instructions and **Share Tab Audio for Visualizer** button return when sharing stops. If the picker closes before you can share, or if you cancel or share without audio, click **Share Tab Audio for Visualizer** again. You don't need to reload or pause playback. If the browser is unsupported, try the [hosted player](https://ericangleton.com/eraudio/) in desktop Chrome, Edge, or Brave.
 
 The browser grants access to the selected tab's audio and video, not a levels-only permission. ErAudio verifies the selection is this tab, stops the video track, and measures frequency levels locally without recording or uploading audio. Canceling leaves playback working without the spectrum. Use the browser's sharing controls to stop.
 
@@ -145,8 +145,8 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
 
 #### Enable sync on a deployment
 
-1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add each app origin under **Authorized JavaScript origins**: `https://audio.ericangleton.com`, `https://angleton.github.io`, and `http://localhost:8000`. Add `https://ericangleton.com` when moving the app to the unified site. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
-2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) and replace its existing `binding` value with `HISTORY_DB`. Do not add a second `binding` line. Set `APP_ORIGINS` to a comma-separated list of exact allowed origins (for example, `https://audio.ericangleton.com,http://localhost:8000`) and set `GOOGLE_CLIENT_ID` in the same file.
+1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add each app origin under **Authorized JavaScript origins**: `https://ericangleton.com`, `https://audio.ericangleton.com`, `https://angleton.github.io`, and `http://localhost:8000`. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
+2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) and replace its existing `binding` value with `HISTORY_DB`. Do not add a second `binding` line. Set `APP_ORIGINS` to a comma-separated list of exact allowed origins (for example, `https://ericangleton.com,https://audio.ericangleton.com,http://localhost:8000`) and set `GOOGLE_CLIENT_ID` in the same file.
 
    **Run these commands one at a time.** Copy and run the first block to apply the database schema:
    ```powershell
@@ -220,7 +220,7 @@ If you previously created a local `config.js`, it is no longer used. It remains 
 Public video descriptions can be retrieved without sign-in using your own YouTube Data API key:
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create or select a project and enable **YouTube Data API v3** under **APIs & Services → Library**.
-2. Under **APIs & Services → Credentials**, create an API key. Restrict its API access to **YouTube Data API v3** and its website access to the sites you use, such as `https://angleton.github.io/*` and `http://localhost:8000/*`.
+2. Under **APIs & Services → Credentials**, create an API key. Restrict its API access to **YouTube Data API v3** and its website access to the sites you use, such as `https://ericangleton.com/*`, `https://audio.ericangleton.com/*`, and `http://localhost:8000/*`.
 3. Open **API SETUP** in ErAudio, enter the key and save. Monitor your Google Cloud quota and usage.
 4. Use the app over HTTP or HTTPS from an allowed website. Direct `file://` use may not supply a referrer accepted by a restricted key.
 
@@ -241,7 +241,8 @@ Sign-in can also retrieve video descriptions. If the browser already has a Googl
    - Add the scope `https://www.googleapis.com/auth/youtube.readonly`.
    - While the app is in **Testing** mode, only accounts listed under **Test users** (up to 100) can sign in. Add any accounts you want to use before verification.
 4. Under **Credentials → Create credentials → OAuth client ID**, choose **Web application**. Under **Authorized JavaScript origins**, add every origin the app is served from, exactly (scheme, host and port; no trailing slash or path):
-   - `https://angleton.github.io` for GitHub Pages
+   - `https://ericangleton.com` for the unified site
+   - `https://audio.ericangleton.com` for the legacy app host
    - `http://localhost:8000` for local runs (Option 2 below)
 
    Google sign-in does not work from `file://`, and no redirect URI is needed. Origin changes can take a few minutes to apply.
