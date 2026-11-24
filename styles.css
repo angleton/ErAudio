@@ -1263,6 +1263,19 @@ body {
   padding: 2px 4px;
 }
 
+.playlist-help-button {
+  flex: 0 0 24px;
+  min-width: 24px;
+  padding-inline: 0;
+  font-weight: bold;
+}
+
+.playlist-help-button[aria-expanded="true"] {
+  background: linear-gradient(180deg, #8a7a26 0%, #b89a24 100%);
+  border-color: #f0d35a #665600 #665600 #f0d35a;
+  color: #fff4b0;
+}
+
 .playlist-source-status {
   color: #b6c8b6;
   font: 11px/1.4 var(--font-mono);

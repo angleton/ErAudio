@@ -252,9 +252,10 @@
           <select id="playlist-select">
             <option value="favorites">Local Videos</option>
           </select>
+          <button class="pl-btn playlist-help-button" id="playlist-help-button" type="button" aria-label="Show playlist information" aria-controls="playlist-status playlist-sort-status" aria-expanded="false">?</button>
         </div>
-        <p class="playlist-source-status" id="playlist-status" role="status">Sign in to browse YouTube playlists.</p>
-        <p class="playlist-source-status" id="playlist-sort-status" role="status"></p>
+        <p class="playlist-source-status" id="playlist-status" role="status" hidden>Sign in to browse YouTube playlists.</p>
+        <p class="playlist-source-status" id="playlist-sort-status" role="status" hidden></p>
         <div class="playlist-table">
           <div class="playlist-columns" id="playlist-columns" hidden>
             <button type="button" data-playlist-sort="original">VIDEO</button>

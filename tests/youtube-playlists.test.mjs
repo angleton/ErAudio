@@ -563,6 +563,36 @@ test('last played storage failures are reported without interrupting playback', 
   assert.match(await page.locator('#event-status').textContent(), /Could not save the last played video/);
 });
 
+test('playlist help toggles guidance while important statuses remain visible', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  const help = page.locator('#playlist-help-button');
+  const status = page.locator('#playlist-status');
+  const sortStatus = page.locator('#playlist-sort-status');
+  assert.equal(await status.isHidden(), true);
+  assert.equal(await help.getAttribute('aria-expanded'), 'false');
+  await help.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await status.isVisible(), true);
+  assert.equal(await help.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Space');
+  assert.equal(await status.isHidden(), true);
+
+  await signIn(page);
+  await page.locator('#playlist-select').selectOption('youtube:list-b');
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Display only'));
+  assert.equal(await status.isHidden(), true);
+  assert.equal(await sortStatus.isHidden(), true);
+  await help.click();
+  assert.equal(await status.isVisible(), true);
+  assert.equal(await sortStatus.isVisible(), true);
+  await help.click();
+  await page.locator('#playlist-select').selectOption('youtube:fail');
+  await page.waitForFunction(() => document.querySelector('#playlist-status').textContent.includes('Could not load playlist'));
+  assert.equal(await status.isVisible(), true);
+  assert.equal(await help.getAttribute('aria-expanded'), 'false');
+});
+
 test('YouTube playlists are read-only views and preserve the local list and playing queue', { timeout: 20000 }, async (t) => {
   const { page, requests } = await setup(t);
   const select = page.locator('#playlist-select');
@@ -706,6 +736,7 @@ test('playlist sorting reports missing statistics and API failures without chang
   assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['1', '2', '3']);
   await page.locator('[data-playlist-sort="views"]').click();
   await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Could not load YouTube view counts'));
+  assert.equal(await page.locator('#playlist-sort-status').isVisible(), true);
   assert.equal(await page.locator('[data-playlist-sort="original"]').getAttribute('aria-pressed'), 'true');
   fail = false;
   await page.locator('[data-playlist-sort="views"]').click();

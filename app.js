@@ -44,6 +44,7 @@ const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
 const maxSavedLocations = 50;
 const playlistSelect = document.querySelector('#playlist-select');
+const playlistHelpButton = document.querySelector('#playlist-help-button');
 const playlistColumns = document.querySelector('#playlist-columns');
 const playlistSortStatus = document.querySelector('#playlist-sort-status');
 const playlistList = document.querySelector('#playlist-list');
@@ -100,6 +101,35 @@ let playlistViewValues = null;
 let playlistHistoryStatus = '';
 let playlistViewsStatus = '';
 let playlistViewsLoading = false;
+let playlistHelpExpanded = false;
+let playlistStatusImportant = false;
+let playlistSortStatusImportant = false;
+
+function updatePlaylistHelp() {
+  playlistStatus.hidden = !playlistStatus.textContent || (!playlistHelpExpanded && !playlistStatusImportant);
+  playlistSortStatus.hidden = !playlistSortStatus.textContent || (!playlistHelpExpanded && !playlistSortStatusImportant);
+  playlistHelpButton.setAttribute('aria-expanded', String(playlistHelpExpanded));
+  playlistHelpButton.setAttribute('aria-label', playlistHelpExpanded ? 'Hide playlist information' : 'Show playlist information');
+}
+
+function setPlaylistStatus(message, important = false) {
+  playlistStatusImportant = important;
+  playlistStatus.hidden = !message || (!playlistHelpExpanded && !important);
+  playlistStatus.textContent = message;
+  updatePlaylistHelp();
+}
+
+function setPlaylistSortStatus(message, important = false) {
+  playlistSortStatusImportant = important;
+  playlistSortStatus.hidden = !message || (!playlistHelpExpanded && !important);
+  playlistSortStatus.textContent = message;
+  updatePlaylistHelp();
+}
+
+playlistHelpButton.addEventListener('click', () => {
+  playlistHelpExpanded = !playlistHelpExpanded;
+  updatePlaylistHelp();
+});
 
 const favoriteLists = [
   {
@@ -414,7 +444,7 @@ async function fetchAllPages(path, params, { accessToken = youtubeAccessToken, i
   return items;
 }
 
-function resetAccountPlaylists(message) {
+function resetAccountPlaylists(message, important = false) {
   playlistSession++;
   playlistRequest++;
   resetPlaylistSort();
@@ -422,7 +452,7 @@ function resetAccountPlaylists(message) {
   playlistSelect.replaceChildren(new Option('Local Videos', favoriteLists[0].id));
   playlistSelect.value = favoriteLists[0].id;
   if (currentListId !== favoriteLists[0].id) renderFavoritesList(favoriteLists[0].id);
-  playlistStatus.textContent = message;
+  setPlaylistStatus(message, important);
 }
 
 async function loadAccountPlaylists(generation, session, accessToken) {
@@ -444,9 +474,9 @@ async function loadAccountPlaylists(generation, session, accessToken) {
     new Option(playlist.snippet.title, `youtube:${playlist.id}`)
   )));
   playlistSelect.value = currentListId;
-  playlistStatus.textContent = playlists.length
+  setPlaylistStatus(playlists.length
     ? 'Select a YouTube playlist to view its videos. YouTube playlists are read-only.'
-    : 'No YouTube playlists found. Local Videos is still available.';
+    : 'No YouTube playlists found. Local Videos is still available.', !playlists.length);
 }
 
 playlistSelect.addEventListener('change', async () => {
@@ -456,16 +486,16 @@ playlistSelect.addEventListener('change', async () => {
   if (selectedId !== currentListId) renderFavoritesList(currentListId);
   if (selectedId === favoriteLists[0].id) {
     renderFavoritesList(selectedId);
-    playlistStatus.textContent = youtubeAccessToken
+    setPlaylistStatus(youtubeAccessToken
       ? 'Local Videos is separate from your YouTube playlists.'
-      : 'Sign in to browse YouTube playlists.';
+      : 'Sign in to browse YouTube playlists.');
     return;
   }
   const option = playlistSelect.selectedOptions[0];
   const session = playlistSession;
   const accessToken = youtubeAccessToken;
   const isCurrent = () => request === playlistRequest && session === playlistSession;
-  playlistStatus.textContent = `Loading ${option.textContent}...`;
+  setPlaylistStatus(`Loading ${option.textContent}...`, true);
   try {
     const items = await fetchAllPages('playlistItems', {
       part: 'snippet,contentDetails', playlistId: selectedId.slice('youtube:'.length), maxResults: '50',
@@ -490,15 +520,15 @@ playlistSelect.addEventListener('change', async () => {
     else favoriteLists[index] = list;
     renderFavoritesList(selectedId);
     updatePlaylistHistory();
-    playlistStatus.textContent = skipped
+    setPlaylistStatus(skipped
       ? `Read-only YouTube playlist. ${skipped} unavailable item${skipped === 1 ? '' : 's'} omitted.`
       : tracks.length ? 'Read-only YouTube playlist. Select Local Videos to edit your local list.'
-        : 'This YouTube playlist has no videos.';
+        : 'This YouTube playlist has no videos.', Boolean(skipped) || !tracks.length);
   } catch (error) {
     if (!isCurrent()) return;
     playlistSelect.value = currentListId;
     if (currentListId !== favoriteLists[0].id) updatePlaylistHistory();
-    playlistStatus.textContent = `Could not load playlist: ${error.message}. Your previous list is unchanged.`;
+    setPlaylistStatus(`Could not load playlist: ${error.message}. Your previous list is unchanged.`, true);
     announceEvent({ type: 'error', name: playlistStatus.textContent });
   }
 });
@@ -529,7 +559,7 @@ function getTokenClient() {
         return;
       }
       loginNotice.hidden = true;
-      resetAccountPlaylists('Loading YouTube playlists...');
+      resetAccountPlaylists('Loading YouTube playlists...', true);
       youtubeAccessToken = tokenResponse.access_token;
       const session = playlistSession;
       ensureMarkers(playingTrack);
@@ -537,7 +567,7 @@ function getTokenClient() {
         await loadAccountPlaylists(generation, session, youtubeAccessToken);
       } catch (error) {
         if (generation !== youtubeAuthGeneration || session !== playlistSession) return;
-        playlistStatus.textContent = 'Could not load YouTube playlists. Local Videos is still available.';
+        setPlaylistStatus('Could not load YouTube playlists. Local Videos is still available.', true);
         showLoginError(`Could not load YouTube playlists: ${error.message}`);
       }
     },
@@ -1081,7 +1111,7 @@ function stopPlayback() {
 
 function removeVideos(list, shouldRemove) {
   if (list !== favoriteLists[0]) {
-    playlistStatus.textContent = 'YouTube playlists are read-only. Select Local Videos to remove videos.';
+    setPlaylistStatus('YouTube playlists are read-only. Select Local Videos to remove videos.', true);
     return;
   }
   const remaining = list.tracks.filter((track) => !shouldRemove(track));
@@ -1573,15 +1603,15 @@ function resetPlaylistSort() {
   playlistHistoryStatus = '';
   playlistViewsStatus = '';
   playlistViewsLoading = false;
-  playlistSortStatus.textContent = '';
+  setPlaylistSortStatus('');
 }
 
 function updatePlaylistSortStatus() {
-  playlistSortStatus.textContent = [
+  setPlaylistSortStatus([
     playlistHistoryStatus, playlistViewsStatus,
     !playlistViewValues && !playlistViewsStatus ? 'Select VIEWS to load YouTube view counts.' : '',
     'Display only; playback follows the original playlist order.',
-  ].filter(Boolean).join(' ');
+  ].filter(Boolean).join(' '), Boolean(playlistHistoryStatus || playlistViewsStatus));
 }
 
 async function updatePlaylistHistory() {
@@ -2298,7 +2328,7 @@ function addTrack(videoId) {
     list.tracks.push(track);
   }
   renderFavoritesList(list.id);
-  if (!wasViewingLocal) playlistStatus.textContent = 'URLs are added to Local Videos.';
+  if (!wasViewingLocal) setPlaylistStatus('URLs are added to Local Videos.', true);
   if (track.title === `YouTube video ${videoId}`) resolveTrackTitle(track);
   return { list, track };
 }
