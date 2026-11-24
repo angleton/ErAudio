@@ -1,0 +1,23 @@
+---
+layout: layouts/base.njk
+title: Blog
+description: Updates, notes, and project writing.
+permalink: /blog/index.html
+---
+<section>
+  <p class="eyebrow">WRITING</p>
+  <h1>Blog</h1>
+  {% if collections.posts.length %}
+  <ul class="post-list">
+    {% for post in collections.posts | reverse %}
+    <li>
+      <time class="post-date" datetime="{{ post.date | dateIso }}">{{ post.date | dateDisplay }}</time>
+      <h2><a href="{{ post.url }}">{{ post.data.title }}</a></h2>
+      {% if post.data.description %}<p>{{ post.data.description }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>Posts will appear here as they are published.</p>
+  {% endif %}
+</section>

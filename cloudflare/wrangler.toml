@@ -3,7 +3,7 @@ main = "history-worker.mjs"
 compatibility_date = "2026-11-19"
 
 [vars]
-APP_ORIGIN = "https://angleton.github.io"
+APP_ORIGINS = "https://ericangleton.com,https://audio.ericangleton.com,https://angleton.github.io,http://localhost:8000"
 GOOGLE_CLIENT_ID = "496741257133-nabe9n84t4vfh2fdp8foiqg399n0ueth.apps.googleusercontent.com"
 
 [[d1_databases]]

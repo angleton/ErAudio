@@ -76,7 +76,9 @@ export default {
     const origin = request.headers.get('Origin');
     const headers = { 'Cache-Control': 'no-store', Vary: 'Origin' };
     const reply = (data, status = 200) => Response.json(data, { headers, status });
-    if (!env.APP_ORIGIN || origin !== env.APP_ORIGIN) return reply({ error: 'Origin not allowed.' }, 403);
+    const allowedOrigins = (env.APP_ORIGINS ?? env.APP_ORIGIN ?? '')
+      .split(',').map((allowedOrigin) => allowedOrigin.trim()).filter(Boolean);
+    if (!origin || !allowedOrigins.includes(origin)) return reply({ error: 'Origin not allowed.' }, 403);
     headers['Access-Control-Allow-Origin'] = origin;
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: {

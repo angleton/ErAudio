@@ -3,3 +3,4 @@ cloudflare/.wrangler/
 node_modules/
 *.mp3
 *.wav
+dist/

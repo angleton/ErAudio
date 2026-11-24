@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="How ErAudio stores and uses browser and optional Google account data.">
+  <title>Privacy Policy | ErAudio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 16px/1.65 system-ui, sans-serif;
+      background: #121214;
+      color: #e4e4e8;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 16px;
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 24px;
+      border: 1px solid #525266;
+      background: #202028;
+    }
+
+    h1, h2 {
+      line-height: 1.25;
+    }
+
+    a {
+      color: #9fcaff;
+    }
+
+    li + li {
+      margin-top: 8px;
+    }
+
+    @media (max-width: 520px) {
+      body {
+        padding: 12px;
+      }
+
+      main {
+        padding: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p><a href="./">ErAudio</a></p>
+      <h1>Privacy Policy</h1>
+      <p>Effective date: November 24, 2026</p>
+      <p>This policy explains what ErAudio stores in your browser and what is sent to Google or Cloudflare when you choose optional features.</p>
+    </header>
+
+    <section>
+      <h2>Using ErAudio without signing in</h2>
+      <p>ErAudio stores preferences, saved videos and listening history in your browser. Local listening history is kept in browser storage on your device and is not sent to ErAudio's history service unless you choose Google sign-in and sync.</p>
+      <p>Data stored locally can include YouTube video IDs, titles, chapters or timestamps, playback positions and counts, saved locations, and player settings. You can remove this data by clearing ErAudio's site data in your browser.</p>
+    </section>
+
+    <section>
+      <h2>Optional Google history sync</h2>
+      <p>If you choose <strong>Sign in with Google</strong> in TOP, Google provides an identity token so ErAudio can authenticate your account. The history service verifies that token and derives a pseudonymous account identifier from the Google account identifier. A verified email address may be returned to ErAudio to show which account is connected.</p>
+      <p>When sync is enabled, ErAudio sends the following history data to its Cloudflare Worker and Cloudflare D1 database: YouTube video IDs, titles, durations, chapter and timestamp labels, played ranges, play times, playback-session identifiers, and play counts. Records are associated with the pseudonymous account identifier and are not publicly viewable.</p>
+      <p>Sync is optional. While signed out, history remains local to that browser. Signing out does not delete synced history. Use <strong>CLEAR</strong> while signed in to delete the synced history for that Google account; use your browser's site-data controls to remove local history. ErAudio's <strong>EXPORT</strong> and <strong>IMPORT</strong> controls let you download or add history data.</p>
+      <p>This history-sync sign-in does not request access to your YouTube account or require YouTube permissions.</p>
+    </section>
+
+    <section>
+      <h2>Optional YouTube features</h2>
+      <p>You may provide your own YouTube Data API key or Google OAuth client ID in API SETUP. These values are stored in your browser's local storage. The API key is used by your browser to request public video information from Google. If you choose YOUTUBE LOGIN, ErAudio requests read-only access to your YouTube account to display playlists and video descriptions; it does not change your YouTube account.</p>
+      <p>Do not enter a Google client secret. You can clear the saved API key and client ID in API SETUP or remove them by clearing ErAudio's site data. Google and YouTube process requests under their own privacy policies.</p>
+    </section>
+
+    <section>
+      <h2>Service providers</h2>
+      <p>ErAudio uses Google services for sign-in and optional YouTube features, YouTube for video playback and public video information, and Cloudflare for optional private history sync. Data sent to those services is subject to their own terms and privacy practices.</p>
+    </section>
+
+    <section>
+      <h2>Changes and contact</h2>
+      <p>This policy may be updated as ErAudio changes. For privacy questions, use the support email listed for ErAudio in its Google sign-in configuration.</p>
+    </section>
+  </main>
+</body>
+</html>

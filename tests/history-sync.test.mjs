@@ -11,7 +11,7 @@ const videoId = 'abcdefghijk';
 test('isolates accounts, merges two browsers and rejects uploads from before a clear', async (t) => {
   const db = testDatabase();
   t.after(() => db.close());
-  const env = { APP_ORIGIN: origin, GOOGLE_CLIENT_ID: audience, HISTORY_DB: db };
+  const env = { APP_ORIGINS: origin, GOOGLE_CLIENT_ID: audience, HISTORY_DB: db };
   t.mock.method(globalThis, 'fetch', (url, init) => {
     if (String(url) === 'https://www.googleapis.com/oauth2/v3/certs') {
       return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });
@@ -80,4 +80,22 @@ test('isolates accounts, merges two browsers and rejects uploads from before a c
   assert.equal(first.rows.size, 0);
   await refresh(otherAccount);
   assert.equal(otherAccount.rows.size, 2);
+});
+
+test('allows only configured origins through CORS', async () => {
+  const env = { APP_ORIGINS: ' https://ericangleton.com, https://audio.ericangleton.com, http://localhost:8000 ' };
+  for (const origin of ['https://ericangleton.com', 'https://audio.ericangleton.com', 'http://localhost:8000']) {
+    const response = await worker.fetch(new Request(`${endpoint}/state`, {
+      method: 'OPTIONS',
+      headers: { Origin: origin },
+    }), env);
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+  }
+  const rejected = await worker.fetch(new Request(`${endpoint}/state`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://unlisted.example' },
+  }), env);
+  assert.equal(rejected.status, 403);
+  assert.equal(rejected.headers.get('Access-Control-Allow-Origin'), null);
 });

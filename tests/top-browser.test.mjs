@@ -821,7 +821,7 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     const [file, type] = asset;
     res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
   });
-  env.APP_ORIGIN = origin;
+  env.APP_ORIGINS = origin;
   t.mock.method(globalThis, 'fetch', (url) => {
     assert.equal(url, 'https://www.googleapis.com/oauth2/v3/certs');
     return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });

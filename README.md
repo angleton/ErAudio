@@ -10,7 +10,7 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 
 ## ▶️ Quick Start (no install needed)
 
-1. **Open the player:** <https://angleton.github.io/ErAudio/>
+1. **Open the player:** <https://audio.ericangleton.com/> (GitHub Pages fallback: <https://angleton.github.io/ErAudio/>)
 2. **Start listening:** Click **Open** and enter a YouTube link or video ID; no account needed. On later visits, the last video that played is selected and cued without playing automatically. Press **Play** to start it from the beginning. Previously added videos are still available in **VID**. The selection is stored in this browser; clearing site data removes it. Videos played from YouTube playlists or history are restored individually, not with their original playlist queue.
 3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. See [YouTube API setup](#youtube-api-setup).
 4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, **DJ** opens the speed control, and **TOP** opens your listening history above the main player, ranked by total listening time. Use the **−** button in an optional pane’s top-right corner to hide it, and its main-player button to reopen it.
@@ -25,6 +25,38 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 3. Visit <http://localhost:8000> in your browser.
 
 Pasting links works this way. For YouTube API features, configure your own credentials and authorize `http://localhost:8000` as described below.
+
+## Privacy and website hosting
+
+Read the [ErAudio Privacy Policy](https://audio.ericangleton.com/privacy.html). The source is [`privacy.html`](./privacy.html), and the player links to it from its footer. GitHub Pages serves this static page alongside the app; no Squarespace file upload or additional DNS record is needed for the `audio` subdomain.
+
+Squarespace currently holds the `ericangleton.com` domain registration and DNS; the domain does not host a Squarespace website. The intended site is a GitHub Pages blog and homepage at `ericangleton.com`, with ErAudio under `/eraudio/`. The build and preview instructions below prepare that layout without changing the current live site or DNS. Squarespace can remain the registrar, and email-related DNS records should be preserved during any future web-hosting change.
+
+### Build and preview the unified site
+
+The Eleventy build creates a static homepage, blog index, and article pages in `dist/`, then copies the existing ErAudio app into `dist/eraudio/`. The original app files remain at the repository root, and the visualizer remains in its own `visualizer/` directory.
+
+```powershell
+npm ci
+npm run site:build
+py -m http.server 8000 --directory dist
+```
+
+Open <http://localhost:8000> to preview the site. Check the homepage, `/blog/`, `/privacy.html`, and `/eraudio/`. The privacy policy is also copied under `/eraudio/` so the app's relative policy link works at both its current root URL and its future subpath.
+
+Write posts as Markdown files in [`site/posts/`](./site/posts/), with front matter such as:
+
+```yaml
+---
+title: A post title
+date: 2026-06-02
+description: A short summary for the blog index.
+---
+```
+
+GitHub Pages is static hosting, so it does not provide built-in comments or sign-in. No comments are enabled yet; a service such as Giscus could add comments later, with GitHub Discussions and a GitHub account required for readers.
+
+The **Build and publish website** GitHub Actions workflow builds on pushes and pull requests to `main`. Publishing is disabled unless the repository Actions variable `PUBLISH_SITE` is set to `true`. Keep it unset while preparing and reviewing the site: this workflow deploys to the repository's single live GitHub Pages site, so enabling it replaces that site's content rather than creating a separate staging site. Review locally first; at cutover, configure the repository's Pages source to **GitHub Actions**, configure the custom domain in Pages, and enable `PUBLISH_SITE`. Change Squarespace DNS only when ready for the cutover, preserving email-related records.
 
 ---
 
@@ -113,8 +145,8 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
 
 #### Enable sync on a deployment
 
-1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add the page's origin (for GitHub Pages, `https://angleton.github.io`, without `/ErAudio`) under **Authorized JavaScript origins**. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
-2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) and replace its existing `binding` value with `HISTORY_DB`. Do not add a second `binding` line. Set `APP_ORIGIN` and `GOOGLE_CLIENT_ID` in the same file.
+1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add each app origin under **Authorized JavaScript origins**: `https://audio.ericangleton.com`, `https://angleton.github.io`, and `http://localhost:8000`. Add `https://ericangleton.com` when moving the app to the unified site. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
+2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) and replace its existing `binding` value with `HISTORY_DB`. Do not add a second `binding` line. Set `APP_ORIGINS` to a comma-separated list of exact allowed origins (for example, `https://audio.ericangleton.com,http://localhost:8000`) and set `GOOGLE_CLIENT_ID` in the same file.
 
    **Run these commands one at a time.** Copy and run the first block to apply the database schema:
    ```powershell
