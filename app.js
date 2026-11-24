@@ -1249,8 +1249,13 @@ spectrumBandValue.addEventListener('keydown', (event) => {
 });
 
 spectrumContainer.addEventListener('contextmenu', (event) => {
-  if (spectrumSettings.contains(event.target) || visualizerFullscreenButton.contains(event.target)) return;
+  if (visualizerFullscreenButton.contains(event.target)) return;
   event.preventDefault();
+  if (!spectrumSettings.hidden) {
+    closeSpectrumSettings();
+    visualizerPlayButton.focus();
+    return;
+  }
   const paneRect = spectrumContainer.getBoundingClientRect();
   openSpectrumSettings(event.clientX || paneRect.left, event.clientY || paneRect.top);
 });
@@ -1277,7 +1282,13 @@ spectrumSettings.addEventListener('focusout', (event) => {
 });
 
 document.addEventListener('pointerdown', (event) => {
-  if (!spectrumSettings.hidden && !spectrumSettings.contains(event.target)) closeSpectrumSettings();
+  if (spectrumSettings.hidden) return;
+  if (event.button === 2 && spectrumContainer.contains(event.target)
+    && !visualizerFullscreenButton.contains(event.target)) {
+    event.preventDefault();
+    return;
+  }
+  if (!spectrumSettings.contains(event.target)) closeSpectrumSettings();
 });
 
 function renderMainBpm() {

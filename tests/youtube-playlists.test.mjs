@@ -217,6 +217,29 @@ test('timer and title overlay the spectrum without losing playback controls', { 
   assert.equal(await page.locator('#time-display').textContent(), '-02:15');
 });
 
+test('right-clicking the visualizer toggles its interactive frequency settings', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t);
+  const canvas = await page.locator('#live-spectrum').boundingBox();
+  const settings = page.locator('#spectrum-settings');
+  const left = { x: canvas.x + 5, y: canvas.y + canvas.height - 5 };
+  const right = { x: canvas.x + canvas.width - 5, y: canvas.y + canvas.height - 5 };
+  await page.mouse.click(left.x, left.y, { button: 'right' });
+  assert.equal(await settings.isVisible(), true);
+  await page.getByRole('spinbutton', { name: 'Spectrum band count' }).fill('64');
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '64');
+  await page.mouse.click(right.x, right.y, { button: 'right' });
+  assert.equal(await settings.isHidden(), true);
+  await page.mouse.click(left.x, left.y, { button: 'right' });
+  assert.equal(await settings.isVisible(), true);
+  assert.equal(await page.locator('#spectrum-bands').inputValue(), '64');
+  await settings.click({ button: 'right', position: { x: 5, y: 5 } });
+  assert.equal(await settings.isHidden(), true);
+  await page.mouse.click(left.x, left.y, { button: 'right' });
+  assert.equal(await settings.isVisible(), true);
+  await page.mouse.click(right.x, right.y);
+  assert.equal(await settings.isHidden(), true);
+});
+
 test('visualizer fullscreen keeps the timer and title at the top without interrupting playback', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t, () => {
     let handle;
