@@ -34,6 +34,12 @@ test('standalone preview works offline, pauses and resumes, and changes band cou
   });
   assert.equal(await page.locator('#preview-band-value').textContent(), '512');
   assert.match(await canvas.getAttribute('aria-label'), /512 frequency bands/);
+  await page.locator('#preview-bands').evaluate((input) => {
+    input.value = '8';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.equal(await page.locator('#preview-band-value').textContent(), '8');
+  assert.match(await canvas.getAttribute('aria-label'), /8 frequency bands/);
   const pixels = await page.evaluate(() => {
     const sample = document.createElement('canvas');
     sample.style.width = '512px';

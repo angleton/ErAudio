@@ -92,8 +92,8 @@
             <div class="spectrum-settings" id="spectrum-settings" role="dialog" aria-label="Spectrum display settings" hidden>
               <label for="spectrum-bands">FREQUENCY BANDS</label>
               <div class="spectrum-band-control">
-                <input id="spectrum-bands" type="range" min="16" max="512" step="1" value="192">
-                <input id="spectrum-band-value" type="number" min="16" max="512" step="1" value="192" aria-label="Spectrum band count">
+                <input id="spectrum-bands" type="range" min="8" max="512" step="1" value="192">
+                <input id="spectrum-band-value" type="number" min="8" max="512" step="1" value="192" aria-label="Spectrum band count">
               </div>
               <p>Higher values create finer bars and more peak dots.</p>
             </div>
@@ -253,19 +253,17 @@
             <option value="favorites">Local Videos</option>
           </select>
         </div>
-        <div class="playlist-source" id="playlist-sort-control" hidden>
-          <label for="playlist-sort">SORT</label>
-          <select id="playlist-sort">
-            <option value="original">Playlist order</option>
-            <option value="views">YouTube views</option>
-            <option value="plays">My play count</option>
-            <option value="time">My listening time</option>
-          </select>
-        </div>
         <p class="playlist-source-status" id="playlist-status" role="status">Sign in to browse YouTube playlists.</p>
         <p class="playlist-source-status" id="playlist-sort-status" role="status"></p>
-        <!-- Playlist Tracks List -->
-        <div class="playlist-list" id="playlist-list" aria-label="Local videos"></div>
+        <div class="playlist-table">
+          <div class="playlist-columns" id="playlist-columns" hidden>
+            <button type="button" data-playlist-sort="original">VIDEO</button>
+            <button type="button" data-playlist-sort="views">VIEWS</button>
+            <button type="button" data-playlist-sort="plays">PLAYS</button>
+            <button type="button" data-playlist-sort="time">TIME</button>
+          </div>
+          <div class="playlist-list" id="playlist-list" aria-label="Local videos"></div>
+        </div>
       </div>
 
       <div class="playlist-footer">

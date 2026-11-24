@@ -4,7 +4,7 @@ The player and the standalone preview use the same spectrum renderer. The player
 
 ## Try it
 
-Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 16–512 bands. Below 512 bands, gaps gradually appear and the fill quickly develops flat tops; white peak dots gradually become rectangular lights. At 16 bands, the display is a grid of whole LED-like blocks. Use **Pause** to hold the colored fill while the white peak markers fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
+Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 8–512 bands. Below 512 bands, gaps gradually appear and the fill quickly develops flat tops; white peak dots gradually become rectangular lights. At 16 bands and below, the display is a grid of whole LED-like blocks. Use **Pause** to hold the colored fill while the white peak markers fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
 
 Edit a file, save it, and reload the preview to see the change. Edits to the shared renderer affect both the preview and the player.
 

@@ -344,6 +344,17 @@ test('starts idle and persists video additions and context-menu removals', { tim
   assert.equal(await page.locator('#spectrum-bands').inputValue(), '512');
   assert.match(await page.locator('#live-spectrum').getAttribute('aria-label'), /512 frequency bands/);
 
+  await spectrumBandNumber.fill('8');
+  await spectrumBandNumber.press('Enter');
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '8');
+  await page.reload();
+  await page.locator('.vis-container').click({ button: 'right' });
+  assert.equal(await spectrumBands.inputValue(), '8');
+  assert.match(await page.locator('#live-spectrum').getAttribute('aria-label'), /8 frequency bands/);
+  await spectrumBandNumber.fill('7');
+  await spectrumBandNumber.press('Enter');
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '8');
+
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'DJ', exact: true }).click();
   await page.evaluate(() => showLiveTempo(128));

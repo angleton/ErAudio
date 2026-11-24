@@ -554,7 +554,7 @@ test('YouTube playlists are read-only views and preserve the local list and play
   const eventsBefore = await page.evaluate(() => window.playerEvents.length);
   await select.selectOption('youtube:list-a');
   await page.waitForFunction(() => document.querySelector('#playlist-status').textContent.includes('1 unavailable item omitted'));
-  assert.deepEqual(await page.locator('#playlist-list button').allTextContents(),
+  assert.deepEqual(await page.locator('#playlist-list .playlist-track-title').allTextContents(),
     ['1. First A [--:--]', '2. Second A [--:--]', '3. A again [--:--]']);
   assert.equal(await page.evaluate(() => window.playerEvents.length), eventsBefore);
   assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:added-tracks')), saved);
@@ -610,29 +610,38 @@ test('playlist sorting uses view counts and all-time history without changing pl
     });
   });
   await page.getByRole('button', { name: 'VID', exact: true }).click();
-  assert.equal(await page.locator('#playlist-sort').isHidden(), true);
+  assert.equal(await page.locator('#playlist-columns').isHidden(), true);
   await signIn(page);
   await page.locator('#playlist-select').selectOption('youtube:list-a');
   await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
   const items = page.locator('#playlist-list button');
   const ids = () => items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track));
-  const sort = page.locator('#playlist-sort');
-  await sort.selectOption('views');
-  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Display only'));
+  const heading = (name) => page.locator(`[data-playlist-sort="${name}"]`);
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .playlist-metric:nth-child(3)')?.textContent === '1');
+  assert.equal(statisticsRequests.length, 0);
+  assert.deepEqual(await items.first().locator('.playlist-metric').allTextContents(), ['--', '1', '00:30']);
+  await heading('views').click();
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .playlist-metric')?.textContent === '100');
   assert.deepEqual(await ids(), ['2', '1', '3']);
-  assert.match(await items.first().textContent(), /VIEWS 100/);
+  assert.deepEqual(await items.first().locator('.playlist-metric').allTextContents(), ['100', '5', '00:10']);
+  assert.equal(await heading('views').getAttribute('aria-pressed'), 'true');
   assert.deepEqual(statisticsRequests, [{ ids: 'aaaaaaaaaaa,bbbbbbbbbbb', authorization: 'Bearer test-token' }]);
 
+  await heading('views').focus();
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await ids(), ['1', '3', '2']);
+  assert.match(await heading('views').getAttribute('aria-label'), /ascending/);
+  await heading('views').click();
   await items.first().click();
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Next track' }).click();
   assert.equal(await page.evaluate(() => playingTrack.playlistItemId), 'item-a3');
 
-  await sort.selectOption('plays');
-  await page.waitForFunction(() => document.querySelector('#playlist-list button .history-detail')?.textContent === 'PLAYS 5');
+  await heading('plays').click();
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .playlist-metric:nth-child(3)')?.textContent === '5');
   assert.deepEqual(await ids(), ['2', '1', '3']);
-  await sort.selectOption('time');
-  await page.waitForFunction(() => document.querySelector('#playlist-list button .history-detail')?.textContent === 'TIME 00:30');
+  await heading('time').click();
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .playlist-metric:nth-child(4)')?.textContent === '00:30');
   assert.deepEqual(await ids(), ['1', '3', '2']);
   await page.evaluate(async () => {
     await localHistory.importData({
@@ -640,12 +649,12 @@ test('playlist sorting uses view counts and all-time history without changing pl
       spans: [{ videoId: 'bbbbbbbbbbb', start: 10, end: 40, playedAt: 2 }],
     });
   });
-  await page.waitForFunction(() => document.querySelector('#playlist-list button .history-detail')?.textContent === 'TIME 00:40');
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .playlist-metric:nth-child(4)')?.textContent === '00:40');
   assert.deepEqual(await ids(), ['2', '1', '3']);
-  await sort.selectOption('original');
+  await heading('original').click();
   assert.deepEqual(await ids(), ['1', '2', '3']);
   await page.locator('#playlist-select').selectOption('favorites');
-  assert.equal(await sort.isHidden(), true);
+  assert.equal(await page.locator('#playlist-columns').isHidden(), true);
 });
 
 test('playlist sorting reports missing statistics and API failures without changing playlist order', { timeout: 20000 }, async (t) => {
@@ -661,24 +670,23 @@ test('playlist sorting reports missing statistics and API failures without chang
   await signIn(page);
   await page.locator('#playlist-select').selectOption('youtube:list-a');
   await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
-  await page.locator('#playlist-sort').selectOption('views');
+  await page.locator('[data-playlist-sort="views"]').click();
   await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('unavailable'));
   const items = page.locator('#playlist-list button');
   assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['2', '1', '3']);
-  assert.match(await items.nth(1).textContent(), /VIEWS UNAVAILABLE/);
-  await page.locator('#playlist-sort').selectOption('original');
+  assert.equal(await items.nth(1).locator('.playlist-metric').first().textContent(), '--');
+  await page.locator('[data-playlist-sort="original"]').click();
   fail = true;
-  await page.locator('#playlist-sort').selectOption('views');
-  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Could not sort'));
-  assert.equal(await page.locator('#playlist-sort').inputValue(), 'original');
-  assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['1', '2', '3']);
-  fail = false;
-  await page.locator('#playlist-sort').selectOption('views');
-  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('unavailable'));
   await page.locator('#playlist-select').selectOption('youtube:fail');
   await page.waitForFunction(() => document.querySelector('#playlist-status').textContent.includes('Could not load playlist'));
-  assert.equal(await page.locator('#playlist-sort').inputValue(), 'original');
+  assert.equal(await page.locator('[data-playlist-sort="original"]').getAttribute('aria-pressed'), 'true');
   assert.deepEqual(await items.evaluateAll((buttons) => buttons.map((button) => button.dataset.track)), ['1', '2', '3']);
+  await page.locator('[data-playlist-sort="views"]').click();
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Could not load YouTube view counts'));
+  assert.equal(await page.locator('[data-playlist-sort="original"]').getAttribute('aria-pressed'), 'true');
+  fail = false;
+  await page.locator('[data-playlist-sort="views"]').click();
+  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('unavailable'));
 });
 
 test('view statistics are batched and late responses cannot reorder another playlist', { timeout: 20000 }, async (t) => {
@@ -706,20 +714,34 @@ test('view statistics are batched and late responses cannot reorder another play
     playlistSelect.value = 'youtube:large';
     renderFavoritesList('youtube:large');
   });
-  await page.locator('#playlist-sort').selectOption('views');
-  await page.waitForFunction(() => document.querySelector('#playlist-sort-status').textContent.includes('Display only'));
+  await page.setViewportSize({ width: 360, height: 720 });
+  const layout = await page.evaluate(() => {
+    const table = document.querySelector('.playlist-table');
+    const headers = [...document.querySelectorAll('#playlist-columns button')];
+    const cells = [...document.querySelector('#playlist-list button').children];
+    return {
+      scrolls: table.scrollWidth > table.clientWidth,
+      pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      offsets: headers.map((header, index) => Math.abs(header.getBoundingClientRect().left - cells[index].getBoundingClientRect().left)),
+    };
+  });
+  assert.equal(layout.scrolls, true);
+  assert.equal(layout.pageFits, true);
+  assert.ok(layout.offsets.every((offset) => offset <= 3), `Columns should align: ${layout.offsets}`);
+  await page.locator('[data-playlist-sort="views"]').click();
+  await page.waitForFunction(() => document.querySelector('#playlist-list button .playlist-metric')?.textContent === '100');
   assert.deepEqual(batches.map((batch) => batch.length), [50, 50, 1]);
   assert.equal(await page.locator('#playlist-list button').first().getAttribute('data-track'), '101');
 
-  await page.locator('#playlist-sort').selectOption('original');
-  await page.locator('#playlist-sort').selectOption('views');
+  await page.evaluate(() => { resetPlaylistSort(); renderFavoritesList(currentListId); });
+  await page.locator('[data-playlist-sort="views"]').click();
   await page.waitForTimeout(100);
   assert.equal(batches.length, 4);
   await page.locator('#playlist-select').selectOption('youtube:list-b');
   await page.waitForFunction(() => document.querySelector('#playlist-info').textContent.includes('PLAYLIST B'));
   release();
   await page.waitForTimeout(100);
-  assert.equal(await page.locator('#playlist-sort').inputValue(), 'original');
+  assert.equal(await page.locator('[data-playlist-sort="original"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#playlist-list button').first().getAttribute('data-video-id'), 'ccccccccccc');
   assert.equal(batches.length, 4);
 });

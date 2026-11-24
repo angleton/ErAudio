@@ -80,6 +80,10 @@ test('LED gaps gradually appear below 512 bands and rows become larger', () => {
   assert.equal(drawing.erasures[0], 1);
   assert.equal(drawing.rectangles.filter(([, , , height]) => height === 80).length, 15);
   assert.ok(drawing.rectangles.filter(([, , width]) => width === 320).length < denseRows);
+  visualizer.draw(bins, 8, 30, false, 1);
+  assert.equal(drawing.erasures[0], 1);
+  assert.equal(drawing.rectangles.filter(([, , , height]) => height === 80).length, 7);
+  assert.equal(drawing.peaks.length, 8);
 });
 
 test('peak markers progressively grow from dots to full rectangular lights', () => {

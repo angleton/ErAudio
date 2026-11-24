@@ -1269,10 +1269,50 @@ body {
   margin: 4px 0;
 }
 
-#playlist-list .history-detail {
-  display: block;
+.playlist-table {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.playlist-columns:not([hidden]),
+#playlist-list.has-columns .playlist-item {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 100px 70px 90px;
+  gap: 6px;
+}
+
+.playlist-columns:not([hidden]),
+#playlist-list.has-columns {
+  min-width: 490px;
+}
+
+.playlist-columns {
+  padding: 0 12px;
+}
+
+.playlist-columns button {
+  background: #080f08;
+  border: 1px solid #003300;
   color: var(--accent-gold);
-  font-size: 10px;
+  cursor: pointer;
+  font: 10px var(--font-mono);
+  padding: 3px;
+  text-align: left;
+}
+
+.playlist-track-title,
+.playlist-metric {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlist-metric {
+  color: var(--accent-gold);
+  font: 11px var(--font-mono);
+  text-align: right;
 }
 
 .playlist-list {
