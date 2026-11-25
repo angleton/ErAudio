@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import worker from '../cloudflare/history-worker.mjs';
 import client from '../history-sync.js';
@@ -7,6 +9,22 @@ import { audience, jwk, token, testDatabase } from './history-fixture.mjs';
 const origin = 'http://localhost:8000';
 const endpoint = 'http://localhost:8787';
 const videoId = 'abcdefghijk';
+
+test('pairing migration preserves existing history and can be reapplied', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(readFileSync(new URL('../cloudflare/history-schema.sql', import.meta.url), 'utf8'));
+    db.prepare('INSERT INTO history_accounts (account, epoch, revision) VALUES (?, ?, ?)').run('existing', 2, 4);
+    const migration = readFileSync(new URL('../cloudflare/pairing-schema.sql', import.meta.url), 'utf8');
+    db.exec(migration);
+    db.exec(migration);
+    assert.deepEqual({ ...db.prepare('SELECT * FROM history_accounts').get() },
+      { account: 'existing', epoch: 2, revision: 4 });
+    assert.equal(db.prepare('SELECT count(*) AS count FROM history_paired_sessions').get().count, 0);
+  } finally {
+    db.close();
+  }
+});
 
 test('isolates accounts, merges two browsers and rejects uploads from before a clear', async (t) => {
   const db = testDatabase();
@@ -98,4 +116,58 @@ test('allows only configured origins through CORS', async () => {
   }), env);
   assert.equal(rejected.status, 403);
   assert.equal(rejected.headers.get('Access-Control-Allow-Origin'), null);
+});
+
+test('phone-approved sessions are limited, expire, and cannot be reused after revocation', async (t) => {
+  const db = testDatabase();
+  t.after(() => db.close());
+  const env = { APP_ORIGINS: origin, GOOGLE_CLIENT_ID: audience, HISTORY_DB: db };
+  t.mock.method(globalThis, 'fetch', (url, init) => {
+    if (String(url) === 'https://www.googleapis.com/oauth2/v3/certs') {
+      return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });
+    }
+    const request = new Request(url, init);
+    request.headers.set('Origin', origin);
+    return worker.fetch(request, env);
+  });
+  const phone = new client.HistorySync(endpoint, token('10000001'), crypto.randomUUID());
+  const other = new client.HistorySync(endpoint, token('10000002'), crypto.randomUUID());
+  const pairing = await client.createPairing();
+  const shared = new client.HistorySync(endpoint, pairing.credential, crypto.randomUUID());
+  await assert.rejects(shared.state(), { status: 401 });
+  await assert.rejects(phone.request('/paired-sessions', 'POST', JSON.stringify({ code: 'invalid' })), { status: 400 });
+  await assert.rejects(phone.request('/paired-sessions', 'POST',
+    JSON.stringify({ code: `00000001-${pairing.code.split('-').slice(1).join('-')}` })), { status: 400 });
+  const approved = await phone.request('/paired-sessions', 'POST', JSON.stringify({ code: pairing.code }));
+  assert.ok(approved.expiresAt >= Math.floor(Date.now() / 1000) + 8 * 60 * 60 - 1);
+  await assert.rejects(other.request('/paired-sessions', 'POST', JSON.stringify({ code: pairing.code })), { status: 409 });
+  const state = await shared.state();
+  assert.equal(state.paired, true);
+  assert.equal(state.account, (await phone.state()).account);
+  assert.notEqual(state.account, (await other.state()).account);
+  await shared.pull(state);
+  await shared.upload({ videos: [], spans: [{ videoId, start: 0, end: 10, playedAt: 100 }] });
+  await phone.pull(await phone.state());
+  assert.equal(phone.rows.size, 1);
+  await assert.rejects(shared.clear(), { status: 403 });
+  await assert.rejects(shared.request('/paired-sessions', 'POST', JSON.stringify({ code: pairing.code })), { status: 403 });
+  await assert.rejects(shared.request('/paired-sessions', 'DELETE'), { status: 403 });
+  await other.request('/paired-sessions', 'DELETE');
+  assert.equal((await shared.state()).account, state.account);
+  await shared.request('/paired-session', 'DELETE');
+  await assert.rejects(shared.state(), { status: 401 });
+  await assert.rejects(phone.request('/paired-sessions', 'POST', JSON.stringify({ code: pairing.code })), { status: 409 });
+
+  const next = await client.createPairing();
+  await phone.request('/paired-sessions', 'POST', JSON.stringify({ code: next.code }));
+  const nextShared = new client.HistorySync(endpoint, next.credential, crypto.randomUUID());
+  await phone.request('/paired-sessions', 'DELETE');
+  await assert.rejects(nextShared.state(), { status: 401 });
+
+  const last = await client.createPairing();
+  await phone.request('/paired-sessions', 'POST', JSON.stringify({ code: last.code }));
+  const expiring = new client.HistorySync(endpoint, last.credential, crypto.randomUUID());
+  const { expiresAt } = await expiring.state();
+  t.mock.method(Date, 'now', () => expiresAt * 1000);
+  await assert.rejects(expiring.state(), { status: 401 });
 });

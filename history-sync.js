@@ -8,6 +8,20 @@
   const videoFields = ({ videoId, title, duration, chapters, timestamps, plays, lastPlayed }) =>
     ({ videoId, title, duration, chapters, timestamps, plays, lastPlayed });
 
+  async function createPairing(serverTime = Math.floor(Date.now() / 1000)) {
+    if (!Number.isSafeInteger(serverTime) || serverTime < 0 || serverTime > 0xffffffff - 300) {
+      throw new Error('Invalid pairing time from the history service.');
+    }
+    const expires = serverTime + 300;
+    const prefix = expires.toString(16).padStart(8, '0');
+    const secret = crypto.getRandomValues(new Uint8Array(32));
+    const base64url = (bytes) => btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const credential = `ers_${prefix}_${base64url(secret)}`;
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(credential)));
+    return { credential, code: `${prefix}-${base64url(digest.slice(0, 16))}`, expires };
+  }
+
   function combine(rows, local, device) {
     const records = new Map(rows);
     for (const data of local.spans) {
@@ -143,7 +157,7 @@
     }
   }
 
-  const api = { HistorySync, combine };
+  const api = { HistorySync, combine, createPairing };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else globalThis.ErAudioHistorySync = api;
 })();

@@ -33,6 +33,43 @@ separate in that browser. **CLEAR** while signed in deletes account history
 from the service; other browsers receive the deletion on their next sync.
 Select **?** under **TOP** for sync status and help.
 
+### Shared computers
+
+On the shared computer, open **TOP**, select **?**, and choose **USE SHARED
+COMPUTER**. On a trusted phone, open your ErAudio deployment directly from a
+bookmark or by typing its address; don't follow a link from the shared computer.
+Sign in to TOP with Google, open **?**, select **APPROVE SHARED COMPUTER**,
+and enter the displayed code within five minutes.
+The phone sends approval to the Worker; the shared computer never receives the
+Google identity token. Its separate session can read and add history for up to
+eight hours, but cannot clear account history or approve other sessions. Only
+approve a computer you recognize. **REVOKE SHARED SESSIONS** on a trusted
+Google-signed-in device revokes all paired sessions for that account.
+
+The session token stays in page memory; reloading or closing the page requires
+approval again. On sign-out, ErAudio attempts to sync and revoke the session.
+If revocation fails, revoke sessions from the trusted device. A local account
+history copy and any unsynced listens remain on the shared computer, including
+after expiry or revocation; reconnect to the same account to retry. Closing a
+private browsing session generally removes its local data, including unsynced
+listens. A compromised shared computer can still steal an active ErAudio
+session and read or alter history, so never enter your Google credentials there.
+
+### Shared-computer pairing migration
+
+Before deploying the Worker with shared-computer pairing, apply
+[pairing-schema.sql](pairing-schema.sql) to the existing D1 database. This
+creates new session tables and indexes without replacing the existing history
+schema. From the `cloudflare` directory, using the correct database name:
+
+```powershell
+npx wrangler d1 execute eraudio-history --remote --file pairing-schema.sql
+```
+
+Wait for it to succeed before deploying the Worker and publishing the updated
+app. Do not rerun `history-schema.sql` against an existing database. The
+automatic Worker deployment does not apply migrations.
+
 ## Configure your own deployment
 
 The repository is already configured for its existing Worker and database.
@@ -64,13 +101,17 @@ unless you intend to set up a separate deployment.
    exact origins allowed to call the Worker and set `GOOGLE_CLIENT_ID` to your
    Google web client ID. Include `http://localhost:8000` if you want to sync
    while running locally.
-5. Apply the initial schema to the **new** database, then deploy the Worker.
-   Run these commands separately from the `cloudflare` directory, waiting for
-   the first to finish successfully. Replace `eraudio-history` with the database
-   name if you used a different one.
+5. Apply the initial history schema and pairing schema to the **new** database,
+   then deploy the Worker. Run these commands separately from the `cloudflare`
+   directory, waiting for each to finish successfully. Replace `eraudio-history`
+   with the database name if you used a different one.
 
    ```powershell
    npx wrangler d1 execute eraudio-history --remote --file history-schema.sql
+   ```
+
+   ```powershell
+   npx wrangler d1 execute eraudio-history --remote --file pairing-schema.sql
    ```
 
    ```powershell

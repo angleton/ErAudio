@@ -1583,6 +1583,18 @@ const historySignOut = document.querySelector('#history-sign-out');
 const historySyncStatus = document.querySelector('#history-sync-status');
 const historySyncHelp = document.querySelector('#history-sync-help');
 const historyHelpPanel = document.querySelector('#history-help-panel');
+const historyPairActions = document.querySelector('#history-pair-actions');
+const historySharedStart = document.querySelector('#history-shared-start');
+const historySharedApprove = document.querySelector('#history-shared-approve');
+const historySharedRevoke = document.querySelector('#history-shared-revoke');
+const historyClear = document.querySelector('#history-clear');
+const sharedPairDialog = document.querySelector('#shared-pair-dialog');
+const sharedPairCode = document.querySelector('#shared-pair-code');
+const sharedPairStatus = document.querySelector('#shared-pair-status');
+const sharedApproveDialog = document.querySelector('#shared-approve-dialog');
+const sharedApproveForm = document.querySelector('#shared-approve-form');
+const sharedApproveCode = document.querySelector('#shared-approve-code');
+const sharedApproveStatus = document.querySelector('#shared-approve-status');
 const historyResize = document.querySelector('#history-resize');
 let historySync = null;
 let historySyncBusy = false;
@@ -1745,6 +1757,10 @@ function showHistorySync(message, signIn = !historySync?.token) {
   historyGoogle.hidden = !signIn;
   historySignOut.hidden = !historySync;
   historySignOut.disabled = historySyncBusy;
+  historySharedStart.hidden = Boolean(historySync?.token);
+  historySharedApprove.hidden = !historySync?.token || historySync.paired;
+  historySharedRevoke.hidden = !historySync?.token || historySync.paired;
+  historyClear.disabled = Boolean(historySync?.paired);
 }
 
 historySyncHelp.addEventListener('click', () => {
@@ -1811,7 +1827,9 @@ function reportHistorySyncError(error) {
   console.warn('Listening history sync failed:', error.message);
   if (historySync && error.status === 401) {
     historySync.token = null;
-    showHistorySync('Sign-in expired. Sign in again to sync changes saved in this browser.');
+    showHistorySync(historySync.paired
+      ? 'Shared session expired or was revoked. Approve this computer again to sync locally retained listens.'
+      : 'Sign-in expired. Sign in again to sync changes saved in this browser.');
   } else {
     showHistorySync(historySync ? 'Could not sync. Changes are saved here and will retry automatically.'
       : 'Could not start sync. History is still local. Try signing in again.');
@@ -1842,7 +1860,8 @@ async function syncHistory() {
       await sync.pull(state);
     }
     showHistorySync(sync.periodHistory
-      ? `Private history synced${sync.email ? ` as ${sync.email}` : ''}.`
+      ? sync.paired ? `Shared-computer history synced. Session expires ${new Date(sync.expiresAt * 1000).toLocaleString()}.`
+        : `Private history synced${sync.email ? ` as ${sync.email}` : ''}.`
       : 'History synced, but the history service needs an update to sync period play details.');
     if (cleared) historyStatus('Your account history was cleared on another browser.');
     refreshHistoryViews(null);
@@ -1867,8 +1886,9 @@ function setupHistorySync(config) {
     showHistorySync('Listening history sync is not configured correctly.', false);
     return;
   }
-  async function signIn({ credential }) {
-    if (historySyncBusy || historySync?.token || !credential) return;
+  historyPairActions.hidden = false;
+  async function signIn({ credential, paired = false }) {
+    if (historySyncBusy || historySync?.token || !credential) return false;
     historySyncBusy = true;
     showHistorySync('Connecting to private history…', false);
     let store;
@@ -1877,11 +1897,14 @@ function setupHistorySync(config) {
       const device = await localHistory.getDeviceId();
       const sync = new ErAudioHistorySync.HistorySync(endpoint, credential, device);
       const state = await sync.state();
+      if (Boolean(state.paired) !== paired) throw new Error('Unexpected history session type.');
       sync.account = state.account;
       sync.email = state.email;
+      sync.paired = paired;
+      sync.expiresAt = state.expiresAt;
       if (historySync && historySync.account !== sync.account) {
         showHistorySync('Sign out before switching to a different Google account.', true);
-        return;
+        return false;
       }
       await sync.pull(state);
       if (historySync?.epoch === state.epoch) {
@@ -1903,15 +1926,115 @@ function setupHistorySync(config) {
         store = null;
       }
       showHistorySync('Connected. Syncing private history…');
+      return true;
     } catch (error) {
       store?.db.close();
       reportHistorySyncError(error);
+      return false;
     } finally {
       historySyncBusy = false;
       historySignOut.disabled = false;
+      if (historySync?.token) syncHistory();
     }
-    syncHistory();
   }
+  let pairingGeneration = 0;
+  historySharedStart.addEventListener('click', async () => {
+    if (historySync?.token || sharedPairDialog.open) return;
+    const generation = ++pairingGeneration;
+    sharedPairCode.textContent = '';
+    sharedPairStatus.textContent = 'Creating a pairing code…';
+    sharedPairDialog.showModal();
+    try {
+      const response = await fetch(new URL('/pairing-time', endpoint), {
+        cache: 'no-store', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`Pairing service returned HTTP ${response.status}.`);
+      const { now } = await response.json();
+      const pairing = await ErAudioHistorySync.createPairing(now);
+      const deadline = performance.now() + 300000;
+      if (generation !== pairingGeneration) return;
+      sharedPairCode.textContent = pairing.code;
+      sharedPairStatus.textContent = 'Waiting for approval on your trusted phone…';
+      const candidate = new ErAudioHistorySync.HistorySync(endpoint, pairing.credential, '');
+      while (generation === pairingGeneration && performance.now() < deadline) {
+        try {
+          const state = await candidate.state();
+          if (generation !== pairingGeneration) {
+            await candidate.request('/paired-session', 'DELETE');
+            return;
+          }
+          if (!state.paired) throw new Error('Unexpected history session type.');
+          if (await signIn({ credential: pairing.credential, paired: true })) {
+            sharedPairDialog.close();
+            return;
+          }
+          sharedPairStatus.textContent = 'Could not connect. Check the TOP sync status; retrying while the code is valid.';
+        } catch (error) {
+          if (error.status !== 401) {
+            console.warn('Shared-computer pairing failed:', error.message);
+            sharedPairStatus.textContent = 'Could not reach the history service. Retrying while the code is valid.';
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      if (generation === pairingGeneration) sharedPairStatus.textContent = 'The code expired. Cancel and start again.';
+    } catch (error) {
+      console.error('Could not create a shared-computer pairing code.', error);
+      sharedPairStatus.textContent = 'Could not create a code. Check the connection and use HTTPS or localhost.';
+    }
+  });
+  sharedPairDialog.addEventListener('close', () => { pairingGeneration++; });
+  document.querySelector('#shared-pair-cancel').addEventListener('click', () => sharedPairDialog.close());
+  historySharedApprove.addEventListener('click', () => {
+    sharedApproveForm.reset();
+    sharedApproveStatus.textContent = '';
+    sharedApproveDialog.showModal();
+    sharedApproveCode.focus();
+  });
+  document.querySelector('#shared-approve-cancel').addEventListener('click', () => sharedApproveDialog.close());
+  sharedApproveForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const sync = historySync;
+    if (!sync?.token || sync.paired) {
+      sharedApproveStatus.textContent = 'Sign in with Google on this trusted device first.';
+      return;
+    }
+    const code = sharedApproveCode.value.trim();
+    if (!/^[0-9a-f]{8}-[A-Za-z0-9_-]{22}$/.test(code)) {
+      sharedApproveStatus.textContent = 'Enter the complete pairing code exactly as shown.';
+      return;
+    }
+    const submit = sharedApproveForm.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      await sync.request('/paired-sessions', 'POST', JSON.stringify({ code }));
+      sharedApproveDialog.close();
+      historyStatus('Shared computer approved for up to eight hours. Its session cannot clear account history.');
+    } catch (error) {
+      console.error('Could not approve shared computer.', error);
+      sharedApproveStatus.textContent = error.status === 400 ? 'The code is invalid or expired. Start again on the shared computer.'
+        : error.status === 409 ? 'The code was already used, or there are too many active shared sessions.'
+          : error.status === 401 ? 'Google sign-in expired. Sign in again on this device.'
+            : 'Could not approve this computer. Check the connection and try again.';
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  historySharedRevoke.addEventListener('click', async () => {
+    const sync = historySync;
+    if (!sync?.token || sync.paired
+      || !window.confirm('Revoke all shared-computer sessions for this account? Locally retained history will not be removed from those computers.')) return;
+    historySharedRevoke.disabled = true;
+    try {
+      await sync.request('/paired-sessions', 'DELETE');
+      historyStatus('All shared-computer sessions were revoked.');
+    } catch (error) {
+      console.error('Could not revoke shared-computer sessions.', error);
+      historyStatus('Could not revoke shared sessions. Check the connection and try again.');
+    } finally {
+      historySharedRevoke.disabled = false;
+    }
+  });
   const renderSignIn = () => {
     const identity = window.google?.accounts?.id;
     if (!identity) {
@@ -1928,12 +2051,28 @@ function setupHistorySync(config) {
   }
 }
 
-historySignOut.addEventListener('click', () => {
+historySignOut.addEventListener('click', async () => {
   if (!historySync || historySyncBusy) return;
+  const sync = historySync;
+  let revoked = true;
+  if (sync.paired && sync.token) {
+    listeningHistory.endSession();
+    await syncHistory();
+    historySignOut.disabled = true;
+    try {
+      await sync.request('/paired-session', 'DELETE');
+    } catch (error) {
+      revoked = false;
+      console.error('Could not revoke the shared-computer session.', error);
+    }
+  }
   historySync = null;
   changeHistoryStore(localHistory);
   window.google?.accounts?.id?.disableAutoSelect();
-  showHistorySync('Signed out. New listens are saved only in this browser.');
+  showHistorySync(sync.paired
+    ? revoked ? 'Shared session ended. A local history copy and unsynced listens remain on this computer.'
+      : 'Signed out locally, but the shared session could not be revoked. Revoke it from your trusted device; local history remains here.'
+    : 'Signed out. New listens are saved only in this browser.');
 });
 window.addEventListener('online', syncHistory);
 document.addEventListener('visibilitychange', () => {

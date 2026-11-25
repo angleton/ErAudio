@@ -4,12 +4,26 @@ const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const decode = (part) => Uint8Array.from(atob(part.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 const parse = (part) => JSON.parse(new TextDecoder().decode(decode(part)));
 const encode = (text) => new TextEncoder().encode(text);
+const pairToken = /^ers_([0-9a-f]{8})_([A-Za-z0-9_-]{43})$/;
+const pairCode = /^([0-9a-f]{8})-([A-Za-z0-9_-]{22})$/;
 let keys = [];
 let keysUntil = 0;
 
-async function authenticate(header, audience) {
+async function pairingHash(token) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', encode(token)));
+  return btoa(String.fromCharCode(...digest.slice(0, 16))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function authenticate(header, audience, db) {
   const token = /^Bearer ([\w.-]+)$/.exec(header || '')?.[1];
   if (!token || token.length > 8192) return null;
+  const paired = pairToken.exec(token);
+  if (paired) {
+    const hash = `${paired[1]}-${await pairingHash(token)}`;
+    const session = await db.prepare(`SELECT account, expires_at FROM history_paired_sessions
+      WHERE token_hash = ? AND expires_at > ? AND revoked = 0`).bind(hash, Math.floor(Date.now() / 1000)).first();
+    return session ? { account: session.account, email: '', paired: true, expiresAt: session.expires_at } : null;
+  }
   const parts = token.split('.');
   let claims, alg, kid, signature;
   try {
@@ -88,18 +102,76 @@ export default {
     }
     if (!env.GOOGLE_CLIENT_ID || !env.HISTORY_DB) return reply({ error: 'Sync is not configured.' }, 503);
     try {
-      const identity = await authenticate(request.headers.get('Authorization'), env.GOOGLE_CLIENT_ID);
+      const url = new URL(request.url);
+      if (request.method === 'GET' && url.pathname === '/pairing-time') {
+        return reply({ now: Math.floor(Date.now() / 1000) });
+      }
+      const identity = await authenticate(request.headers.get('Authorization'), env.GOOGLE_CLIENT_ID, env.HISTORY_DB);
       if (!identity) return reply({ error: 'Sign in with Google again.' }, 401);
       const { account, email } = identity;
       const db = env.HISTORY_DB;
-      const url = new URL(request.url);
+      if (request.method === 'POST' && url.pathname === '/paired-sessions') {
+        if (identity.paired) return reply({ error: 'Approve sessions using Google sign-in on your trusted device.' }, 403);
+        const reader = request.body?.getReader();
+        if (!reader) return reply({ error: 'Missing pairing code.' }, 400);
+        const chunks = [];
+        let size = 0;
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 1024) {
+            await reader.cancel();
+            return reply({ error: 'Pairing request is too large.' }, 413);
+          }
+          chunks.push(value);
+        }
+        let body;
+        try {
+          const text = chunks.map((chunk) => new TextDecoder().decode(chunk)).join('');
+          body = JSON.parse(text);
+        } catch {
+          return reply({ error: 'Invalid pairing request.' }, 400);
+        }
+        const code = typeof body?.code === 'string' ? pairCode.exec(body.code) : null;
+        const now = Math.floor(Date.now() / 1000);
+        const codeExpiry = code ? parseInt(code[1], 16) : 0;
+        if (!code || codeExpiry <= now || codeExpiry > now + 300) {
+          return reply({ error: 'Invalid or expired pairing code.' }, 400);
+        }
+        const expiresAt = now + 8 * 60 * 60;
+        const [, inserted] = await db.batch([
+          db.prepare('DELETE FROM history_paired_sessions WHERE expires_at <= ?').bind(now),
+          db.prepare(`INSERT INTO history_paired_sessions (token_hash, account, expires_at)
+            SELECT ?, ?, ? WHERE (SELECT count(*) FROM history_paired_sessions
+              WHERE account = ? AND expires_at > ? AND revoked = 0) < 10
+            ON CONFLICT(token_hash) DO NOTHING RETURNING expires_at`)
+            .bind(body.code, account, expiresAt, account, now),
+        ]);
+        if (!inserted.results.length) return reply({ error: 'Code already used or too many active sessions.' }, 409);
+        return reply({ expiresAt }, 201);
+      }
+      if (request.method === 'DELETE' && url.pathname === '/paired-sessions') {
+        if (identity.paired) return reply({ error: 'Manage sessions using Google sign-in on your trusted device.' }, 403);
+        await db.prepare('UPDATE history_paired_sessions SET revoked = 1 WHERE account = ?').bind(account).run();
+        return reply({ revoked: true });
+      }
+      if (request.method === 'DELETE' && url.pathname === '/paired-session') {
+        if (!identity.paired) return reply({ error: 'This is not a shared-computer session.' }, 403);
+        const token = request.headers.get('Authorization').slice('Bearer '.length);
+        const match = pairToken.exec(token);
+        await db.prepare('UPDATE history_paired_sessions SET revoked = 1 WHERE token_hash = ?')
+          .bind(`${match[1]}-${await pairingHash(token)}`).run();
+        return reply({ revoked: true });
+      }
       if (request.method === 'GET' && url.pathname === '/state') {
         let state = await db.prepare('SELECT epoch, revision FROM history_accounts WHERE account = ?').bind(account).first();
         if (!state) {
           await db.prepare('INSERT OR IGNORE INTO history_accounts (account) VALUES (?)').bind(account).run();
           state = await db.prepare('SELECT epoch, revision FROM history_accounts WHERE account = ?').bind(account).first();
         }
-        return reply({ account, email, ...state, periodHistory: true });
+        return reply({ account, email, ...state, periodHistory: true,
+          ...(identity.paired ? { paired: true, expiresAt: identity.expiresAt } : {}) });
       }
       if (request.method === 'GET' && url.pathname === '/rows') {
         const [epoch, from, until, id] = ['epoch', 'from', 'until', 'id']
@@ -164,6 +236,7 @@ export default {
         return reply({ revision: results.at(-1).results[0].revision });
       }
       if (request.method === 'DELETE' && url.pathname === '/rows') {
+        if (identity.paired) return reply({ error: 'Shared-computer sessions cannot clear account history.' }, 403);
         const epoch = Number(url.searchParams.get('epoch'));
         if (!url.searchParams.has('epoch') || !Number.isSafeInteger(epoch) || epoch < 0) {
           return reply({ error: 'Invalid history generation.' }, 400);

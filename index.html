@@ -31,6 +31,11 @@
           <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
           <p class="history-note" id="history-period-note" hidden>Periods use local time; weeks start Sunday. Boundary times are estimated. Plays count when a session starts; ≥ means older play counts are incomplete.</p>
           <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
+          <div class="history-pair-actions" id="history-pair-actions" hidden>
+            <button class="pl-btn" id="history-shared-start" type="button">USE SHARED COMPUTER</button>
+            <button class="pl-btn" id="history-shared-approve" type="button" hidden>APPROVE SHARED COMPUTER</button>
+            <button class="pl-btn" id="history-shared-revoke" type="button" hidden>REVOKE SHARED SESSIONS</button>
+          </div>
           <p class="history-note" id="history-message" role="status" aria-live="polite"></p>
         </div>
       </div>
@@ -335,6 +340,32 @@
       <div class="open-dialog-actions">
         <button class="pl-btn" type="button" data-action="close-open-dialog">CANCEL</button>
         <button class="pl-btn open-submit" type="submit">OPEN</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="open-dialog" id="shared-pair-dialog" aria-labelledby="shared-pair-title">
+    <div class="title-bar"><h2 class="title-bar-text" id="shared-pair-title">USE SHARED COMPUTER</h2></div>
+    <div class="open-dialog-body">
+      <p>On your trusted phone, open your bookmarked ErAudio site directly, sign in to TOP with Google, open ?, and choose APPROVE SHARED COMPUTER. Don't enter Google credentials on this computer or follow untrusted links. Enter this code on your phone:</p>
+      <p id="shared-pair-code"></p>
+      <p>The code expires in five minutes. The shared session lasts up to eight hours and can read and add listening history, but cannot clear it. Do not sign in to Google on this computer.</p>
+      <p>Unsynced listens and a local history copy remain on this computer. Use a private window to reduce what is retained.</p>
+      <p class="open-dialog-error" id="shared-pair-status" role="status" aria-live="polite"></p>
+    </div>
+    <div class="open-dialog-actions"><button class="pl-btn" id="shared-pair-cancel" type="button">CANCEL</button></div>
+  </dialog>
+  <dialog class="open-dialog" id="shared-approve-dialog" aria-labelledby="shared-approve-title">
+    <form class="open-dialog-form" id="shared-approve-form">
+      <div class="title-bar"><h2 class="title-bar-text" id="shared-approve-title">APPROVE SHARED COMPUTER</h2></div>
+      <div class="open-dialog-body">
+        <p>Enter the code shown in ErAudio on the computer you want to use. It can read and add your listening history for up to eight hours. Only approve a computer you recognize.</p>
+        <label for="shared-approve-code">PAIRING CODE</label>
+        <input id="shared-approve-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        <p class="open-dialog-error" id="shared-approve-status" role="status" aria-live="polite"></p>
+      </div>
+      <div class="open-dialog-actions">
+        <button class="pl-btn" id="shared-approve-cancel" type="button">CANCEL</button>
+        <button class="pl-btn open-submit" type="submit">APPROVE</button>
       </div>
     </form>
   </dialog>

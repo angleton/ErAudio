@@ -144,6 +144,10 @@ When configured, **TOP** offers a separate **Sign in with Google** button. It is
 
 Only listening history is synced. Settings, saved locations, and the Local Videos list remain in browser storage and do not automatically follow your account. Browser storage is also separate between origins, such as `localhost` and the hosted site. Export saved locations or history if you want a backup.
 
+For a shared computer, open **TOP**, select **?**, and choose **USE SHARED COMPUTER**. On a trusted phone, open [ErAudio](https://ericangleton.com/eraudio/) directly from a bookmark or by typing its address, rather than following a link from the shared computer. Sign in to TOP with Google on the phone, open **?**, choose **APPROVE SHARED COMPUTER**, and enter the displayed code within five minutes. The shared computer receives an ErAudio-only session for up to eight hours; Google credentials and the Google identity token stay on the phone. The session can read and add listening history, but cannot clear it. On the phone, **REVOKE SHARED SESSIONS** ends all shared sessions for that account.
+
+The shared session is held in page memory, so a reload requires approval again. Signing out attempts to sync and revoke the session, but a local history copy and any unsynced listens remain on the computer for later reconnection. A revoked or expired session also retains unsynced listens locally; reconnect to the same account to retry. Use a private browser window to reduce locally retained data, and verify Google itself is signed out if it was previously used there. A compromised computer can still misuse the ErAudio session and view or alter listening history while it is active; it cannot be made fully trustworthy by this feature.
+
 Sync checks about once a minute while the page is in use, and when you open **TOP** or return online. It does not interrupt playback. If the network or service is unavailable after sign-in, new listens are saved in that account's local browser storage and retried. After a reload or sign-in expiration, use the Google button to reconnect. While signed out, ErAudio shows and records only this browser's separate local history. Signing out hides the account history in the app; it does not erase its local database. Use separate browser profiles on a shared computer.
 
 Period-specific play details require the updated history Worker. If the app connects to an older Worker, ordinary history continues to sync, while period details remain in the local account database and a sync warning is shown. Deploy the updated Worker to sync those details; no D1 schema migration is required.
@@ -152,7 +156,7 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
 
 #### Enable sync on a deployment
 
-The hosted app is already configured for history sync. To configure or replace a deployment, follow [Configure your own deployment](./cloudflare/README.md#configure-your-own-deployment), including its verification steps.
+The hosted app is configured for history sync. Shared-computer pairing additionally requires the database migration described in the [Cloudflare sync guide](./cloudflare/README.md#shared-computer-pairing-migration). To configure or replace a deployment, follow [Configure your own deployment](./cloudflare/README.md#configure-your-own-deployment), including its verification steps.
 
 #### Automate Worker deployments with GitHub Actions
 

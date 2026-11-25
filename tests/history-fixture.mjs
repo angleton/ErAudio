@@ -18,6 +18,7 @@ export function token(sub, extra = {}) {
 export function testDatabase() {
   const db = new DatabaseSync(':memory:');
   db.exec(readFileSync(new URL('../cloudflare/history-schema.sql', import.meta.url), 'utf8'));
+  db.exec(readFileSync(new URL('../cloudflare/pairing-schema.sql', import.meta.url), 'utf8'));
   const prepare = (sql) => ({
     bind(...args) {
       const run = () => {

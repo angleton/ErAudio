@@ -894,6 +894,46 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
   const initial = [['b', 1, 10], ['z', 1, 10]];
   await Promise.all([first, second].map(({ page }) => waitForTop(page, 'LISTENS', initial)));
 
+  const sharedBrowser = await chromium.launch();
+  t.after(() => sharedBrowser.close());
+  const shared = await sharedBrowser.newPage();
+  shared.setDefaultTimeout(8000);
+  const sharedCredentials = [];
+  let sharedOffline = false;
+  await shared.route('**/*', (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin === endpoint) {
+      if (sharedOffline) return route.abort();
+      const credential = request.headers().authorization;
+      if (credential) sharedCredentials.push(credential);
+      return route.continue();
+    }
+    if (url.origin === origin) return route.continue();
+    return route.abort();
+  });
+  await shared.goto(origin);
+  await shared.locator('#btn-hist').click();
+  await shared.locator('#history-sync-help').click();
+  await shared.getByRole('button', { name: 'USE SHARED COMPUTER' }).click();
+  await shared.waitForFunction(() => document.querySelector('#shared-pair-code').textContent.length > 0);
+  const code = await shared.locator('#shared-pair-code').textContent();
+  assert.match(code, /^[0-9a-f]{8}-[A-Za-z0-9_-]{22}$/);
+  await first.page.locator('#history-sync-help').click();
+  await first.page.getByRole('button', { name: 'APPROVE SHARED COMPUTER' }).click();
+  await first.page.getByLabel('PAIRING CODE').fill(code);
+  await first.page.getByRole('button', { name: 'APPROVE', exact: true }).click();
+  await shared.getByText('Shared-computer history synced.', { exact: false }).waitFor();
+  await waitForTop(shared, 'LISTENS', initial);
+  assert.equal(await shared.locator('#history-clear').isDisabled(), true);
+  assert.ok(sharedCredentials.length > 0);
+  assert.ok(sharedCredentials.every((credential) => credential.startsWith('Bearer ers_')));
+  assert.ok(sharedCredentials.every((credential) => !credential.includes(code)));
+  await shared.locator('#history-sign-out').click();
+  await shared.waitForFunction(() => document.querySelector('#history-sync-status').textContent
+    .includes('local history copy and unsynced listens remain'));
+  await first.page.locator('#history-sync-help').click();
+
   await importHistory(second.page, fixture([['a', 300], ['z', 400], ['b', 500, 10]]));
   await reopenTop(first);
   const segments = [['z', 2, 20], ['a', 1, 10], ['b', 1, 10], ['b', 1, 10, 10]];
@@ -918,4 +958,36 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
   await first.signOut.click();
   await first.signIn.waitFor({ state: 'visible' });
   await first.signOut.waitFor({ state: 'hidden' });
+
+  await shared.getByRole('button', { name: 'USE SHARED COMPUTER' }).click();
+  await shared.waitForFunction(() => document.querySelector('#shared-pair-code').textContent.length > 0);
+  await second.page.locator('#history-sync-help').click();
+  await second.page.getByRole('button', { name: 'APPROVE SHARED COMPUTER' }).click();
+  await second.page.getByLabel('PAIRING CODE').fill(await shared.locator('#shared-pair-code').textContent());
+  await second.page.getByRole('button', { name: 'APPROVE', exact: true }).click();
+  await shared.getByText('Shared-computer history synced.', { exact: false }).waitFor();
+  await shared.locator('#history-sign-out:enabled').waitFor();
+  sharedOffline = true;
+  await shared.locator('#history-file').setInputFiles({
+    name: 'offline-history.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(fixture([['a', 999]]))),
+  });
+  await shared.waitForFunction(() => document.querySelector('#history-message').textContent.includes('Imported'));
+  await shared.locator('#history-sign-out:enabled').waitFor();
+  await shared.locator('#history-sign-out').click();
+  await shared.waitForFunction(() => document.querySelector('#history-sync-status').textContent
+    .includes('could not be revoked'));
+  sharedOffline = false;
+  second.page.once('dialog', (dialog) => dialog.accept());
+  await second.page.getByRole('button', { name: 'REVOKE SHARED SESSIONS' }).click();
+  await second.page.getByText('All shared-computer sessions were revoked.', { exact: true }).waitFor();
+  await shared.getByRole('button', { name: 'USE SHARED COMPUTER' }).click();
+  await shared.waitForFunction(() => document.querySelector('#shared-pair-code').textContent.length > 0);
+  await second.page.getByRole('button', { name: 'APPROVE SHARED COMPUTER' }).click();
+  await second.page.getByLabel('PAIRING CODE').fill(await shared.locator('#shared-pair-code').textContent());
+  await second.page.getByRole('button', { name: 'APPROVE', exact: true }).click();
+  await shared.getByText('Shared-computer history synced.', { exact: false }).waitFor();
+  await reopenTop(second);
+  await second.page.waitForFunction(async () => (await readHistory()).spans
+    .some((span) => span.videoId === 'aaaaaaaaaaa' && span.playedAt === 999));
 });

@@ -1407,6 +1407,11 @@ body {
   pointer-events: none;
 }
 
+#shared-pair-code {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .copy-menu {
   position: fixed;
   z-index: 30;
