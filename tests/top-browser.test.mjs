@@ -72,7 +72,7 @@ test('the interface fills the viewport while retaining usable controls in smalle
   assert.equal(taller.timerFont, normal.timerFont);
   assert.equal(taller.scrollHeight, taller.height);
 
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
   const historyBox = await page.locator('#history-window').boundingBox();
   const mainBox = await page.locator('.main-window').boundingBox();
@@ -284,7 +284,7 @@ test('starts idle and persists video additions and context-menu removals', { tim
   }
   await page.goto(origin);
   await checkIdle();
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   assert.equal(await page.locator('#playlist-list button').count(), 0);
 
   await page.getByRole('button', { name: 'Open a YouTube URL or video ID' }).click();
@@ -293,7 +293,7 @@ test('starts idle and persists video additions and context-menu removals', { tim
   assert.deepEqual(await page.evaluate(() => window.videoLoads), ['abcdefghijk']);
   await page.reload();
   await checkIdle();
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   assert.equal(await page.locator('#playlist-list button').count(), 1);
   assert.equal(await page.locator('#playlist-list button').getAttribute('data-video-id'), 'abcdefghijk');
 
@@ -311,7 +311,7 @@ test('starts idle and persists video additions and context-menu removals', { tim
   assert.equal(await removed.count(), 0);
   assert.equal(await kept.getAttribute('aria-pressed'), 'true');
   await page.reload();
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   assert.equal(await removed.count(), 0);
   assert.equal(await kept.count(), 1);
 
@@ -718,7 +718,7 @@ test('playing video and segment highlights follow playback across the lists', { 
     };
     playTrack(null, { ...track, title: 'Test video', markers }, 5);
   });
-  for (const name of ['VID', 'PL', 'TOP']) {
+  for (const name of ['YT', 'PL', 'TOP']) {
     await page.getByRole('button', { name, exact: true }).click();
   }
   await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"]').waitFor();

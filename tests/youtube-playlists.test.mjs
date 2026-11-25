@@ -513,6 +513,7 @@ test('the track title handles both mouse buttons without toggling playback', { t
 
 test('optional panes minimize independently and reopen from the main player', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
+  assert.equal(await page.getByRole('button', { name: 'YT', exact: true }).getAttribute('data-tooltip'), 'YouTube');
   const panes = [
     ['btn-hist', 'history-window', 'Minimize listening history'],
     ['btn-vid', 'videos-window', 'Minimize videos'],
@@ -545,7 +546,7 @@ test('optional panes minimize independently and reopen from the main player', { 
 test('last played local video is selected and cued on reload, not an unplayed selection', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
   assert.deepEqual(await page.evaluate(() => window.playerEvents), []);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await openVideo(page, 'aaaaaaaaaaa');
   await page.waitForFunction(() => playingTrack?.title === 'Local video');
   await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PLAYING }));
@@ -560,7 +561,7 @@ test('last played local video is selected and cued on reload, not an unplayed se
   await page.waitForFunction(() => ytReady && window.playerEvents.length > 0);
   assert.deepEqual(await page.evaluate(() => window.playerEvents), [['cue', 'aaaaaaaaaaa']]);
   assert.match(await page.locator('#track-title').textContent(), /Local video/);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   const first = page.locator('#playlist-list button').first();
   assert.equal(await first.getAttribute('aria-pressed'), 'true');
   assert.equal(await first.evaluate((element) => element.classList.contains('active')), true);
@@ -580,7 +581,7 @@ test('last played local video is selected and cued on reload, not an unplayed se
 test('last played playlist and history videos restore without adding them to Local Videos', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
   await signIn(page);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await page.locator('#playlist-select').selectOption('youtube:list-a');
   await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
   await page.locator('#playlist-list button').nth(1).click();
@@ -652,7 +653,7 @@ test('last played storage failures are reported without interrupting playback', 
 
 test('playlist help toggles guidance while important statuses remain visible', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   const help = page.locator('#playlist-help-button');
   const status = page.locator('#playlist-status');
   const sortStatus = page.locator('#playlist-sort-status');
@@ -683,7 +684,7 @@ test('playlist help toggles guidance while important statuses remain visible', {
 test('YouTube playlists are read-only views and preserve the local list and playing queue', { timeout: 20000 }, async (t) => {
   const { page, requests } = await setup(t);
   const select = page.locator('#playlist-select');
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   assert.deepEqual(await select.locator('option').allTextContents(), ['Local Videos']);
   await openVideo(page, 'lllllllllll');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('eraudio:added-tracks'))[0]?.title === 'Local video');
@@ -717,7 +718,7 @@ test('YouTube playlists are read-only views and preserve the local list and play
   assert.equal(await select.inputValue(), 'favorites');
   assert.equal(await page.locator('#playlist-list button').count(), 2);
   await page.reload();
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   assert.deepEqual(await page.locator('#playlist-list button').evaluateAll((buttons) => buttons.map((button) => button.dataset.videoId)),
     ['lllllllllll', 'mmmmmmmmmmm']);
   assert.ok(requests.some((request) => request.path === 'playlists' && request.params.pageToken === 'catalog-next'));
@@ -749,7 +750,7 @@ test('playlist sorting uses view counts and all-time history without changing pl
       ],
     });
   });
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   assert.equal(await page.locator('#playlist-columns').isHidden(), true);
   await signIn(page);
   await page.locator('#playlist-select').selectOption('youtube:list-a');
@@ -806,7 +807,7 @@ test('playlist sorting reports missing statistics and API failures without chang
     if (fail) return route.fulfill({ status: 503, json: { error: 'unavailable' } });
     return route.fulfill({ json: { items: [{ id: 'bbbbbbbbbbb', statistics: { viewCount: '0' } }] } });
   });
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await signIn(page);
   await page.locator('#playlist-select').selectOption('youtube:list-a');
   await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
@@ -845,7 +846,7 @@ test('view statistics are batched and late responses cannot reorder another play
     return route.fulfill({ json: { items: ids.map((id) => ({ id, statistics: { viewCount: String(Number(id)) } })) } });
   });
   await signIn(page);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await page.evaluate(() => {
     const tracks = Array.from({ length: 101 }, (_, index) => ({
       videoId: String(index).padStart(11, '0'), title: `Video ${index}`, duration: '--:--',
@@ -889,7 +890,7 @@ test('view statistics are batched and late responses cannot reorder another play
 
 test('playlist errors and late responses leave the selected local or newer view intact', { timeout: 20000 }, async (t) => {
   const { page, requests, releaseSlow } = await setup(t);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await openVideo(page, 'lllllllllll');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('eraudio:added-tracks') || '[]')[0]?.title === 'Local video');
   const saved = await page.evaluate(() => localStorage.getItem('eraudio:added-tracks'));
@@ -922,7 +923,7 @@ test('playlist errors and late responses leave the selected local or newer view 
 
 test('resetting YouTube settings cancels an in-flight playlist without changing local videos', { timeout: 20000 }, async (t) => {
   const { page, requests, releaseSlow } = await setup(t);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await openVideo(page, 'lllllllllll');
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('eraudio:added-tracks') || '[]')[0]?.title === 'Local video');
   const saved = await page.evaluate(() => localStorage.getItem('eraudio:added-tracks'));
@@ -944,7 +945,7 @@ test('resetting YouTube settings cancels an in-flight playlist without changing 
 
 async function checkPlaylistHistory(t, endFirst) {
   const { page } = await setup(t);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await openVideo(page, 'aaaaaaaaaaa');
   await page.evaluate(async (endFirst) => {
     await localHistoryReady;
@@ -1005,7 +1006,7 @@ test('TOP combines the same video across playlists when restarted while playing'
 
 test('pausing and resuming still counts as one play', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
-  await page.getByRole('button', { name: 'VID', exact: true }).click();
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
   await openVideo(page, 'aaaaaaaaaaa');
   const history = await page.evaluate(async () => {
     await localHistoryReady;
