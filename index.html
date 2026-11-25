@@ -151,10 +151,10 @@
       <div class="control-panel">
         <!-- Transport Buttons -->
         <div class="transport-buttons">
-          <button class="transport-btn prev tooltip-target" type="button" data-action="previous" data-tooltip="Previous track" aria-label="Previous track">⏮</button>
+          <button class="transport-btn prev tooltip-target" type="button" data-action="previous" data-tooltip="Previous track. Right-click for navigation mode." aria-label="Previous track" aria-haspopup="menu" aria-expanded="false">⏮</button>
           <button class="transport-btn play tooltip-target" type="button" data-action="play" data-tooltip="Play / Pause" aria-label="Play">▶</button>
           <button class="transport-btn stop tooltip-target" type="button" data-action="stop" data-tooltip="Stop" aria-label="Stop">⏹</button>
-          <button class="transport-btn next tooltip-target" type="button" data-action="next" data-tooltip="Next track" aria-label="Next track">⏭</button>
+          <button class="transport-btn next tooltip-target" type="button" data-action="next" data-tooltip="Next track. Right-click for navigation mode." aria-label="Next track" aria-haspopup="menu" aria-expanded="false">⏭</button>
           <button class="transport-btn eject tooltip-target" type="button" data-action="open" data-tooltip="Open a YouTube URL or video ID" aria-label="Open a YouTube URL or video ID">⏏</button>
         </div>
 
@@ -346,6 +346,10 @@
   <div class="copy-menu" id="bpm-auto-menu" role="menu" aria-label="Both BPM counters" hidden>
     <button type="button" role="menuitem" data-auto="on" tabindex="-1">AUTO ON</button>
     <button type="button" role="menuitem" data-auto="off" tabindex="-1">AUTO OFF</button>
+  </div>
+  <div class="copy-menu" id="transport-mode-menu" role="menu" aria-label="Previous and next navigation mode" hidden>
+    <button type="button" role="menuitemradio" aria-checked="true" data-transport-mode="videos" tabindex="-1">VIDEOS</button>
+    <button type="button" role="menuitemradio" aria-checked="false" data-transport-mode="markers" tabindex="-1">CURRENT PL</button>
   </div>
   <p class="event-status" id="event-status" role="status" aria-live="polite">Ready for input events.</p>
   <p class="copy-notice" id="copy-notice" aria-hidden="true" hidden>Copied to clipboard</p>

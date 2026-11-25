@@ -31,6 +31,7 @@ const playerScript = `
       getPlayerState() { return this.state; }
       getDuration() { return this.duration || 0; }
       getCurrentTime() { return this.position || 0; }
+      seekTo(position) { this.position = position; window.playerEvents.push(['seek', position]); }
       getVideoData() { return { video_id: this.videoId }; }
       playVideo() { this.state = 1; }
       pauseVideo() { this.state = 2; }
@@ -140,6 +141,92 @@ async function openVideo(page, videoId) {
   await page.getByLabel('VIDEO URL OR ID').fill(videoId);
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
+
+test('transport mode navigates the selected PL markers and keeps playback state', async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(() => {
+    ytPlayer.duration = 90;
+    ytPlayer.position = 15;
+    ytPlayer.pauseVideo();
+    playingTrack.markers = {
+      chapters: [{ start: 0, title: 'First' }, { start: 10, title: 'Second' }, { start: 30, title: 'Third' }],
+      timestamps: [{ start: 0, title: 'First' }, { start: 20, title: 'Other' }, { start: 100, title: 'Out of range' }],
+      duration: 90,
+    };
+    renderMarkers();
+  });
+  await page.locator('#btn-pl').click();
+  await page.getByRole('button', { name: 'Next track' }).click({ button: 'right' });
+  await page.getByRole('menuitemradio', { name: 'CURRENT PL' }).click();
+  const next = page.getByRole('button', { name: 'Next PL item' });
+  const previous = page.getByRole('button', { name: 'Previous PL item' });
+  await next.click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 30);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  assert.equal(await page.locator('#marker-list [data-marker="2"]').evaluate((item) => item.classList.contains('active')), true);
+  await next.click();
+  assert.match(await page.locator('#event-status').textContent(), /last PL item/);
+  await previous.click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 10);
+  await previous.click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 0);
+  await previous.click();
+  assert.match(await page.locator('#event-status').textContent(), /first PL item/);
+
+  await page.locator('#marker-view-toggle').click();
+  await next.click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 20);
+  await next.click();
+  assert.match(await page.locator('#event-status').textContent(), /last PL item/);
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 20);
+
+  await page.reload();
+  assert.equal(await page.getByRole('button', { name: 'Next PL item' }).count(), 1);
+  await page.getByRole('button', { name: 'Previous PL item' }).focus();
+  await page.keyboard.press('Shift+F10');
+  assert.equal(await page.getByRole('menuitemradio', { name: 'CURRENT PL' }).getAttribute('aria-checked'), 'true');
+  await page.getByRole('menuitemradio', { name: 'VIDEOS' }).click();
+  assert.equal(await page.getByRole('button', { name: 'Next track' }).count(), 1);
+});
+
+test('transport PL mode navigates saved locations and reports an empty view', async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(() => {
+    ytPlayer.duration = 90;
+    ytPlayer.position = 5;
+    savedLocations.set('aaaaaaaaaaa', [60, 10, 30, 100]);
+    renderMarkers();
+  });
+  await page.locator('#btn-pl').click();
+  await page.locator('#marker-source-toggle').click();
+  await page.getByRole('button', { name: 'Previous track' }).click({ button: 'right' });
+  await page.getByRole('menuitemradio', { name: 'CURRENT PL' }).click();
+  await page.getByRole('button', { name: 'Next PL item' }).click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 10);
+  assert.equal(await page.evaluate(() => selectedLocation.index), 1);
+  await page.getByRole('button', { name: 'Next PL item' }).click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 30);
+  await page.getByRole('button', { name: 'Previous PL item' }).click();
+  assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 10);
+  await page.evaluate(() => { savedLocations.clear(); renderMarkers(); });
+  await page.getByRole('button', { name: 'Next PL item' }).click();
+  assert.match(await page.locator('#event-status').textContent(), /No playable items/);
+});
+
+test('PL navigation mode does not change automatic next-video playback', async (t) => {
+  const { page } = await setup(t);
+  await page.locator('#btn-vid').click();
+  await signIn(page);
+  await page.locator('#playlist-select').selectOption('youtube:list-a');
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-list button').length === 3);
+  await page.locator('#playlist-list button').first().click({ clickCount: 2 });
+  await page.getByRole('button', { name: 'Next track' }).click({ button: 'right' });
+  await page.getByRole('menuitemradio', { name: 'CURRENT PL' }).click();
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.ENDED }));
+  assert.deepEqual((await page.evaluate(() => window.playerEvents)).slice(-1), [['play', 'bbbbbbbbbbb']]);
+});
 
 test('brand pronunciation tooltip matches the README and works on hover and keyboard focus', async (t) => {
   const { page } = await setup(t);

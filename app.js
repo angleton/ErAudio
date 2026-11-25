@@ -1141,6 +1141,41 @@ function stepTrack(step, { wrap = true } = {}) {
   return true;
 }
 
+function stepMarker(step) {
+  if (!ytReady || !playingTrack || ytPlayer.getVideoData?.()?.video_id !== playingTrack.videoId) {
+    announceEvent({ type: 'error', name: 'Open a video before navigating PL.' });
+    return;
+  }
+  const duration = markerSource === 'user' ? activeVideoDuration() : playingTrack.markers?.duration;
+  const entries = currentMarkerEntries().filter((entry) => !duration
+    || (markerSource === 'user' ? entry.start <= duration : entry.start < duration));
+  if (!entries.length || (markerSource === 'user' && !duration)) {
+    announceEvent({ type: 'error', name: 'No playable items are available in the current PL view.' });
+    return;
+  }
+  const position = ytPlayer.getCurrentTime();
+  if (!Number.isFinite(position)) {
+    announceEvent({ type: 'error', name: 'The current playback position is unavailable.' });
+    return;
+  }
+  const current = entries.findLastIndex((entry) => entry.start <= position);
+  const target = entries[step > 0 ? current + 1 : current - 1];
+  if (!target) {
+    announceEvent({ type: 'navigation', name: step > 0 ? 'Already at the last PL item.' : 'Already at the first PL item.' });
+    return;
+  }
+  if (markerSource === 'user') {
+    recallSavedLocation(target.locationIndex);
+  } else {
+    cancelNudgePreview(true);
+    seekPlayback(target.start);
+    const videoDuration = currentDuration();
+    if (videoDuration) controls.scrubber.value = (target.start / videoDuration) * 100;
+    updateTimeDisplay(target.start, videoDuration);
+    highlightActiveMarker(target.start);
+  }
+}
+
 const liveLevelStatus = document.querySelector('#live-level-status');
 const liveLevelSetup = document.querySelector('#live-level-setup');
 const spectrum = document.querySelector('#live-spectrum');
@@ -2944,6 +2979,100 @@ document.addEventListener('eraudio:youtube-authenticated', (event) => {
   setYouTubeAccount(event.detail?.accountName);
 });
 
+const transportButtons = [...document.querySelectorAll('[data-action="previous"], [data-action="next"]')];
+const transportModeMenu = document.querySelector('#transport-mode-menu');
+const transportModeItems = [...transportModeMenu.querySelectorAll('[role="menuitemradio"]')];
+const transportModeStorageKey = 'eraudio:transport-mode';
+let transportMode = 'videos';
+let transportMenuSource = null;
+try {
+  const savedMode = localStorage.getItem(transportModeStorageKey);
+  if (savedMode === 'markers' || savedMode === 'videos') transportMode = savedMode;
+  else if (savedMode !== null) throw new Error('Invalid stored navigation mode');
+} catch (error) {
+  console.error('Could not read the transport navigation mode.', error);
+  announceEvent({ type: 'error', name: 'Could not read the saved transport navigation mode; using videos.' });
+}
+
+function updateTransportMode() {
+  transportButtons.forEach((button) => {
+    const direction = button.dataset.action === 'next' ? 'Next' : 'Previous';
+    const label = `${direction} ${transportMode === 'videos' ? 'track' : 'PL item'}`;
+    button.setAttribute('aria-label', label);
+    button.dataset.tooltip = `${label}. Right-click or press Shift+F10 for navigation mode.`;
+  });
+  transportModeItems.forEach((item) => {
+    item.setAttribute('aria-checked', String(item.dataset.transportMode === transportMode));
+  });
+}
+
+function closeTransportModeMenu(restoreFocus = false) {
+  const source = transportMenuSource;
+  transportModeMenu.hidden = true;
+  transportMenuSource = null;
+  source?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && source?.isConnected) source.focus();
+}
+
+function openTransportModeMenu(source, x, y) {
+  transportMenuSource = source;
+  source.setAttribute('aria-expanded', 'true');
+  transportModeMenu.hidden = false;
+  const rect = transportModeMenu.getBoundingClientRect();
+  transportModeMenu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width))}px`;
+  transportModeMenu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - rect.height))}px`;
+  transportModeItems.find((item) => item.dataset.transportMode === transportMode).focus();
+}
+
+transportButtons.forEach((button) => {
+  button.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    const rect = button.getBoundingClientRect();
+    openTransportModeMenu(button, event.clientX || rect.left, event.clientY || rect.bottom);
+  });
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+    event.preventDefault();
+    const rect = button.getBoundingClientRect();
+    openTransportModeMenu(button, rect.left, rect.bottom);
+  });
+});
+
+transportModeMenu.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeTransportModeMenu(true);
+  } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const index = transportModeItems.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? transportModeItems.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + transportModeItems.length) % transportModeItems.length;
+    transportModeItems[next].focus();
+  }
+});
+transportModeMenu.addEventListener('focusout', (event) => {
+  if (!transportModeMenu.contains(event.relatedTarget)) closeTransportModeMenu();
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!transportModeMenu.hidden && !transportModeMenu.contains(event.target)) closeTransportModeMenu();
+});
+transportModeMenu.addEventListener('click', (event) => {
+  const item = event.target.closest('[data-transport-mode]');
+  if (!item || !transportMenuSource) return;
+  event.stopPropagation();
+  transportMode = item.dataset.transportMode;
+  updateTransportMode();
+  closeTransportModeMenu(true);
+  try {
+    localStorage.setItem(transportModeStorageKey, transportMode);
+    announceEvent({ type: 'navigation', name: `Previous and next now navigate ${transportMode === 'videos' ? 'videos' : 'the current PL view'}.` });
+  } catch (error) {
+    console.error('Could not save the transport navigation mode.', error);
+    announceEvent({ type: 'error', name: 'Navigation mode changed for this session, but could not be saved.' });
+  }
+});
+updateTransportMode();
+
 document.addEventListener('click', (event) => {
   if (titleMarquee.contains(event.target)) return;
   const button = event.target.closest('button')
@@ -2997,8 +3126,13 @@ document.addEventListener('click', (event) => {
     else ytPlayer.pauseVideo();
   }
   if (button.dataset.action === 'stop') stopPlayback();
-  if (button.dataset.action === 'next') stepTrack(1);
-  if (button.dataset.action === 'previous') stepTrack(-1);
+  if (button.dataset.action === 'next' || button.dataset.action === 'previous') {
+    const step = button.dataset.action === 'next' ? 1 : -1;
+    announceEvent({ type: 'click', name: button.dataset.action });
+    if (transportMode === 'markers') stepMarker(step);
+    else stepTrack(step);
+    return;
+  }
 
   const minimizing = button.dataset.action === 'minimize-pane';
   if (minimizing || button.dataset.action?.startsWith('toggle-')) {
