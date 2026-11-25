@@ -12,11 +12,11 @@ A retro YouTube audio web player interface inspired by the classic **Winamp 2.x 
 
 1. **Open the player:** <https://ericangleton.com/eraudio/>
 2. **Start listening:** Click **Open** and enter a YouTube link or video ID; no account needed. On later visits, the last video that played is selected and cued without playing automatically. Press **Play** to start it from the beginning. Previously added videos are still available in **VID**. The selection is stored in this browser; clearing site data removes it. Videos played from YouTube playlists or history are restored individually, not with their original playlist queue.
-3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. See [YouTube API setup](#youtube-api-setup).
+3. **Optional YouTube features:** use **API SETUP** to enter your own YouTube Data API key for public video chapters, or your Google OAuth client ID for **YOUTUBE LOGIN** and account playlists. This YouTube login is separate from the Google sign-in under **TOP**, which syncs listening history across browsers. See [YouTube API setup](#youtube-api-setup) and [listening history sync](#private-listening-history-sync).
 4. **Show more windows:** **VID** opens the Videos window, **PL** opens detected chapters and timestamps, **DJ** opens the speed control, and **TOP** opens your listening history above the main player, ranked by total listening time. Use the **−** button in an optional pane’s top-right corner to hide it, and its main-player button to reopen it.
 5. **See live audio levels:** Follow [Enable live audio levels](#enable-live-audio-levels) to share audio from the ErAudio tab.
 
-> If Google says "this app isn't verified", click **Advanced**, then **Continue**. ErAudio only asks to *view* your YouTube account and never changes anything.
+> If Google warns that an app is unverified, review the app identity and requested permissions before proceeding. Don't continue if you don't recognize or trust the app. YouTube login requests read-only access to your YouTube account; history sync uses a separate Google sign-in.
 
 ### Prefer to download it?
 
@@ -30,11 +30,11 @@ Pasting links works this way. For YouTube API features, configure your own crede
 
 Read the [ErAudio Privacy Policy](https://ericangleton.com/privacy.html). The source is [`privacy.html`](./privacy.html), and the player links to it from its footer.
 
-Squarespace holds the `ericangleton.com` registration and DNS; GitHub Pages hosts the site, with the homepage and blog at the apex and ErAudio under `/eraudio/`. Squarespace's apex A records point to GitHub Pages. Preserve email-related DNS records if making future web-hosting changes.
+Squarespace holds the `ericangleton.com` registration and DNS; GitHub Pages hosts the site. The homepage currently redirects to ErAudio at `/eraudio/`, and the blog is at `/blog/`. Squarespace's apex A records point to GitHub Pages. Preserve email-related DNS records if making future web-hosting changes.
 
 ### Build and preview the unified site
 
-The Eleventy build creates a static homepage, blog index, and article pages in `dist/`, then copies the existing ErAudio app into `dist/eraudio/`. The original app files remain at the repository root, and the visualizer remains in its own `visualizer/` directory.
+The Eleventy build creates the homepage redirect, blog index, and article pages in `dist/`, then copies the existing ErAudio app into `dist/eraudio/`. The original app files remain at the repository root, and the visualizer remains in its own `visualizer/` directory.
 
 ```powershell
 npm ci
@@ -135,9 +135,13 @@ Open [`visualizer/preview.html`](./visualizer/preview.html) directly in a browse
 
 ### Private listening history sync
 
+See the [Cloudflare sync guide](./cloudflare/README.md) for why ErAudio uses Cloudflare and how to use cross-browser history sync.
+
 When sync is configured, the **TOP** controls start with **Sign in with Google** or **STOP SYNC & SIGN OUT**, followed by **?** and **VIEW**. Select **?** to show history help and sync status.
 
 When configured, **TOP** offers a separate **Sign in with Google** button. It is hidden while you’re signed in to history sync and returns when you sign out or need to sign in again. Sign in with the same account in each browser to combine listening spans, play counts, and heat maps. The first sign-in for each account in a browser asks before copying existing local history. Declining keeps it local. ErAudio uploads video IDs, titles and timeline labels, played ranges, timestamps, playback-session identifiers, and counts to Cloudflare D1; there is no public view. YouTube login and permissions are unchanged.
+
+Only listening history is synced. Settings, saved locations, and the Local Videos list remain in browser storage and do not automatically follow your account. Browser storage is also separate between origins, such as `localhost` and the hosted site. Export saved locations or history if you want a backup.
 
 Sync checks about once a minute while the page is in use, and when you open **TOP** or return online. It does not interrupt playback. If the network or service is unavailable after sign-in, new listens are saved in that account's local browser storage and retried. After a reload or sign-in expiration, use the Google button to reconnect. While signed out, ErAudio shows and records only this browser's separate local history. Signing out hides the account history in the app; it does not erase its local database. Use separate browser profiles on a shared computer.
 
@@ -147,33 +151,17 @@ While signed in, **EXPORT** includes the combined history, **IMPORT** adds to th
 
 #### Enable sync on a deployment
 
-1. In Google Cloud, create a **Web application** OAuth client for Google Identity Services. Add each app origin under **Authorized JavaScript origins**: `https://ericangleton.com`, `https://audio.ericangleton.com`, `https://angleton.github.io`, and `http://localhost:8000`. For a test deployment, authorize the test Google accounts on the OAuth consent screen. No client secret or YouTube permission is needed by history sync.
-2. From the `cloudflare` directory, sign in with `npx wrangler login` and create the database with `npx wrangler d1 create eraudio-history`. Add the resulting `[[d1_databases]]` block to [`wrangler.toml`](./cloudflare/wrangler.toml) and replace its existing `binding` value with `HISTORY_DB`. Do not add a second `binding` line. Set `APP_ORIGINS` to a comma-separated list of exact allowed origins (for example, `https://ericangleton.com,https://audio.ericangleton.com,http://localhost:8000`) and set `GOOGLE_CLIENT_ID` in the same file.
-
-   **Run these commands one at a time.** Copy and run the first block to apply the database schema:
-   ```powershell
-   npx wrangler d1 execute eraudio-history --remote --file history-schema.sql
-   ```
-
-   Respond to any prompts and wait for the command to finish successfully. Then copy and run this block to deploy the Worker:
-   ```powershell
-   npx wrangler deploy
-   ```
-3. Set `historySync.endpoint` in [`ErAudio.json`](./ErAudio.json) to the deployed Worker origin. From the repository root, copy the **public** Google web client ID from `wrangler.toml` into `ErAudio.json` by running:
-   ```powershell
-   .\Sync-GoogleClientId.ps1
-   ```
-
-   Edit the client ID only in `wrangler.toml`. When it changes, rerun the script, redeploy the Worker, and publish the updated static files. The script does not deploy anything. Leave both `historySync` settings blank in `ErAudio.json` for local-only behavior. The Worker authenticates every history request; do not make D1 directly accessible to the browser.
-4. Verify with two browser profiles: sign in as the same test account, exercise the existing-history prompt, play at least five seconds in the first profile, and check **TOP** and the heat map in the second. Sign in with a different account to verify isolation. Also verify that **CLEAR** reaches the other profile.
+The hosted app is already configured for history sync. To configure or replace a deployment, follow [Configure your own deployment](./cloudflare/README.md#configure-your-own-deployment), including its verification steps.
 
 #### Automate Worker deployments with GitHub Actions
+
+The [Cloudflare sync guide](./cloudflare/README.md) explains the Worker and database used by this workflow.
 
 1. Create a [Cloudflare deployment API token](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/) using the **Edit Cloudflare Workers** template, scoped to the account that owns ErAudio's Worker. Copy that account's ID (not the D1 database ID).
 2. In GitHub, go to **Settings → Secrets and variables → Actions** and add two repository secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Do not put the token in a config file or commit it.
 3. In **Actions → Deploy Cloudflare History Worker**, choose **Run workflow** on `main` to deploy without changing a file. Subsequent pushes to `main` that change the Worker, its Wrangler config, or the workflow deploy automatically.
 
-This workflow is separate from GitHub Pages. It deploys to the existing Worker and does not create the D1 database or apply its schema; run the database setup above separately.
+This workflow is separate from GitHub Pages. It deploys to the existing Worker and does not create the D1 database or apply its schema; follow the [database setup guide](./cloudflare/README.md#configure-your-own-deployment) separately for a new deployment.
 
 To run the local API and sync tests without contacting Google or Cloudflare, use Node.js 24+ and run `node --test tests\history-sync.test.mjs` from the repository root.
 
@@ -209,7 +197,7 @@ Open `index.html` in a modern browser, for example by double-clicking it in File
 
 ### YouTube API setup
 
-The app does not ship credentials or read `config.js`. Each user can enter credentials through **API SETUP**; opening **PL** without either credential or choosing **YOUTUBE LOGIN** without a client ID also opens the setup dialog. Both fields are optional except that login requires a client ID. Saving settings through **API SETUP** does not sign you in; click **YOUTUBE LOGIN** to authorize your account. Use **API SETUP** again to change a value or clear a field and save to remove it. Changing or removing the client ID ends the current app session's YouTube sign-in.
+The app does not ship YouTube API credentials or read `config.js`; the separate history sync configuration includes a public Google client ID. Each user can enter YouTube API credentials through **API SETUP**; opening **PL** without either credential or choosing **YOUTUBE LOGIN** without a client ID also opens the setup dialog. Both fields are optional except that login requires a client ID. Saving settings through **API SETUP** does not sign you in; click **YOUTUBE LOGIN** to authorize your account. Use **API SETUP** again to change a value or clear a field and save to remove it. Changing or removing the client ID ends the current app session's YouTube sign-in.
 
 Click outside **YOUTUBE API SETUP** or press **CANCEL** to close it without saving changes.
 
