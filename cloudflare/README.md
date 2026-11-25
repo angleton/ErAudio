@@ -55,20 +55,24 @@ private browsing session generally removes its local data, including unsynced
 listens. A compromised shared computer can still steal an active ErAudio
 session and read or alter history, so never enter your Google credentials there.
 
-### Shared-computer pairing migration
+### Shared-computer pairing schema
 
-Before deploying the Worker with shared-computer pairing, apply
-[pairing-schema.sql](pairing-schema.sql) to the existing D1 database. This
-creates new session tables and indexes without replacing the existing history
-schema. From the `cloudflare` directory, using the correct database name:
+The pairing-schema migration is complete for the existing deployment. No further
+database action is needed for it. The migration creates session tables and
+indexes without replacing the existing history schema.
+
+For a separate deployment whose D1 database does not yet have the pairing
+schema, apply [pairing-schema.sql](pairing-schema.sql) before deploying the
+Worker and publishing the updated app. From the `cloudflare` directory, using
+the correct database name:
 
 ```powershell
 npx wrangler d1 execute eraudio-history --remote --file pairing-schema.sql
 ```
 
-Wait for it to succeed before deploying the Worker and publishing the updated
-app. Do not rerun `history-schema.sql` against an existing database. The
-automatic Worker deployment does not apply migrations.
+Do not rerun this migration against the existing deployment or rerun
+`history-schema.sql` against an existing database. Automatic Worker deployment
+does not apply migrations.
 
 ## Configure your own deployment
 
