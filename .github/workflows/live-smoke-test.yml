@@ -1,0 +1,27 @@
+name: Live site smoke test
+
+on:
+  workflow_run:
+    workflows: ['Build and publish website']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '17 12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Wait for the new deployment to propagate
+        if: github.event_name == 'workflow_run'
+        run: sleep 60
+      - run: node scripts/smoke-test-live.mjs

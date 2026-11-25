@@ -58,6 +58,8 @@ GitHub Pages is static hosting, so it does not provide built-in comments or sign
 
 The **Build and publish website** workflow builds on pushes and pull requests to `main`. When the repository Actions variable `PUBLISH_SITE` is `true`, pushes to `main` and manual workflow runs publish the site. This deploys to the repository's single live GitHub Pages site; it is not a separate staging environment. Set the variable to `false` or remove it to pause publishing.
 
+The **Live site smoke test** workflow checks the public site from GitHub's servers after each successful deployment and daily. It verifies the pages and app files load, HTTP redirects to HTTPS, `www` redirects to the apex, the TLS certificate is valid for at least 14 days, and the history Worker allows the site's origin. Run it manually from the Actions tab, or locally with `node scripts/smoke-test-live.mjs [origin]`.
+
 ---
 
 ## 🎯 Target UI & Design References
