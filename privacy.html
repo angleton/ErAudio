@@ -77,6 +77,7 @@
     <section>
       <h2>Optional YouTube features</h2>
       <p>You may provide your own YouTube Data API key or Google OAuth client ID in API SETUP. These values are stored in your browser's local storage. The hosted app also supplies a public Google client ID as the default for sign-in and optional YouTube authorization. The API key is used by your browser to request public video information from Google. If you choose CONNECT YOUTUBE (or YOUTUBE LOGIN on a deployment without history sync), ErAudio requests read-only access to your YouTube account to display playlists and video descriptions; it does not change your YouTube account. The YouTube access token is used only for Google API requests and is not sent to the history service.</p>
+      <p>If a loaded video's description contains no timestamps, ErAudio also requests a sample of public YouTube comments to look for a possible tracklist. Comment-derived timestamps and attribution are held in page memory, scheduled for refresh or discard after 30 minutes, and are not saved to listening history or sent to the history service.</p>
       <p>Do not enter a Google client secret. You can clear the saved API key and client ID in API SETUP or remove them by clearing ErAudio's site data. Google and YouTube process requests under their own privacy policies.</p>
     </section>
 

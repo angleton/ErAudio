@@ -163,6 +163,7 @@ const visualizerPlayButton = document.querySelector('#visualizer-play');
 const playbackIndicator = document.querySelector('#playback-indicator');
 const pauseButtons = document.querySelectorAll('[data-action="pause"]');
 const markerList = document.querySelector('#marker-list');
+const markerCommentSource = document.querySelector('#marker-comment-source');
 const markerInfo = document.querySelector('#marker-info');
 const markerSourceToggle = document.querySelector('#marker-source-toggle');
 const markerViewToggle = document.querySelector('#marker-view-toggle');
@@ -445,7 +446,18 @@ async function youtubeApi(path, params, { apiKey = '', accessToken = youtubeAcce
   if (apiKey) url.searchParams.set('key', apiKey);
   const headers = apiKey ? {} : { Authorization: `Bearer ${accessToken}` };
   const response = await fetch(url, { headers });
-  if (!response.ok) throw new Error(`YouTube API ${path} failed (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(`YouTube API ${path} failed (${response.status})`);
+    if (path === 'commentThreads') {
+      const body = await response.text();
+      try {
+        error.reason = JSON.parse(body).error?.errors?.[0]?.reason;
+      } catch (parseError) {
+        console.warn('Could not parse YouTube comment error response.', parseError);
+      }
+    }
+    throw error;
+  }
   return response.json();
 }
 
@@ -986,6 +998,26 @@ function parseDescriptionMarkers(description, duration) {
   return { chapters, timestamps, duration };
 }
 
+function findCommentTracklist(items, duration) {
+  const candidates = [];
+  items.forEach((thread, index) => {
+    const comment = thread.snippet?.topLevelComment;
+    const snippet = comment?.snippet;
+    if (typeof snippet?.textDisplay !== 'string' || typeof comment.id !== 'string' || !comment.id) return;
+    const parsed = parseDescriptionMarkers(snippet.textDisplay, duration);
+    const entries = parsed.timestamps.filter((entry) => (!duration || entry.start < duration)
+      && !/^Part \d+$/.test(entry.title) && !entry.title.includes('?'));
+    if (entries.length < 3 || entries.some((entry, i) => i > 0 && entry.start - entries[i - 1].start < 10)) return;
+    candidates.push({
+      entries, commentId: comment.id, author: snippet.authorDisplayName || 'YouTube commenter',
+      likes: Number.isSafeInteger(snippet.likeCount) && snippet.likeCount >= 0 ? snippet.likeCount : null,
+      index,
+    });
+  });
+  candidates.sort((a, b) => (b.likes ?? -1) - (a.likes ?? -1) || a.index - b.index);
+  return candidates[0] || null;
+}
+
 let markerRenderKey = '';
 let activeMarkerIndex = -1;
 let markerSource = 'video';
@@ -1009,11 +1041,14 @@ function renderMarkers() {
     : playingTrack?.markerError ? 'error' : (youtubeApiKey || youtubeAccessToken) ? 'loading'
       : youtubeOAuthClientId() ? 'signin' : 'setup';
   const key = JSON.stringify([playingTrack?.videoId, markerSource, state, playingTrack?.markerView,
-    markerSource === 'user' ? savedLocations.get(playingTrack?.videoId) : null, savedLocationsReadError]);
+    markerSource === 'user' ? savedLocations.get(playingTrack?.videoId) : null, savedLocationsReadError,
+    markers?.commentMessage, markers?.commentSource?.commentId]);
   if (key === markerRenderKey) return;
   markerRenderKey = key;
   activeMarkerIndex = -1;
   markerViewToggle.hidden = true;
+  markerCommentSource.hidden = true;
+  markerCommentSource.replaceChildren();
   markerSourceToggle.textContent = markerSource === 'user' ? 'SHOW VIDEO MARKERS' : 'SHOW MY LOCATIONS';
   markerList.setAttribute('aria-label', markerSource === 'user'
     ? 'Saved locations of the active video' : 'Chapters and timestamps of the active video');
@@ -1060,9 +1095,24 @@ function renderMarkers() {
         : 'Use API SETUP to enter a YouTube API key or sign in to detect chapters / timestamps.');
     markerInfo.textContent = state === 'loading' ? 'LOADING' : state === 'signin' ? 'SIGN IN REQUIRED' : 'SETUP REQUIRED';
   } else if (!markers.timestamps.length) {
-    placeholder('No chapters or timestamps found in this video\'s description.');
-    markerInfo.textContent = 'NONE FOUND';
+    placeholder(markers.commentMessage || 'No chapters or timestamps found in this video\'s description.');
+    markerInfo.textContent = markers.commentRetry ? 'COMMENTS UNAVAILABLE' : 'NONE FOUND';
   } else {
+    if (markers.commentSource) {
+      const source = markers.commentSource;
+      markerCommentSource.hidden = false;
+      const likes = source.likes === null ? 'like count unavailable' : `${source.likes} likes`;
+      markerCommentSource.append(`Possible tracklist from a YouTube comment by ${source.author} (${likes}). `);
+      const link = document.createElement('a');
+      const url = new URL('https://www.youtube.com/watch');
+      url.searchParams.set('v', playingTrack.videoId);
+      url.searchParams.set('lc', source.commentId);
+      link.href = url.href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View comment';
+      markerCommentSource.append(link);
+    }
     const entries = currentMarkerEntries();
     const sameEntries = markers.chapters.length === markers.timestamps.length
       && markers.chapters.every((entry, index) => entry === markers.timestamps[index]);
@@ -1086,7 +1136,8 @@ function renderMarkers() {
       }
       return item;
     }));
-    const label = sameEntries && showingChapters ? 'INFERRED CHAPTERS & TIMESTAMPS'
+    const label = markers.commentSource ? 'POSSIBLE COMMENT TRACKLIST'
+      : sameEntries && showingChapters ? 'INFERRED CHAPTERS & TIMESTAMPS'
       : showingChapters ? 'INFERRED CHAPTERS' : 'TIMESTAMPS';
     markerInfo.textContent = `${label} / ${entries.length} ENTRIES${markers.duration ? '' : ' / CHAPTERS UNAVAILABLE'}`;
   }
@@ -1095,7 +1146,8 @@ function renderMarkers() {
 }
 
 async function ensureMarkers(track) {
-  if (!track || track.markers || track.markersLoading || (!youtubeAccessToken && !youtubeApiKey)) return;
+  if (!track || (track.markers && !track.markers.commentRetry) || track.markersLoading
+    || (!youtubeAccessToken && !youtubeApiKey)) return;
   const accessToken = youtubeAccessToken;
   const apiKey = youtubeApiKey;
   let retryWithCredentials = false;
@@ -1113,7 +1165,48 @@ async function ensureMarkers(track) {
     const description = data.items?.[0]?.snippet?.description;
     if (typeof description !== 'string') throw new Error('Video description unavailable');
     const duration = parseIsoDurationSeconds(data.items[0].contentDetails?.duration);
-    track.markers = parseDescriptionMarkers(description, duration);
+    const markers = parseDescriptionMarkers(description, duration);
+    if (!markers.timestamps.length) {
+      try {
+        const comments = await youtubeApi('commentThreads', {
+          part: 'snippet', videoId: track.videoId, order: 'relevance', maxResults: '50', textFormat: 'plainText',
+        }, { apiKey: accessToken ? '' : apiKey, accessToken });
+        if (accessToken !== youtubeAccessToken || (!accessToken && apiKey !== youtubeApiKey)) {
+          retryWithCredentials = true;
+          return;
+        }
+        if (comments.items !== undefined && !Array.isArray(comments.items)) throw new Error('Invalid YouTube comments response');
+        const candidate = findCommentTracklist((comments.items || []).slice(0, 50), duration);
+        if (candidate) {
+          markers.timestamps = candidate.entries;
+          markers.commentSource = { author: candidate.author, likes: candidate.likes, commentId: candidate.commentId };
+        } else {
+          markers.commentMessage = 'No timestamps in the description or plausible tracklist in the sampled comments.';
+        }
+      } catch (error) {
+        if (accessToken !== youtubeAccessToken || (!accessToken && apiKey !== youtubeApiKey)) {
+          retryWithCredentials = true;
+          return;
+        }
+        console.warn('Could not check YouTube comments for a tracklist.', error);
+        markers.commentMessage = error.reason === 'commentsDisabled'
+          ? 'No timestamps in the description; comments are disabled for this video.'
+          : 'No timestamps in the description; could not check YouTube comments. Reopen the video or reload to retry.';
+        markers.commentRetry = error.reason !== 'commentsDisabled';
+        announceEvent({ type: 'error', name: markers.commentMessage });
+      }
+    }
+    track.markers = markers;
+    if (markers.commentSource) {
+      setTimeout(() => {
+        if (track.markers !== markers) return;
+        delete track.markers;
+        if (track === playingTrack) {
+          ensureMarkers(track);
+          renderMarkers();
+        }
+      }, 30 * 60 * 1000);
+    }
     listeningHistory.updateVideoMeta(trackHistoryMeta(track));
   } catch {
     retryWithCredentials = accessToken !== youtubeAccessToken || (!accessToken && apiKey !== youtubeApiKey);
@@ -2296,7 +2389,7 @@ function trackHistoryMeta(track) {
     title: track.title,
     duration: (track === playingTrack && activeVideoDuration()) || markers?.duration || 0,
     chapters: markers?.chapters,
-    timestamps: markers?.timestamps,
+    timestamps: markers?.commentSource ? [] : markers?.timestamps,
   };
 }
 

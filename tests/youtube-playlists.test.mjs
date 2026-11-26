@@ -202,6 +202,169 @@ async function openVideo(page, videoId) {
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
 
+function comment(id, text, likes, author = 'Listener') {
+  return { snippet: { topLevelComment: { id, snippet: { textDisplay: text, likeCount: likes, authorDisplayName: author } } } };
+}
+
+async function setupCommentTest(t) {
+  return setup(t, () => {
+    localStorage.setItem('eraudio:youtube-credentials', JSON.stringify({ googleClientId: '', youtubeApiKey: 'test-key' }));
+  });
+}
+
+test('comment fallback selects and attributes a plausible sampled tracklist without saving it to history', async (t) => {
+  const { page } = await setupCommentTest(t);
+  let commentRequests = 0;
+  await page.route('**/youtube/v3/videos?*', (route) => route.fulfill({ json: {
+    items: [{ snippet: { description: 'No tracklist here' }, contentDetails: { duration: 'PT5M' } }],
+  } }));
+  await page.route('**/youtube/v3/commentThreads?*', (route) => {
+    commentRequests++;
+    const url = new URL(route.request().url());
+    assert.equal(url.searchParams.get('maxResults'), '50');
+    assert.equal(url.searchParams.get('order'), 'relevance');
+    assert.equal(url.searchParams.get('textFormat'), 'plainText');
+    return route.fulfill({ json: { items: [
+      comment('popular-moment', '0:20 Amazing transition!', 1000),
+      comment('less-popular', '0:00 Track A\n0:30 Track B\n1:00 Track C', 2),
+      comment('selected', '0:00 Artist - First\n0:30 <img src=x> - Second\n1:00 Artist - Third\n7:00 Out of range', 20, 'DJ <test>'),
+      comment('duplicate', '0:00 First\n0:00 Second\n0:30 Third', 200),
+      comment('questions', '0:00 what song?\n0:30 what song?\n1:00 what song?', 300),
+      ...Array.from({ length: 45 }, (_, index) => comment(`filler-${index}`, 'No timestamps', 0)),
+      comment('beyond-sample', '0:00 One\n0:30 Two\n1:00 Three', 10000),
+    ] } });
+  });
+  await page.getByRole('button', { name: 'PL', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => document.querySelector('#marker-info').textContent.includes('POSSIBLE COMMENT TRACKLIST'));
+  assert.equal(commentRequests, 1);
+  assert.deepEqual(await page.locator('#marker-list button').allTextContents(),
+    ['1. [00:00] Artist - First', '2. [00:30] <img src=x> - Second', '3. [01:00] Artist - Third']);
+  assert.equal(await page.locator('#marker-list img').count(), 0);
+  assert.match(await page.locator('#marker-comment-source').textContent(), /DJ <test> \(20 likes\)/);
+  assert.equal(await page.locator('#marker-comment-source a').getAttribute('href'),
+    'https://www.youtube.com/watch?v=aaaaaaaaaaa&lc=selected');
+  assert.deepEqual(await page.evaluate(() => trackHistoryMeta(playingTrack).timestamps), []);
+  await page.locator('#marker-list button').nth(1).dblclick();
+  assert.deepEqual((await page.evaluate(() => window.playerEvents)).at(-1), ['seek', 30]);
+  await page.locator('#marker-source-toggle').click();
+  assert.equal(await page.locator('#marker-comment-source').isHidden(), true);
+});
+
+test('description timestamps bypass comment lookup and comment failures are explained', async (t) => {
+  const { page } = await setupCommentTest(t);
+  let commentRequests = 0;
+  await page.route('**/youtube/v3/videos?*', (route) => {
+    const id = new URL(route.request().url()).searchParams.get('id');
+    if (id === 'ccccccccccc') return route.fulfill({ status: 503 });
+    return route.fulfill({ json: { items: [{ snippet: { description: id === 'aaaaaaaaaaa' ? '0:10 Description marker' : 'No timestamps' },
+      contentDetails: { duration: 'PT5M' } }] } });
+  });
+  await page.route('**/youtube/v3/commentThreads?*', (route) => {
+    commentRequests++;
+    return route.fulfill({ status: 403, json: { error: { errors: [{ reason: 'commentsDisabled' }] } } });
+  });
+  await page.getByRole('button', { name: 'PL', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => document.querySelector('#marker-list').textContent.includes('Description marker'));
+  assert.equal(commentRequests, 0);
+  await openVideo(page, 'bbbbbbbbbbb');
+  await page.waitForFunction(() => document.querySelector('#marker-list').textContent.includes('comments are disabled'));
+  assert.equal(commentRequests, 1);
+  await openVideo(page, 'ccccccccccc');
+  await page.waitForFunction(() => document.querySelector('#marker-info').textContent === 'ERROR');
+  assert.equal(commentRequests, 1);
+});
+
+test('comment fallback handles no candidates, retryable failures and late responses', async (t) => {
+  const { page } = await setupCommentTest(t);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  t.after(() => release());
+  let attempts = 0;
+  await page.route('**/youtube/v3/videos?*', (route) => route.fulfill({ json: {
+    items: [{ snippet: { description: 'Nothing here' }, contentDetails: { duration: 'PT5M' } }],
+  } }));
+  await page.route('**/youtube/v3/commentThreads?*', async (route) => {
+    const id = new URL(route.request().url()).searchParams.get('videoId');
+    if (id === 'aaaaaaaaaaa') {
+      await gate;
+      return route.fulfill({ json: { items: [comment('late', '0:00 One\n0:30 Two\n1:00 Three', 10)] } });
+    }
+    if (id === 'bbbbbbbbbbb' && ++attempts === 1) return route.fulfill({ status: 503, json: { error: {} } });
+    return route.fulfill({ json: { items: [comment('moment', '0:12 Great!', 9)] } });
+  });
+  await page.getByRole('button', { name: 'PL', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => playingTrack?.markersLoading);
+  await openVideo(page, 'bbbbbbbbbbb');
+  await page.waitForFunction(() => document.querySelector('#marker-info').textContent === 'COMMENTS UNAVAILABLE');
+  release();
+  await page.waitForTimeout(100);
+  assert.match(await page.locator('#marker-list').textContent(), /could not check YouTube comments/);
+  await openVideo(page, 'bbbbbbbbbbb');
+  await page.waitForFunction(() => document.querySelector('#marker-list').textContent.includes('no timestamps') ||
+    document.querySelector('#marker-list').textContent.includes('No timestamps in the description or plausible'));
+  assert.equal(attempts, 2);
+  assert.equal(await page.locator('#marker-comment-source').isHidden(), true);
+});
+
+test('comment results are discarded if the API key changes while loading', async (t) => {
+  const { page } = await setupCommentTest(t);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  t.after(() => release());
+  await page.route('**/youtube/v3/videos?*', (route) => route.fulfill({ json: {
+    items: [{ snippet: { description: 'No timestamps' }, contentDetails: { duration: 'PT5M' } }],
+  } }));
+  let requested = false;
+  await page.route('**/youtube/v3/commentThreads?*', async (route) => {
+    requested = true;
+    await gate;
+    return route.fulfill({ json: { items: [comment('stale', '0:00 One\n0:30 Two\n1:00 Three', 10)] } });
+  });
+  await page.getByRole('button', { name: 'PL', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  while (!requested) await page.waitForTimeout(20);
+  await page.evaluate(() => { youtubeApiKey = ''; });
+  release();
+  await page.waitForFunction(() => !playingTrack.markersLoading);
+  assert.equal(await page.evaluate(() => Boolean(playingTrack.markers)), false);
+  assert.equal(await page.locator('#marker-comment-source').isHidden(), true);
+  assert.equal(await page.locator('#marker-info').textContent(), 'SETUP REQUIRED');
+});
+
+test('comment-derived results expire and are refreshed without persisting old entries', async (t) => {
+  const { page } = await setupCommentTest(t);
+  let requests = 0;
+  await page.route('**/youtube/v3/videos?*', (route) => route.fulfill({ json: {
+    items: [{ snippet: { description: 'No timestamps' }, contentDetails: { duration: 'PT5M' } }],
+  } }));
+  await page.route('**/youtube/v3/commentThreads?*', (route) => {
+    requests++;
+    return route.fulfill({ json: requests === 1
+      ? { items: [comment('old', '0:00 One\n0:30 Two\n1:00 Three', 5)] } : {} });
+  });
+  await page.evaluate(() => {
+    const original = window.setTimeout;
+    window.setTimeout = (callback, delay, ...args) => {
+      if (delay === 30 * 60 * 1000) {
+        window.expireComment = callback;
+        return 0;
+      }
+      return original(callback, delay, ...args);
+    };
+  });
+  await page.getByRole('button', { name: 'PL', exact: true }).click();
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.waitForFunction(() => document.querySelector('#marker-info').textContent.includes('POSSIBLE COMMENT TRACKLIST'));
+  await page.evaluate(() => window.expireComment());
+  await page.waitForFunction(() => document.querySelector('#marker-list').textContent.includes('No timestamps in the description or plausible'));
+  assert.equal(requests, 2);
+  assert.equal(await page.locator('#marker-comment-source').isHidden(), true);
+  assert.deepEqual(await page.evaluate(() => trackHistoryMeta(playingTrack).timestamps), []);
+});
+
 async function checkPitchforkSpeed(t, browserType) {
   const { page } = await setup(t, null, { browserType });
   await page.getByRole('button', { name: 'DJ', exact: true }).click();
