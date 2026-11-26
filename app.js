@@ -22,12 +22,18 @@ function setSpeedRate(value) {
 }
 
 function updateSpeedAccessibility(rate) {
-  controls.speed.setAttribute('aria-valuetext', `${formatValue('speed', rate)} (${rate.toFixed(4)}x)`);
+  controls.speed.setAttribute('aria-valuetext', `Requested ${formatValue('speed', rate)} (${rate.toFixed(4)}x)`);
+  speedMarkerValue.textContent = formatValue('speed', rate);
+  const fraction = (Number(controls.speed.value) + 30000) / 60000;
+  speedMarkerValue.parentElement.style.setProperty('--speed-position', `calc(${fraction * 100}% + ${5 - fraction * 10}px)`);
 }
 
 const valueDisplays = {
   speed: document.querySelector('#val-speed'),
 };
+const speedMarkerValue = document.querySelector('#speed-marker-value');
+const speedActual = document.querySelector('#speed-actual');
+let speedPlaybackError = false;
 
 const eventStatus = document.querySelector('#event-status');
 const savedLocationsLayer = document.querySelector('#saved-locations');
@@ -904,8 +910,26 @@ function applyControl(name, value) {
   if (name === 'speed') ytPlayer.setPlaybackRate(Number(value));
 }
 
+function updateActualSpeed() {
+  if (speedPlaybackError) {
+    speedActual.textContent = 'YouTube actual: unavailable (video could not be played)';
+    return;
+  }
+  const isCurrentVideo = ytReady && playingTrack
+    && ytPlayer.getVideoData?.()?.video_id === playingTrack.videoId
+    && ytPlayer.getPlayerState() !== -1;
+  const rate = isCurrentVideo && typeof ytPlayer.getPlaybackRate === 'function'
+    ? ytPlayer.getPlaybackRate() : null;
+  const text = Number.isFinite(rate) && rate > 0
+    ? `YouTube actual: ${formatValue('speed', rate)} (${rate.toFixed(4)}x)`
+    : 'YouTube actual: unavailable (load a video)';
+  if (speedActual.textContent !== text) speedActual.textContent = text;
+}
+
 function resetTransportDisplay() {
   playerIsPlaying = false;
+  speedPlaybackError = false;
+  updateActualSpeed();
   setPlaybackHighlight(null);
   resetLiveTempo();
   updateTimeDisplay(0, 0);
@@ -2570,6 +2594,8 @@ localHistoryReady.then(() => {
 
 function onPlayerStateChange(event) {
   playerIsPlaying = event.data === YT.PlayerState.PLAYING;
+  speedPlaybackError = false;
+  updateActualSpeed();
   if (!playerIsPlaying) resetLiveTempo();
   refreshPlaybackHighlight(event.data);
   if (event.data !== YT.PlayerState.BUFFERING) {
@@ -2608,6 +2634,8 @@ function onPlayerStateChange(event) {
 
 function onPlayerError() {
   playerIsPlaying = false;
+  speedPlaybackError = true;
+  updateActualSpeed();
   setPlaybackHighlight(null);
   resetLiveTempo();
   liveLevelsPaused = false;
@@ -2636,7 +2664,10 @@ function initYouTubePlayer() {
           }
         },
         onStateChange: onPlayerStateChange,
-        onPlaybackRateChange: resetLiveTempo,
+        onPlaybackRateChange: () => {
+          resetLiveTempo();
+          updateActualSpeed();
+        },
         onError: onPlayerError,
         onAutoplayBlocked: () => {
           if (!nudgePreview) return;
@@ -2651,6 +2682,7 @@ function initYouTubePlayer() {
   document.head.appendChild(script);
 
   setInterval(() => {
+    updateActualSpeed();
     if (!ytReady || !playingTrack) return;
     renderSavedLocations();
     const state = ytPlayer.getPlayerState();

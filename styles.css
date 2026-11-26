@@ -1118,6 +1118,28 @@ body {
 .pf-slider-scale span:nth-child(2) { text-align: center; }
 .pf-slider-scale span:last-child { text-align: right; }
 
+.pf-slider-track {
+  position: relative;
+  padding-top: 20px;
+}
+
+.pf-speed-marker-value {
+  position: absolute;
+  left: clamp(36px, var(--speed-position, 50%), calc(100% - 36px));
+  top: 0;
+  transform: translateX(-50%);
+  color: #f3e7b4;
+  font: 10px var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pf-speed-actual {
+  color: #d6d7ea;
+  font: 10px/1.4 var(--font-mono);
+  margin: 12px 0 0;
+}
+
 .pf-slider-row .speed-slider {
   display: block;
   background: #121220;

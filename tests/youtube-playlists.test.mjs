@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import test from 'node:test';
-import { chromium } from 'playwright';
+import { chromium, firefox } from 'playwright';
 
 const assets = new Map([
   ['/', ['index.html', 'text/html']],
@@ -20,6 +20,9 @@ const playerScript = `
     Player: class {
       constructor(id, options) {
         this.state = -1;
+        this.rate = 1;
+        this.availableRates = [0.5, 1, 1.25, 1.5, 2];
+        this.options = options;
         window.playerOptions = options;
         const frame = document.createElement('iframe');
         frame.id = id;
@@ -28,14 +31,24 @@ const playerScript = `
         queueMicrotask(() => options.events.onReady());
       }
       setVolume() {}
-      setPlaybackRate() {}
+      setPlaybackRate(requested) {
+        const supported = this.availableRates.filter((rate) => requested >= 1
+          ? rate >= 1 && rate <= requested : rate <= 1 && rate >= requested);
+        const rate = requested >= 1 ? Math.max(...supported) : Math.min(...supported);
+        if (rate === this.rate) return;
+        this.rate = rate;
+        queueMicrotask(() => this.options.events.onPlaybackRateChange({ data: rate }));
+      }
+      getPlaybackRate() { return this.rate; }
+      getAvailablePlaybackRates() { return this.availableRates; }
       loadVideoById(video) {
         this.videoId = typeof video === 'string' ? video : video.videoId;
         this.position = 0;
+        this.rate = 1;
         this.state = 1;
         window.playerEvents.push(['play', this.videoId]);
       }
-      cueVideoById(videoId) { this.videoId = videoId; this.position = 0; this.state = 5; window.playerEvents.push(['cue', videoId]); }
+      cueVideoById(videoId) { this.videoId = videoId; this.position = 0; this.rate = 1; this.state = 5; window.playerEvents.push(['cue', videoId]); }
       getPlayerState() { return this.state; }
       getDuration() { return this.duration || 0; }
       getCurrentTime() { return this.position || 0; }
@@ -54,7 +67,7 @@ function item(id, videoId, title) {
   return { id, snippet: { title }, contentDetails: { videoId } };
 }
 
-async function setup(t, initScript, { unifiedSignIn = false } = {}) {
+async function setup(t, initScript, { unifiedSignIn = false, browserType = chromium } = {}) {
   const server = createServer(async (req, res) => {
     try {
       if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(
@@ -75,7 +88,7 @@ async function setup(t, initScript, { unifiedSignIn = false } = {}) {
     server.closeAllConnections();
   }));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await browserType.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
   if (initScript) await page.addInitScript(initScript);
@@ -188,6 +201,61 @@ async function openVideo(page, videoId) {
   await page.getByLabel('VIDEO URL OR ID').fill(videoId);
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
+
+async function checkPitchforkSpeed(t, browserType) {
+  const { page } = await setup(t, null, { browserType });
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  const slider = page.locator('#speed-slider');
+  const marker = page.locator('#speed-marker-value');
+  const actual = page.locator('#speed-actual');
+  assert.match(await actual.textContent(), /unavailable/);
+  await openVideo(page, 'lkII03srb3U');
+  await page.waitForFunction(() => document.querySelector('#speed-actual').textContent.includes('1.0000x'));
+
+  await slider.fill('12000');
+  assert.equal(await marker.textContent(), '20.00%');
+  assert.equal(await page.locator('#val-speed').textContent(), '20.00%');
+  assert.match(await slider.getAttribute('aria-valuetext'), /Requested 20.00%/);
+  assert.match(await actual.textContent(), /0.00% \(1.0000x\)/);
+  await slider.fill('18000');
+  await page.waitForFunction(() => document.querySelector('#speed-actual').textContent.includes('1.2500x'));
+  assert.equal(await marker.textContent(), '30.00%');
+  await slider.fill('30000');
+  await page.waitForFunction(() => document.querySelector('#speed-actual').textContent.includes('1.5000x'));
+  assert.equal(await marker.textContent(), '50.00%');
+  const bounds = await page.evaluate(() => {
+    const row = document.querySelector('.pf-slider-row').getBoundingClientRect();
+    const label = document.querySelector('#speed-marker-value').getBoundingClientRect();
+    return { rowLeft: row.left, rowRight: row.right, labelLeft: label.left, labelRight: label.right };
+  });
+  assert.ok(bounds.labelLeft >= bounds.rowLeft && bounds.labelRight <= bounds.rowRight);
+
+  await page.evaluate(() => {
+    ytPlayer.availableRates = [0.5, 1, 1.25, 2];
+    ytPlayer.rate = 1.25;
+    playerOptions.events.onPlaybackRateChange({ data: 1.25 });
+  });
+  assert.match(await actual.textContent(), /25.00% \(1.2500x\)/);
+  assert.equal(await marker.textContent(), '50.00%');
+  await slider.fill('29999');
+  assert.match(await actual.textContent(), /25.00% \(1.2500x\)/);
+  await page.evaluate(() => {
+    ytPlayer.rate = 1;
+    playerOptions.events.onPlaybackRateChange({ data: 1 });
+  });
+  assert.match(await actual.textContent(), /0.00% \(1.0000x\)/);
+
+  await openVideo(page, 'mmmmmmmmmmm');
+  await page.waitForFunction(() => document.querySelector('#speed-actual').textContent.includes('1.0000x'));
+  await page.evaluate(() => playerOptions.events.onError({ data: 150 }));
+  await page.waitForTimeout(300);
+  assert.match(await actual.textContent(), /video could not be played/);
+}
+
+test('Pitchfork distinguishes requested and actual speed in Chromium', { timeout: 20000 },
+  (t) => checkPitchforkSpeed(t, chromium));
+test('Pitchfork distinguishes requested and actual speed in Firefox', { timeout: 20000 },
+  (t) => checkPitchforkSpeed(t, firefox));
 
 test('one main Google sign-in syncs TOP without requesting YouTube access', async (t) => {
   const { page, historyRequests } = await setup(t, null, { unifiedSignIn: true });

@@ -228,7 +228,7 @@
           <button class="pf-btn" type="button" data-pf="Pitch Down" aria-label="Decrease speed gradually" aria-pressed="false">▼▼</button>
           <div class="pf-readout-row">
             <button class="pf-btn" type="button" data-pf="=" aria-label="Hold for normal playback speed">=</button>
-            <span class="pf-readout" id="val-speed">0.00%</span>
+            <span class="pf-readout" id="val-speed" title="Requested speed">0.00%</span>
           </div>
         </div>
 
@@ -247,7 +247,11 @@
       <div class="pf-slider-row">
         <div class="pf-slider-scale" aria-hidden="true"><span>-50%</span><span>0%</span><span>+50%</span></div>
         <label class="sr-only" for="speed-slider">Playback speed</label>
-        <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="-30000" max="30000" step="1" value="0" aria-valuetext="0.00% (1.0000x)">
+        <div class="pf-slider-track">
+          <span class="pf-speed-marker-value" id="speed-marker-value" aria-hidden="true">0.00%</span>
+          <input type="range" class="winamp-slider speed-slider" id="speed-slider" data-control="speed" min="-30000" max="30000" step="1" value="0" aria-valuetext="Requested 0.00% (1.0000x)" aria-describedby="speed-actual">
+        </div>
+        <p class="pf-speed-actual" id="speed-actual" role="status">YouTube actual: unavailable (load a video)</p>
       </div>
       <p class="pf-message" id="bpm-message" role="status" aria-live="polite"></p>
       <p class="pf-message" id="step-message" role="status" aria-live="polite"></p>
