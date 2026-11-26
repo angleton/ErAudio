@@ -425,11 +425,12 @@ test('one main Google sign-in syncs TOP without requesting YouTube access', asyn
   const google = page.getByRole('button', { name: 'Sign in with Google', exact: true });
   assert.equal(await google.count(), 1);
   assert.equal(await page.locator('.main-window').getByRole('button', { name: 'Sign in with Google', exact: true }).count(), 1);
+  assert.equal(await page.locator('#history-account-sign-in, #history-sign-out').count(), 0);
   assert.equal(await page.evaluate(() => window.identityPrompts), 0);
   await google.click();
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
   assert.equal(await page.locator('#account-label').innerText(), 'listener@example.test');
-  assert.equal(await page.locator('#history-google').isHidden(), true);
+  assert.equal(await page.locator('#account-sign-out').isVisible(), true);
   assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
   assert.ok(historyRequests.length > 0);
   assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
@@ -463,7 +464,7 @@ test('optional YouTube access reuses the signed-in account and reconnects only a
     client_id: 'test.apps.googleusercontent.com', prompt: 'none', login_hint: 'listener@example.test',
   }]);
   await page.locator('#btn-hist').click();
-  await page.locator('#history-sign-out:enabled').click();
+  await page.locator('#account-sign-out:enabled').click();
   assert.equal(await page.evaluate(() => historySync), null);
   assert.equal(await page.evaluate(() => youtubeAccessToken), '');
   const stored = await page.evaluate(() => Object.values(localStorage).join(' '));

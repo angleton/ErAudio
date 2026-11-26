@@ -792,7 +792,7 @@ async function importHistory(page, data) {
     name: 'synthetic-history.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)),
   });
   assert.equal((await uploaded).status(), 200);
-  await page.locator('#history-sign-out:enabled').waitFor();
+  await page.locator('#account-sign-out:enabled').waitFor();
 }
 
 test('TOP converges in both directions across Chromium and Firefox', { timeout: 45000 }, async (t) => {
@@ -860,21 +860,20 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     const top = page.locator('#btn-hist');
     await top.click();
     const signIn = page.getByRole('button', { name: 'Sign in with Google', exact: true });
-    const signOut = page.getByRole('button', { name: 'STOP SYNC & SIGN OUT' });
+    const signOut = page.locator('#account-sign-out');
     const help = page.locator('#history-sync-help');
     const view = page.locator('#history-view');
-    const assertToolbarOrder = async (accountButton) => {
-      const [accountBox, helpBox, viewBox] = await Promise.all(
-        [accountButton, help, view].map((button) => button.boundingBox()),
+    const assertToolbarOrder = async () => {
+      const [helpBox, viewBox] = await Promise.all(
+        [help, view].map((button) => button.boundingBox()),
       );
-      assert.ok(accountBox && helpBox && viewBox);
-      assert.ok(accountBox.x + accountBox.width <= helpBox.x && helpBox.x + helpBox.width <= viewBox.x);
+      assert.ok(helpBox && viewBox);
+      assert.ok(helpBox.x + helpBox.width <= viewBox.x);
       const centerY = ({ y, height }) => y + height / 2;
-      assert.ok(Math.abs(centerY(accountBox) - centerY(viewBox)) <= 1);
       assert.ok(Math.abs(centerY(helpBox) - centerY(viewBox)) <= 1);
     };
     await signIn.waitFor();
-    await assertToolbarOrder(page.locator('#history-account-sign-in'));
+    await assertToolbarOrder();
     await signIn.click();
     await help.click();
     await page.getByText('Private history synced.', { exact: true }).waitFor().catch(async (error) => {
@@ -883,7 +882,7 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     await page.locator('#account-google button').waitFor({ state: 'hidden' });
     await signOut.waitFor({ state: 'visible' });
     await help.click();
-    await assertToolbarOrder(signOut);
+    await assertToolbarOrder();
     return { page, top, signIn, signOut };
   }
 
@@ -934,7 +933,10 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
   assert.ok(sharedCredentials.length > 0);
   assert.ok(sharedCredentials.every((credential) => credential.startsWith('Bearer ers_')));
   assert.ok(sharedCredentials.every((credential) => !credential.includes(code)));
-  await shared.locator('#history-sign-out').click();
+  assert.equal(await shared.locator('#account-label').innerText(), 'SHARED SESSION');
+  assert.equal(await shared.locator('#account-google').isHidden(), true);
+  assert.equal(await shared.locator('#youtube-login').isDisabled(), true);
+  await shared.locator('#account-sign-out').click();
   await shared.waitForFunction(() => document.querySelector('#history-sync-status').textContent
     .includes('local history copy and unsynced listens remain'));
   await first.page.locator('#history-sync-help').click();
@@ -971,15 +973,15 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
   await second.page.getByLabel('PAIRING CODE').fill(await shared.locator('#shared-pair-code').textContent());
   await second.page.getByRole('button', { name: 'APPROVE', exact: true }).click();
   await shared.getByText('Shared-computer history synced.', { exact: false }).waitFor();
-  await shared.locator('#history-sign-out:enabled').waitFor();
+  await shared.locator('#account-sign-out:enabled').waitFor();
   sharedOffline = true;
   await shared.locator('#history-file').setInputFiles({
     name: 'offline-history.json', mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(fixture([['a', 999]]))),
   });
   await shared.waitForFunction(() => document.querySelector('#history-message').textContent.includes('Imported'));
-  await shared.locator('#history-sign-out:enabled').waitFor();
-  await shared.locator('#history-sign-out').click();
+  await shared.locator('#account-sign-out:enabled').waitFor();
+  await shared.locator('#account-sign-out').click();
   await shared.waitForFunction(() => document.querySelector('#history-sync-status').textContent
     .includes('could not be revoked'));
   sharedOffline = false;

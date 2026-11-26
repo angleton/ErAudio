@@ -704,10 +704,6 @@ body {
   gap: 4px;
 }
 
-#history-google:not([hidden]) {
-  display: flex;
-}
-
 .history-sync-help {
   flex: 0 0 24px;
   min-width: 24px;

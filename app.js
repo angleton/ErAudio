@@ -1808,8 +1808,6 @@ const historyViewControl = document.querySelector('#history-view');
 const historyPeriod = document.querySelector('#history-period');
 const historyPeriodNote = document.querySelector('#history-period-note');
 const historyFile = document.querySelector('#history-file');
-const historyGoogle = document.querySelector('#history-google');
-const historySignOut = document.querySelector('#history-sign-out');
 const historySyncStatus = document.querySelector('#history-sync-status');
 const historySyncHelp = document.querySelector('#history-sync-help');
 const historyHelpPanel = document.querySelector('#history-help-panel');
@@ -1982,24 +1980,21 @@ playlistColumns.addEventListener('click', (event) => {
   if (mode === 'views' && !playlistViewValues && !playlistViewsLoading) updatePlaylistViews();
 });
 
-function showHistorySync(message, signIn = !historySync?.token) {
+function showHistorySync(message) {
   historySyncStatus.textContent = message;
-  historyGoogle.hidden = !signIn;
-  historySignOut.hidden = !historySync;
-  historySignOut.disabled = historySyncBusy;
   historySharedStart.hidden = Boolean(historySync?.token);
   historySharedApprove.hidden = !historySync?.token || historySync.paired;
   historySharedRevoke.hidden = !historySync?.token || historySync.paired;
   historyClear.disabled = Boolean(historySync?.paired);
   if (accountClientId) {
     const paired = Boolean(historySync?.paired);
-    const signedIn = Boolean(historySync?.token) && !paired;
-    accountControls.hidden = paired;
+    const signedIn = Boolean(historySync?.token) || paired;
+    accountControls.hidden = false;
     accountGoogle.hidden = signedIn;
     accountLabel.hidden = !signedIn;
-    accountLabel.textContent = signedIn ? historySync.email || 'SIGNED IN' : '';
+    accountLabel.textContent = signedIn ? paired ? 'SHARED SESSION' : historySync.email || 'SIGNED IN' : '';
     accountLabel.title = accountLabel.textContent;
-    accountSignOut.hidden = !historySync || paired;
+    accountSignOut.hidden = !historySync;
     accountSignOut.disabled = historySyncBusy;
     youtubeLoginButton.disabled = paired;
   }
@@ -2086,7 +2081,6 @@ async function syncHistory() {
   const sync = historySync;
   if (!sync?.token || historySyncBusy) return;
   historySyncBusy = true;
-  historySignOut.disabled = true;
   accountSignOut.disabled = true;
   try {
     let state = await sync.state();
@@ -2116,7 +2110,6 @@ async function syncHistory() {
     reportHistorySyncError(error);
   } finally {
     historySyncBusy = false;
-    historySignOut.disabled = false;
     accountSignOut.disabled = false;
     if (sync === historySync && !sync.token && !sync.paired) requestAccountReconnect();
   }
@@ -2132,7 +2125,7 @@ function setupHistorySync(config) {
       && ['localhost', '127.0.0.1'].includes(endpoint.hostname))) || endpoint.username || endpoint.password
       || !config.googleClientId?.endsWith('.apps.googleusercontent.com')) throw new Error('Invalid sync configuration.');
   } catch {
-    showHistorySync('Listening history sync is not configured correctly.', false);
+    showHistorySync('Listening history sync is not configured correctly.');
     return;
   }
   historyPairActions.hidden = false;
@@ -2143,7 +2136,7 @@ function setupHistorySync(config) {
   async function signIn({ credential, paired = false }) {
     if (historySyncBusy || historySync?.token || !credential) return false;
     historySyncBusy = true;
-    showHistorySync('Connecting to private history…', false);
+    showHistorySync('Connecting to private history…');
     let store;
     try {
       if (!await localHistoryReady) throw new Error('Listening history storage is unavailable.');
@@ -2156,7 +2149,7 @@ function setupHistorySync(config) {
       sync.paired = paired;
       sync.expiresAt = state.expiresAt;
       if (historySync && historySync.account !== sync.account) {
-        showHistorySync('Sign out before switching to a different Google account.', true);
+        showHistorySync('Sign out before switching to a different Google account.');
         return false;
       }
       await sync.pull(state);
@@ -2186,7 +2179,7 @@ function setupHistorySync(config) {
       return false;
     } finally {
       historySyncBusy = false;
-      historySignOut.disabled = false;
+      accountSignOut.disabled = false;
       if (historySync?.token) syncHistory();
     }
   }
@@ -2296,7 +2289,7 @@ function setupHistorySync(config) {
   const renderSignIn = () => {
     const identity = window.google?.accounts?.id;
     if (!identity) {
-      showHistorySync('Google sign-in did not load. Reload to try again.', false);
+      showHistorySync('Google sign-in did not load. Reload to try again.');
       showLoginError('Google sign-in did not load. Check your connection or browser blockers, then reload.');
       return;
     }
@@ -2324,7 +2317,7 @@ function setupHistorySync(config) {
       requestAccountReconnect();
     } catch (error) {
       console.error('Could not initialize Google sign-in.', error);
-      showHistorySync('Google sign-in could not start. Reload to try again.', false);
+      showHistorySync('Google sign-in could not start. Reload to try again.');
       showLoginError('Google sign-in could not start. Reload to try again.');
     }
   };
@@ -2342,7 +2335,7 @@ async function signOutAccount() {
   if (sync.paired && sync.token) {
     listeningHistory.endSession();
     await syncHistory();
-    historySignOut.disabled = true;
+    accountSignOut.disabled = true;
     try {
       await sync.request('/paired-session', 'DELETE');
     } catch (error) {
@@ -2363,9 +2356,7 @@ async function signOutAccount() {
       : 'Signed out locally, but the shared session could not be revoked. Revoke it from your trusted device; local history remains here.'
     : 'Signed out. New listens are saved only in this browser.');
 }
-historySignOut.addEventListener('click', signOutAccount);
 accountSignOut.addEventListener('click', signOutAccount);
-document.querySelector('#history-account-sign-in').addEventListener('click', focusAccountSignIn);
 window.addEventListener('online', syncHistory);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') syncHistory();
@@ -2643,7 +2634,7 @@ document.querySelector('#history-clear').addEventListener('click', async () => {
     : 'Erase all listening history stored in this browser? Export it first if you want a backup.';
   if (!window.confirm(question)) return;
   historySyncBusy = true;
-  historySignOut.disabled = true;
+  accountSignOut.disabled = true;
   try {
     if (sync) {
       const previous = listeningHistory;
@@ -2669,7 +2660,7 @@ document.querySelector('#history-clear').addEventListener('click', async () => {
     if (sync && error.status === 401) reportHistorySyncError(error);
   } finally {
     historySyncBusy = false;
-    historySignOut.disabled = false;
+    accountSignOut.disabled = false;
   }
 });
 
