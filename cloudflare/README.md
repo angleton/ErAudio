@@ -9,9 +9,7 @@ cannot provide on its own.
 The Worker verifies Google ID tokens and keeps accounts separate. It stores
 video IDs, titles, timeline labels, played ranges, timestamps, playback
 session identifiers, and counts in D1. History is not publicly browsable.
-Google account sign-in requests YouTube read-only access as well as history
-identity. These permissions use separate tokens; the YouTube token is never
-sent to the Worker.
+History sync does not require YouTube permissions or change YouTube sign-in.
 See the [privacy policy](../privacy.html) for more information.
 
 Only listening history is synced. Settings, saved locations, and the Local
@@ -22,11 +20,10 @@ profile and site origin. Use history and location exports for backups.
 
 1. Open ErAudio over HTTPS, or run it locally at `http://localhost:8000`
    using the [local server instructions](../README.md#option-2-use-a-local-http-server).
-2. In the main window, select **Sign in with Google**. This requests YouTube
-   read-only access and connects **TOP**; Google may show separate consent
-   prompts. Both permissions are required for account sign-in. If prompted,
-   choose whether to copy that browser's existing local history into your
-   account.
+2. In the main window, select **Sign in with Google**. This also connects
+   **TOP**.
+   If prompted, choose whether
+   to copy that browser's existing local history into your account.
 3. Sign in with the same Google account in another browser or browser profile.
    Listen in one browser and check **TOP** in the other after it syncs.
 
@@ -39,12 +36,14 @@ separate in that browser. **CLEAR** while signed in deletes account history
 from the service; other browsers receive the deletion on their next sync.
 Select **?** under **TOP** for sync status and help.
 
-ErAudio attempts to reconnect both permissions on later visits. If either
-permission cannot be reconnected, the account remains signed out until you
-complete Google sign-in again; browser or Google restrictions may require
-interaction. Identity and YouTube access tokens stay separate and in page
-memory. The YouTube token is never sent to the Worker. Signing out from the
-main window clears both ErAudio sessions and disables automatic Google
+**CONNECT YOUTUBE** in the main window is optional and separately requests
+read-only playlist access, using the signed-in account as a login hint. Once
+you have connected it, ErAudio attempts to reconnect it without consent
+screens after Google sign-in succeeds; browser or Google restrictions may
+require a manual reconnect. History sync does not depend on YouTube permission.
+Identity and YouTube access tokens stay separate and in page memory. The
+YouTube token is never sent to the Worker. Signing out from the main
+window clears both ErAudio sessions and disables automatic Google
 reconnection until you sign in again; it does not sign out of Google elsewhere.
 
 ### Shared computers

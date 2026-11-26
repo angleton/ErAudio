@@ -863,10 +863,6 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
             };
             parent.append(button);
           }
-        }, oauth2: {
-          initTokenClient({ callback }) {
-            return { requestAccessToken() { callback({ access_token: 'youtube-token' }); } };
-          }
         } } };`,
       });
     });

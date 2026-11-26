@@ -30,7 +30,7 @@
         <div class="history-help-panel" id="history-help-panel" hidden>
           <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
           <p class="history-note" id="history-period-note" hidden>Periods use local time; weeks start Sunday. Boundary times are estimated. Plays count when a session starts; ≥ means older play counts are incomplete.</p>
-          <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in with Google in the main window to authorize YouTube access and sync private listening history.</p>
+          <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in with Google in the main window to sync private listening history. YouTube playlist access is optional.</p>
           <div class="history-pair-actions" id="history-pair-actions" hidden>
             <button class="pl-btn" id="history-shared-start" type="button">USE SHARED COMPUTER</button>
             <button class="pl-btn" id="history-shared-approve" type="button" hidden>APPROVE SHARED COMPUTER</button>
@@ -333,7 +333,7 @@
         <input id="api-key-input" type="password" autocomplete="off" spellcheck="false">
         <label for="client-id-input">GOOGLE OAUTH CLIENT ID (YOUTUBE PLAYLIST ACCESS)</label>
         <input id="client-id-input" type="password" autocomplete="off" spellcheck="false">
-        <p>Google sign-in authorizes playlist access when history sync is configured. Use YOUTUBE LOGIN on a deployment without history sync. The API key can load public chapters without signing in.</p>
+        <p>Use CONNECT YOUTUBE after Google sign-in to authorize playlist access, or YOUTUBE LOGIN on a deployment without history sync. The API key can load public chapters without signing in.</p>
         <p>Restrict your key to YouTube Data API v3 and this website. Do not enter a client secret.</p>
         <a href="https://github.com/angleton/ErAudio#youtube-api-setup" target="_blank" rel="noopener noreferrer">Setup instructions</a>
         <p class="open-dialog-error" id="credentials-error" role="alert"></p>
