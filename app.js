@@ -1377,6 +1377,9 @@ spectrumBandInput.addEventListener('input', () => {
   persistSpectrumBandSetting(spectrumBandInput.valueAsNumber);
 });
 
+// Settings clicks must not reach the visualizer's delegated play/pause handler.
+spectrumSettings.addEventListener('click', (event) => event.stopPropagation());
+
 spectrumBandValue.addEventListener('click', () => spectrumBandValue.select());
 
 spectrumBandValue.addEventListener('input', () => {

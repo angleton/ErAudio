@@ -466,13 +466,28 @@ test('timer and title overlay the spectrum without losing playback controls', { 
 
 test('right-clicking the visualizer toggles its interactive frequency settings', { timeout: 20000 }, async (t) => {
   const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
   const canvas = await page.locator('#live-spectrum').boundingBox();
   const settings = page.locator('#spectrum-settings');
   const left = { x: canvas.x + 5, y: canvas.y + canvas.height - 5 };
   const right = { x: canvas.x + canvas.width - 5, y: canvas.y + canvas.height - 5 };
   await page.mouse.click(left.x, left.y, { button: 'right' });
   assert.equal(await settings.isVisible(), true);
-  await page.getByRole('spinbutton', { name: 'Spectrum band count' }).fill('64');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  const slider = await page.locator('#spectrum-bands').boundingBox();
+  const sliderY = slider.y + slider.height / 2;
+  await page.mouse.move(slider.x + slider.width * 0.35, sliderY);
+  await page.mouse.down();
+  await page.mouse.move(slider.x + slider.width * 0.75, sliderY, { steps: 5 });
+  await page.mouse.up();
+  const draggedBands = Number(await page.locator('#spectrum-bands').inputValue());
+  assert.ok(draggedBands > 192);
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), String(draggedBands));
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  const bandCount = page.getByRole('spinbutton', { name: 'Spectrum band count' });
+  await bandCount.click();
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  await bandCount.fill('64');
   assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:spectrum-bands')), '64');
   await page.mouse.click(right.x, right.y, { button: 'right' });
   assert.equal(await settings.isHidden(), true);
@@ -485,6 +500,12 @@ test('right-clicking the visualizer toggles its interactive frequency settings',
   assert.equal(await settings.isVisible(), true);
   await page.mouse.click(right.x, right.y);
   assert.equal(await settings.isHidden(), true);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  await page.mouse.click(left.x, left.y, { button: 'right' });
+  await bandCount.click();
+  await bandCount.fill('96');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  assert.equal(await settings.isVisible(), true);
 });
 
 test('visualizer fullscreen keeps the timer and title at the top without interrupting playback', { timeout: 20000 }, async (t) => {
