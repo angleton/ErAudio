@@ -20,7 +20,9 @@ profile and site origin. Use history and location exports for backups.
 
 1. Open ErAudio over HTTPS, or run it locally at `http://localhost:8000`
    using the [local server instructions](../README.md#option-2-use-a-local-http-server).
-2. Under **TOP**, select **Sign in with Google**. If prompted, choose whether
+2. In the main window, select **Sign in with Google**. This also connects
+   **TOP**; its **SIGN IN ABOVE** button brings the main sign-in into view.
+   If prompted, choose whether
    to copy that browser's existing local history into your account.
 3. Sign in with the same Google account in another browser or browser profile.
    Listen in one browser and check **TOP** in the other after it syncs.
@@ -28,23 +30,37 @@ profile and site origin. Use history and location exports for backups.
 Sync runs about once a minute while the page is in use, and when you open
 **TOP** or return online. If the service is unavailable while signed in,
 new listens are saved locally and retried. After a reload or sign-in
-expiration, sign in again to reconnect. While signed out, history remains
+expiration, ErAudio attempts Google reconnection if you previously signed in.
+If Google requires interaction, use the main sign-in button. While signed out, history remains
 separate in that browser. **CLEAR** while signed in deletes account history
 from the service; other browsers receive the deletion on their next sync.
 Select **?** under **TOP** for sync status and help.
+
+**CONNECT YOUTUBE** in the main window is optional and separately requests
+read-only playlist access, using the signed-in account as a login hint. Once
+you have connected it, ErAudio attempts to reconnect it without consent
+screens after Google sign-in succeeds; browser or Google restrictions may
+require a manual reconnect. History sync does not depend on YouTube permission.
+Identity and YouTube access tokens stay separate and in page memory. The
+YouTube token is never sent to the Worker. Signing out from either the main
+window or TOP clears both ErAudio sessions and disables automatic Google
+reconnection until you sign in again; it does not sign out of Google elsewhere.
 
 ### Shared computers
 
 On the shared computer, open **TOP**, select **?**, and choose **USE SHARED
 COMPUTER**. On a trusted phone, open your ErAudio deployment directly from a
 bookmark or by typing its address; don't follow a link from the shared computer.
-Sign in to TOP with Google, open **?**, select **APPROVE SHARED COMPUTER**,
+Sign in with Google in the main window, open **TOP** and **?**, select **APPROVE SHARED COMPUTER**,
 and enter the displayed code within five minutes.
 The phone sends approval to the Worker; the shared computer never receives the
 Google identity token. Its separate session can read and add history for up to
 eight hours, but cannot clear account history or approve other sessions. Only
 approve a computer you recognize. **REVOKE SHARED SESSIONS** on a trusted
 Google-signed-in device revokes all paired sessions for that account.
+
+Starting pairing cancels automatic Google reconnection. A paired session
+cannot connect a YouTube account.
 
 The session token stays in page memory; reloading or closing the page requires
 approval again. On sign-out, ErAudio attempts to sync and revoke the session.

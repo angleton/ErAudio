@@ -30,7 +30,7 @@
         <div class="history-help-panel" id="history-help-panel" hidden>
           <p class="history-note">Select an entry to play from its start. History is approximate. Use EXPORT to keep a backup.</p>
           <p class="history-note" id="history-period-note" hidden>Periods use local time; weeks start Sunday. Boundary times are estimated. Plays count when a session starts; ≥ means older play counts are incomplete.</p>
-          <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in to save new listening history to Cloudflare privately for your Google account.</p>
+          <p class="history-note" id="history-sync-status" role="status" aria-live="polite">Sign in with Google in the main window to sync private listening history. YouTube playlist access is optional.</p>
           <div class="history-pair-actions" id="history-pair-actions" hidden>
             <button class="pl-btn" id="history-shared-start" type="button">USE SHARED COMPUTER</button>
             <button class="pl-btn" id="history-shared-approve" type="button" hidden>APPROVE SHARED COMPUTER</button>
@@ -42,7 +42,7 @@
 
       <div class="history-actions">
         <div class="history-sync-actions" id="history-sync" hidden>
-          <div id="history-google"><div id="history-google-button"></div></div>
+          <div id="history-google"><button class="pl-btn" id="history-account-sign-in" type="button">SIGN IN ABOVE</button></div>
           <button class="pl-btn" id="history-sign-out" type="button" hidden>STOP SYNC &amp; SIGN OUT</button>
           <button class="pl-btn history-sync-help" id="history-sync-help" type="button" aria-label="Show listening history sync information" aria-controls="history-help-panel" aria-expanded="false" aria-pressed="false">?</button>
         </div>
@@ -75,6 +75,11 @@
       <div class="title-bar">
         <span class="title-bar-text title-bar-brand tooltip-target" tabindex="0" aria-describedby="brand-pronunciation" data-tooltip="ErAudio: /ɛr ˈɔdi.oʊ/ (“air-AW-dee-oh”)">ErAudio</span>
         <span class="sr-only" id="brand-pronunciation" role="tooltip">ErAudio: /ɛr ˈɔdi.oʊ/ (“air-AW-dee-oh”)</span>
+        <div class="account-controls" id="account-controls" hidden>
+          <div id="account-google"><div id="account-google-button"></div></div>
+          <span class="title-bar-text" id="account-label" hidden></span>
+          <button class="title-bar-text title-bar-login" id="account-sign-out" type="button" hidden>SIGN OUT</button>
+        </div>
         <button class="title-bar-text title-bar-login tooltip-target" id="youtube-login" type="button" data-tooltip="Sign in to YouTube" aria-label="Sign in to YouTube"><span id="youtube-login-label">YOUTUBE LOGIN</span></button>
         <button class="title-bar-text title-bar-login" id="youtube-settings" type="button">API SETUP</button>
       </div>
@@ -318,9 +323,9 @@
         <p>Enter only what you need. Values are saved in this browser, not in project files. Clear a field to remove it.</p>
         <label for="api-key-input">YOUTUBE DATA API KEY (PUBLIC VIDEO CHAPTERS)</label>
         <input id="api-key-input" type="password" autocomplete="off" spellcheck="false">
-        <label for="client-id-input">GOOGLE OAUTH CLIENT ID (YOUTUBE LOGIN)</label>
+        <label for="client-id-input">GOOGLE OAUTH CLIENT ID (YOUTUBE PLAYLIST ACCESS)</label>
         <input id="client-id-input" type="password" autocomplete="off" spellcheck="false">
-        <p>Use YOUTUBE LOGIN to authorize access to your playlists. The API key can load public chapters without signing in.</p>
+        <p>Use CONNECT YOUTUBE after Google sign-in to authorize playlist access, or YOUTUBE LOGIN on a deployment without history sync. The API key can load public chapters without signing in.</p>
         <p>Restrict your key to YouTube Data API v3 and this website. Do not enter a client secret.</p>
         <a href="https://github.com/angleton/ErAudio#youtube-api-setup" target="_blank" rel="noopener noreferrer">Setup instructions</a>
         <p class="open-dialog-error" id="credentials-error" role="alert"></p>

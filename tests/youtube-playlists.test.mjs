@@ -54,10 +54,12 @@ function item(id, videoId, title) {
   return { id, snippet: { title }, contentDetails: { videoId } };
 }
 
-async function setup(t, initScript) {
+async function setup(t, initScript, { unifiedSignIn = false } = {}) {
   const server = createServer(async (req, res) => {
     try {
-      if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+      if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(
+        unifiedSignIn ? { historySync: { endpoint: 'https://history.example.test', googleClientId: 'test.apps.googleusercontent.com' } } : {},
+      ));
       const asset = assets.get(req.url);
       if (!asset) return res.writeHead(404).end();
       const [file, type] = asset;
@@ -78,15 +80,43 @@ async function setup(t, initScript) {
   const page = await browser.newPage();
   if (initScript) await page.addInitScript(initScript);
   const requests = [];
+  const historyRequests = [];
+  let historyStateStatus = 200;
   let releaseSlow;
   const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
   t.after(releaseSlow);
   await page.addInitScript(() => {
+    window.oauthRequests = [];
+    window.oauthCallbacks = [];
+    window.identityPrompts = 0;
     window.google = {
       accounts: {
+        id: {
+          initialize(options) { this.options = options; },
+          renderButton(parent, options) {
+            const button = document.createElement('button');
+            button.textContent = 'Sign in with Google';
+            button.onclick = () => {
+              options.click_listener?.();
+              this.options.callback({ credential: 'history-id-token', select_by: 'btn' });
+            };
+            parent.append(button);
+          },
+          prompt() {
+            window.identityPrompts++;
+            if (window.autoIdentity) this.options.callback({ credential: 'history-id-token', select_by: 'auto' });
+          },
+          cancel() { window.identityCancelled = true; },
+          disableAutoSelect() { window.identityAutoSelectDisabled = true; },
+        },
         oauth2: {
-          initTokenClient: ({ callback }) => ({
-            requestAccessToken: () => callback({ access_token: 'test-token' }),
+          initTokenClient: ({ callback, client_id }) => ({
+            requestAccessToken: (options) => {
+              window.oauthRequests.push({ client_id, ...options });
+              window.oauthCallbacks.push(callback);
+              if (!window.deferYouTube) callback(window.youtubeError
+                ? { error: 'consent_required' } : { access_token: 'test-token' });
+            },
           }),
         },
       },
@@ -96,6 +126,14 @@ async function setup(t, initScript) {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin === origin) return route.continue();
+    if (url.hostname === 'history.example.test') {
+      historyRequests.push({ path: url.pathname, authorization: request.headers().authorization });
+      if (url.pathname === '/state') return route.fulfill({ status: historyStateStatus, json: {
+        account: 'account-a', email: 'listener@example.test', epoch: 1, revision: 0, periodHistory: true,
+      } });
+      if (url.pathname === '/rows') return route.fulfill({ json: { rows: [], next: null } });
+      return route.fulfill({ json: { now: Math.floor(Date.now() / 1000) } });
+    }
     if (url.href === 'https://www.youtube.com/iframe_api') {
       return route.fulfill({ contentType: 'text/javascript', body: playerScript });
     }
@@ -133,7 +171,8 @@ async function setup(t, initScript) {
   });
   await page.goto(origin);
   await page.waitForFunction(() => ytReady);
-  return { page, requests, releaseSlow };
+  return { page, requests, historyRequests, releaseSlow,
+    setHistoryStateStatus: (status) => { historyStateStatus = status; } };
 }
 
 async function signIn(page) {
@@ -149,6 +188,119 @@ async function openVideo(page, videoId) {
   await page.getByLabel('VIDEO URL OR ID').fill(videoId);
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
+
+test('one main Google sign-in syncs TOP without requesting YouTube access', async (t) => {
+  const { page, historyRequests } = await setup(t, null, { unifiedSignIn: true });
+  const google = page.getByRole('button', { name: 'Sign in with Google', exact: true });
+  assert.equal(await google.count(), 1);
+  assert.equal(await page.locator('.main-window').getByRole('button', { name: 'Sign in with Google', exact: true }).count(), 1);
+  assert.equal(await page.evaluate(() => window.identityPrompts), 0);
+  await google.click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  assert.equal(await page.locator('#account-label').innerText(), 'listener@example.test');
+  assert.equal(await page.locator('#history-google').isHidden(), true);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  assert.ok(historyRequests.length > 0);
+  assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
+  await page.setViewportSize({ width: 320, height: 700 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.addInitScript(() => { window.autoIdentity = true; });
+  await page.reload();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+});
+
+test('optional YouTube access reuses the signed-in account and reconnects only after prior consent', async (t) => {
+  const { page, historyRequests, requests } = await setup(t, null, { unifiedSignIn: true });
+  await page.locator('#youtube-login').click();
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  assert.match(await page.locator('#login-notice-message').innerText(), /Sign in with Google in the main window first/);
+  await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  await page.locator('#youtube-login').click();
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-select option').length === 6);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), [{
+    client_id: 'test.apps.googleusercontent.com', prompt: '', login_hint: 'listener@example.test',
+  }]);
+  assert.ok(requests.every((request) => request.authorization === 'Bearer test-token'));
+  assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
+  await page.addInitScript(() => { window.autoIdentity = true; });
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-select option').length === 6);
+  assert.equal(await page.evaluate(() => window.identityPrompts), 1);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), [{
+    client_id: 'test.apps.googleusercontent.com', prompt: 'none', login_hint: 'listener@example.test',
+  }]);
+  await page.locator('#btn-hist').click();
+  await page.locator('#history-sign-out:enabled').click();
+  assert.equal(await page.evaluate(() => historySync), null);
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  const stored = await page.evaluate(() => Object.values(localStorage).join(' '));
+  assert.ok(!stored.includes('history-id-token') && !stored.includes('test-token') && !stored.includes('listener@example.test'));
+});
+
+test('sign-out clears both sessions and rejects late authorization and automatic sign-in', async (t) => {
+  const { page } = await setup(t, null, { unifiedSignIn: true });
+  await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  await page.evaluate(() => { window.deferYouTube = true; });
+  await page.locator('#youtube-login').click();
+  await page.locator('#account-sign-out').click();
+  await page.evaluate(() => {
+    window.oauthCallbacks[0]({ access_token: 'late-token' });
+    google.accounts.id.options.callback({ credential: 'history-id-token', select_by: 'auto' });
+  });
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  assert.equal(await page.evaluate(() => historySync), null);
+  assert.equal(await page.evaluate(() => window.identityAutoSelectDisabled && window.identityCancelled), true);
+  await page.addInitScript(() => { window.autoIdentity = true; });
+  await page.reload();
+  await page.waitForFunction(() => accountClientId !== '');
+  assert.equal(await page.evaluate(() => window.identityPrompts), 0);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+});
+
+test('failed YouTube reconnection leaves history signed in and offers manual reconnection', async (t) => {
+  const { page } = await setup(t, () => {
+    localStorage.setItem('eraudio:account-reconnect', 'true');
+    localStorage.setItem('eraudio:youtube-reconnect:test.apps.googleusercontent.com', 'true');
+    window.autoIdentity = true;
+    window.youtubeError = true;
+  }, { unifiedSignIn: true });
+  await page.waitForFunction(() => window.oauthRequests.length === 1 && !historySyncBusy);
+  assert.ok(await page.evaluate(() => Boolean(historySync?.token)));
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  assert.match(await page.locator('#playlist-status').innerText(), /Select CONNECT YOUTUBE/);
+  await page.evaluate(() => { window.youtubeError = false; });
+  await page.locator('#youtube-login').click();
+  await page.waitForFunction(() => youtubeAccessToken === 'test-token');
+});
+
+test('expired history sign-in reconnects once and shared-computer pairing suppresses Google reconnection', async (t) => {
+  const { page, setHistoryStateStatus } = await setup(t, null, { unifiedSignIn: true });
+  await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  setHistoryStateStatus(401);
+  await page.evaluate(() => syncHistory());
+  assert.equal(await page.evaluate(() => window.identityPrompts), 1);
+  assert.equal(await page.evaluate(() => historySync.token), null);
+  await page.evaluate(() => syncHistory());
+  assert.equal(await page.evaluate(() => window.identityPrompts), 1);
+  setHistoryStateStatus(200);
+  await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  await page.locator('#account-sign-out').click();
+  await page.locator('#btn-hist').click();
+  await page.locator('#history-sync-help').click();
+  setHistoryStateStatus(401);
+  await page.locator('#history-shared-start').click();
+  await page.evaluate(() => google.accounts.id.options.callback({ credential: 'history-id-token', select_by: 'auto' }));
+  assert.equal(await page.evaluate(() => historySync), null);
+  assert.equal(await page.evaluate(() => window.identityCancelled), true);
+  await page.locator('#shared-pair-cancel').click();
+});
 
 test('transport mode navigates the selected PL markers and keeps playback state', async (t) => {
   const { page } = await setup(t);

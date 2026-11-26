@@ -331,6 +331,39 @@ body {
   color: #ffffff;
 }
 
+.account-title {
+  height: auto;
+  min-height: 24px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.account-controls:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+#account-google-button {
+  min-height: 20px;
+}
+
+#account-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#account-sign-out {
+  flex-shrink: 0;
+}
+
+.account-title #youtube-login {
+  flex: 0 1 auto;
+}
+
 #youtube-login {
   flex: 1 1 0;
   min-width: 0;
@@ -669,6 +702,10 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+#history-google:not([hidden]) {
+  display: flex;
 }
 
 .history-sync-help {

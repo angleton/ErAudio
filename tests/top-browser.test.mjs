@@ -841,11 +841,16 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
         body: `window.google = { accounts: { id: {
           initialize({ callback }) { this.callback = callback; },
           disableAutoSelect() {},
-          renderButton(parent) {
+          cancel() {},
+          prompt() {},
+          renderButton(parent, options) {
             parent.style.display = 'block';
             const button = document.createElement('button');
             button.textContent = 'Sign in with Google';
-            button.onclick = () => this.callback({ credential: ${JSON.stringify(token('10000001'))} });
+            button.onclick = () => {
+              options.click_listener();
+              this.callback({ credential: ${JSON.stringify(token('10000001'))} });
+            };
             parent.append(button);
           }
         } } };`,
@@ -869,13 +874,13 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
       assert.ok(Math.abs(centerY(helpBox) - centerY(viewBox)) <= 1);
     };
     await signIn.waitFor();
-    await assertToolbarOrder(signIn);
+    await assertToolbarOrder(page.locator('#history-account-sign-in'));
     await signIn.click();
     await help.click();
     await page.getByText('Private history synced.', { exact: true }).waitFor().catch(async (error) => {
       throw new Error(`Could not sign into local sync: ${await page.locator('#history-sync-status').innerText()}`, { cause: error });
     });
-    await page.locator('#history-google button').waitFor({ state: 'hidden' });
+    await page.locator('#account-google button').waitFor({ state: 'hidden' });
     await signOut.waitFor({ state: 'visible' });
     await help.click();
     await assertToolbarOrder(signOut);
