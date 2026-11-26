@@ -626,7 +626,8 @@ function focusAccountSignIn() {
 function requestAccountReconnect() {
   if (!accountClientId || accountPrompted || !accountSignInAllowed
     || historySync?.token || historySync?.paired || sharedPairDialog.open
-    || !readReconnectPreference(accountReconnectKey)) return;
+    || !readReconnectPreference(accountReconnectKey)
+    || !readReconnectPreference(youtubeReconnectKey())) return;
   const identity = window.google?.accounts?.id;
   if (!identity) return;
   accountPrompted = true;
@@ -639,10 +640,16 @@ function requestAccountReconnect() {
 }
 
 function reportYouTubeLoginError(message, wasSilent) {
+  if (requiredYouTubeAuthorizationResolve) {
+    showHistorySync('YouTube read-only access is required to sign in and sync TOP. Select Sign in with Google to try again.');
+    showLoginError(message);
+    finishRequiredYouTubeAuthorization(false);
+    return;
+  }
   if (wasSilent) {
     console.warn(message);
     setPlaylistStatus(accountClientId
-      ? 'YouTube playlists did not reconnect. Select CONNECT YOUTUBE to reconnect; TOP history sync is unaffected.'
+      ? 'YouTube playlists did not reconnect. Select Sign in with Google to reconnect.'
       : 'YouTube playlists did not reconnect. Select YOUTUBE LOGIN to reconnect.', true);
   } else {
     showLoginError(message);
@@ -673,6 +680,7 @@ function getTokenClient() {
       resetAccountPlaylists('Loading YouTube playlists...', true);
       youtubeAccessToken = tokenResponse.access_token;
       if (accountClientId) saveReconnectPreference(youtubeReconnectKey(), true);
+      finishRequiredYouTubeAuthorization(true);
       const session = playlistSession;
       ensureMarkers(playingTrack);
       try {
@@ -693,15 +701,16 @@ function getTokenClient() {
   return tokenClient;
 }
 
-// Reconnect requests omit consent screens; browser popup restrictions can still require a manual retry.
-function requestYouTubeLogin({ silent = false } = {}) {
-  if (accountClientId && (!historySync?.token || historySync.paired || !accountSignInAllowed)) {
+// Silent reconnect requests omit consent screens; browser popup restrictions can still require interaction.
+function requestYouTubeLogin({ silent = false, required = false } = {}) {
+  if (accountClientId && ((!required && !historySync?.token) || historySync?.paired || !accountSignInAllowed)) {
     if (!silent) {
       showLoginError(historySync?.paired
         ? 'YouTube account access is disabled for shared-computer sessions. Use your trusted device.'
-        : 'Sign in with Google in the main window first. YouTube playlist access is optional.');
+        : 'Sign in with Google in the main window first.');
       if (!historySync?.paired) focusAccountSignIn();
     }
+    if (required) finishRequiredYouTubeAuthorization(false);
     return;
   }
   if (!silent) {
@@ -712,21 +721,51 @@ function requestYouTubeLogin({ silent = false } = {}) {
 
   if (location.protocol === 'file:') {
     if (!silent) showLoginError('YouTube sign-in cannot run from a local file. Use the hosted player or serve ErAudio over HTTP with a configured Google OAuth client ID.');
+    if (required) finishRequiredYouTubeAuthorization(false);
     return;
   }
   if (!youtubeOAuthClientId()) {
-    if (!silent) showCredentialsDialog('login');
+    if (required) {
+      showLoginError('YouTube access is required, but no Google OAuth client ID is configured.');
+      finishRequiredYouTubeAuthorization(false);
+    } else if (!silent) showCredentialsDialog('login');
     return;
   }
-  const client = getTokenClient();
+  let client;
+  try {
+    client = getTokenClient();
+  } catch (error) {
+    reportYouTubeLoginError(`Google sign-in could not load: ${error.message}. Try again.`, silent);
+    return;
+  }
   if (!client) {
     if (!silent) showLoginError('Google sign-in could not load. Check your connection or browser blockers, then try again.');
+    if (required) finishRequiredYouTubeAuthorization(false);
     return;
   }
 
   silentAttempt = silent;
-  client.requestAccessToken({ prompt: silent ? 'none' : '',
-    ...(accountLoginHint ? { login_hint: accountLoginHint } : {}) });
+  try {
+    client.requestAccessToken({ prompt: silent ? 'none' : '',
+      ...(accountLoginHint ? { login_hint: accountLoginHint } : {}) });
+  } catch (error) {
+    reportYouTubeLoginError(`YouTube sign-in could not start: ${error.message}. Try again.`, silent);
+  }
+}
+
+let requiredYouTubeAuthorizationResolve = null;
+
+function finishRequiredYouTubeAuthorization(authorized) {
+  const resolve = requiredYouTubeAuthorizationResolve;
+  requiredYouTubeAuthorizationResolve = null;
+  resolve?.(authorized);
+}
+
+function requestRequiredYouTubeAuthorization({ silent = false } = {}) {
+  return new Promise((resolve) => {
+    requiredYouTubeAuthorizationResolve = resolve;
+    requestYouTubeLogin({ silent, required: true });
+  });
 }
 
 function trySilentLogin(attemptsLeft = 20, generation = youtubeAuthGeneration) {
@@ -783,6 +822,12 @@ credentialsForm.addEventListener('submit', (event) => {
     apiKeyInput.focus();
     return;
   }
+  const clientChanged = nextClientId !== googleClientId;
+  if (clientChanged && accountClientId && (historySyncBusy || requiredYouTubeAuthorizationResolve)) {
+    credentialsError.textContent = 'Finish or cancel the current sign-in or sync before changing the Google client ID.';
+    clientIdInput.focus();
+    return;
+  }
   if (credentialsDialog.dataset.purpose === 'login' && !nextClientId) {
     credentialsError.textContent = 'Enter a Google OAuth client ID to sign in, or cancel.';
     clientIdInput.focus();
@@ -798,12 +843,14 @@ credentialsForm.addEventListener('submit', (event) => {
     credentialsError.textContent = 'Could not save YouTube settings in browser storage. No settings were changed.';
     return;
   }
-  const clientChanged = nextClientId !== googleClientId;
   const apiKeyChanged = nextApiKey !== youtubeApiKey;
   if (clientChanged && accountClientId) saveReconnectPreference(youtubeReconnectKey(), false);
   googleClientId = nextClientId;
   youtubeApiKey = nextApiKey;
-  if (clientChanged) resetAccountSession();
+  if (clientChanged) {
+    if (accountClientId && historySync?.token && !historySync.paired) signOutAccount();
+    else resetAccountSession();
+  }
   const purpose = credentialsDialog.dataset.purpose;
   credentialsDialog.close();
   loginNotice.hidden = true;
@@ -1090,7 +1137,7 @@ function renderMarkers() {
   } else if (!markers) {
     placeholder(state === 'loading' ? 'Looking for chapters / timestamps...'
       : state === 'signin' ? accountClientId
-        ? 'Use CONNECT YOUTUBE after Google sign-in to detect chapters / timestamps.'
+        ? 'Sign in with Google to authorize YouTube access and detect chapters / timestamps.'
         : 'Sign in to YouTube to detect chapters / timestamps.'
         : 'Use API SETUP to enter a YouTube API key or sign in to detect chapters / timestamps.');
     markerInfo.textContent = state === 'loading' ? 'LOADING' : state === 'signin' ? 'SIGN IN REQUIRED' : 'SETUP REQUIRED';
@@ -2130,6 +2177,7 @@ function setupHistorySync(config) {
   }
   historyPairActions.hidden = false;
   accountClientId = config.googleClientId;
+  youtubeLoginButton.hidden = true;
   accountControls.hidden = false;
   accountControls.closest('.title-bar').classList.add('account-title');
   resetAccountSession();
@@ -2299,15 +2347,36 @@ function setupHistorySync(config) {
         auto_select: true,
         callback: async (response) => {
           if (!accountSignInAllowed || historySync?.paired || sharedPairDialog.open) return;
+          if (typeof response?.credential !== 'string' || !response.credential) {
+            showHistorySync('Google sign-in did not return an identity token. Try again.');
+            return;
+          }
+          const identityPayload = response.credential.split('.')[1];
+          if (identityPayload) {
+            try {
+              const normalized = identityPayload.replace(/-/g, '+').replace(/_/g, '/');
+              const claims = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+              if (typeof claims.email === 'string') accountLoginHint = claims.email;
+            } catch (error) {
+              console.warn('Could not read the Google account hint for YouTube sign-in.', error);
+            }
+          }
+          const hasYouTubeReconnect = readReconnectPreference(youtubeReconnectKey());
+          if (!await requestRequiredYouTubeAuthorization({ silent: hasYouTubeReconnect })) {
+            if (hasYouTubeReconnect) saveReconnectPreference(youtubeReconnectKey(), false);
+            showHistorySync('YouTube read-only access is required to sign in and sync TOP. Select Sign in with Google to try again.');
+            return;
+          }
           if (!await signIn(response)) {
+            saveReconnectPreference(youtubeReconnectKey(), false);
+            resetAccountSession();
             showLoginError(historySyncStatus.textContent);
             return;
           }
           accountLoginHint = historySync.email;
-          resetAccountSession();
           accountPrompted = false;
           saveReconnectPreference(accountReconnectKey, true);
-          if (accountLoginHint && readReconnectPreference(youtubeReconnectKey())) trySilentLogin();
+          saveReconnectPreference(youtubeReconnectKey(), true);
         },
       });
       identity.renderButton(document.querySelector('#account-google-button'), {
