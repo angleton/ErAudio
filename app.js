@@ -140,6 +140,7 @@ const favoriteLists = [
 ];
 
 const trackTitleDisplay = document.querySelector('#track-title');
+const videoWindow = document.querySelector('#video-window');
 const playButton = document.querySelector('.transport-btn[data-action="play"]');
 const visualizerPlayButton = document.querySelector('#visualizer-play');
 const playbackIndicator = document.querySelector('#playback-indicator');
@@ -2448,9 +2449,9 @@ function onPlayerError() {
 function initYouTubePlayer() {
   window.onYouTubeIframeAPIReady = () => {
     ytPlayer = new YT.Player('yt-player', {
-      width: '1',
-      height: '1',
-      playerVars: { playsinline: 1, controls: 0, disablekb: 1 },
+      width: '100%',
+      height: '100%',
+      playerVars: { playsinline: 1, controls: 1, disablekb: 1 },
       events: {
         onReady: () => {
           ytReady = true;
@@ -3281,6 +3282,10 @@ document.addEventListener('click', (event) => {
     toggle.classList.toggle('active', isActive);
     toggle.setAttribute('aria-pressed', String(isActive));
     pane.hidden = !isActive;
+    if (pane === videoWindow) {
+      pane.inert = !isActive;
+      pane.setAttribute('aria-hidden', String(!isActive));
+    }
     if (minimizing) toggle.focus();
     if (pane === historyWindow && isActive) {
       renderHistory();

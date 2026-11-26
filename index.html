@@ -171,9 +171,10 @@
           </div>
         </div>
 
-        <!-- Toggle Buttons (YT, PL, Pitchfork) -->
+        <!-- Optional Pane Buttons -->
         <div class="toggle-buttons">
           <button class="toggle-btn tooltip-target" id="btn-vid" type="button" data-action="toggle-videos" data-tooltip="YouTube" aria-controls="videos-window" aria-pressed="false">YT</button>
+          <button class="toggle-btn tooltip-target" id="btn-video" type="button" data-action="toggle-video" data-tooltip="Show or hide the video pane" aria-controls="video-window" aria-pressed="false">VID</button>
           <button class="toggle-btn tooltip-target" id="btn-pl" type="button" data-action="toggle-playlist" data-tooltip="Toggle video chapters or timestamps" aria-controls="playlist-window" aria-pressed="false">PL</button>
           <button class="toggle-btn tooltip-target" id="btn-hist" type="button" data-action="toggle-history" data-tooltip="Toggle most-listened videos and segments" aria-controls="history-window" aria-pressed="false">TOP</button>
           <button class="toggle-btn tooltip-target" id="btn-pf" type="button" data-action="toggle-pitchfork" data-tooltip="Toggle Pitchfork controls" aria-controls="pitchfork-window" aria-pressed="false">DJ</button>
@@ -181,6 +182,10 @@
       </div>
       <button class="panel-resize" id="player-resize" type="button" aria-label="Resize main player vertically"></button>
     </div>
+
+    <section class="winamp-window video-window" id="video-window" aria-label="Video" aria-hidden="true" hidden inert>
+      <div id="yt-player"></div>
+    </section>
 
     <div class="login-notice" id="login-notice" role="alert" hidden>
       <span id="login-notice-message"></span>
@@ -304,7 +309,6 @@
     <span>ErAudio is an audio-first YouTube player with playback-speed controls and optional private listening-history sync.</span>
     <a href="privacy.html">Privacy Policy</a>
   </footer>
-  <div class="yt-host" aria-hidden="true"><div id="yt-player"></div></div>
   <dialog class="open-dialog" id="credentials-dialog" aria-labelledby="credentials-title" closedby="any">
     <form class="open-dialog-form" id="credentials-form" novalidate>
       <div class="title-bar">

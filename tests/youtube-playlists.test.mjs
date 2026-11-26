@@ -18,7 +18,15 @@ const playerScript = `
   window.playerEvents = [];
   window.YT = {
     Player: class {
-      constructor(id, options) { this.state = -1; queueMicrotask(() => options.events.onReady()); }
+      constructor(id, options) {
+        this.state = -1;
+        window.playerOptions = options;
+        const frame = document.createElement('iframe');
+        frame.id = id;
+        frame.title = 'YouTube video player';
+        document.getElementById(id).replaceWith(frame);
+        queueMicrotask(() => options.events.onReady());
+      }
       setVolume() {}
       setPlaybackRate() {}
       loadVideoById(video) {
@@ -509,6 +517,70 @@ test('the track title handles both mouse buttons without toggling playback', { t
   assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
   assert.equal(await page.locator('#spectrum-settings').isHidden(), true);
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#track-title')).animationName === 'marquee');
+});
+
+test('VID reveals the same player in a border-only responsive pane without interrupting audio', async (t) => {
+  const { page } = await setup(t);
+  assert.equal(await page.getByRole('button', { name: 'VID', exact: true }).count(), 1);
+  const toggle = page.locator('#btn-video');
+  const pane = page.locator('#video-window');
+  const frame = page.locator('#yt-player');
+  assert.equal(await pane.getAttribute('aria-hidden'), 'true');
+  assert.equal(await pane.evaluate((element) => element.hidden && element.inert), true);
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.getByRole('region', { name: 'Video', exact: true }).count(), 0);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.evaluate(() => {
+    ytPlayer.position = 42;
+    window.originalPlayerFrame = document.querySelector('#yt-player');
+  });
+  const events = await page.evaluate(() => window.playerEvents);
+
+  for (const width of [800, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await toggle.click();
+    assert.equal(await pane.evaluate((element) => !element.hidden && !element.inert), true);
+    assert.equal(await pane.getAttribute('aria-hidden'), 'false');
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.getByRole('region', { name: 'Video', exact: true }).count(), 1);
+    assert.equal(await pane.locator('.title-bar, button').count(), 0);
+    const paneBox = await pane.boundingBox();
+    const frameBox = await frame.boundingBox();
+    assert.ok(Math.abs(frameBox.width - (paneBox.width - 2)) < 1);
+    assert.ok(Math.abs(frameBox.height - (paneBox.height - 2)) < 1);
+    assert.ok(frameBox.width >= 200 && frameBox.height >= 200);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await toggle.click();
+    assert.equal(await pane.evaluate((element) => element.hidden && element.inert), true);
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+    assert.equal(await page.evaluate(() => ytPlayer.getCurrentTime()), 42);
+    assert.equal(await frame.evaluate((element) => element === window.originalPlayerFrame), true);
+    assert.deepEqual(await page.evaluate(() => window.playerEvents), events);
+  }
+  assert.equal(await page.evaluate(() => window.playerOptions.playerVars.controls), 1);
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  await page.locator('[data-action="pause"]').first().click();
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  await toggle.press('Space');
+  await toggle.press('Space');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+});
+
+test('native video playback changes update the main player and visualizer controls', async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  await page.locator('#btn-video').click();
+  for (const [state, label] of [[1, 'Pause'], [2, 'Play'], [1, 'Pause']]) {
+    await page.evaluate((state) => {
+      ytPlayer.state = state;
+      window.playerOptions.events.onStateChange({ data: state });
+    }, state);
+    assert.equal(await page.locator('.transport-btn[data-action="play"]').getAttribute('aria-label'), label);
+    assert.equal(await page.locator('#visualizer-play').getAttribute('aria-label'), `${label} from visualizer`);
+    assert.equal(await page.locator('[data-action="pause"]').first().getAttribute('aria-pressed'), String(state === 2));
+    assert.equal(await page.locator('#video-window').evaluate((pane) => pane.hidden), false);
+  }
 });
 
 test('optional panes minimize independently and reopen from the main player', { timeout: 20000 }, async (t) => {
