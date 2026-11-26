@@ -3700,20 +3700,23 @@ function closeCopyMenu(restoreFocus = false) {
   if (restoreFocus && item?.isConnected && !item.disabled) item.focus();
 }
 
-[playlistList, markerList].forEach((list) => {
+[playlistList, markerList, historyList].forEach((list) => {
   list.addEventListener('contextmenu', (event) => {
     const item = event.target.closest('.playlist-item');
     if (!item || !list.contains(item)) return;
     event.preventDefault();
-    const videoList = list === playlistList ? currentList() : null;
+    const isPlaylistItem = list === playlistList;
+    const isHistoryItem = list === historyList;
+    const videoList = isPlaylistItem ? currentList() : null;
     const track = videoList?.tracks[Number(item.dataset.track) - 1];
     copySelection = {
       item,
       videoList,
       track,
-      text: list === playlistList ? item.dataset.copyText : item.textContent.trim(),
-      videoId: list === playlistList ? item.dataset.videoId : playingTrack?.videoId,
-      position: list === markerList ? currentMarkerEntries()[Number(item.dataset.marker)]?.start : null,
+      text: isPlaylistItem ? item.dataset.copyText : item.textContent.trim(),
+      videoId: isPlaylistItem || isHistoryItem ? item.dataset.videoId : playingTrack?.videoId,
+      position: list === markerList ? currentMarkerEntries()[Number(item.dataset.marker)]?.start
+        : isHistoryItem && item.hasAttribute('data-history-end') ? Number(item.dataset.historyStart) : null,
     };
     removeVideoMenuItem.hidden = !track || videoList !== favoriteLists[0];
     copyMenu.hidden = false;

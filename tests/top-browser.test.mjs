@@ -741,6 +741,16 @@ test('playing video and segment highlights follow playback across the lists', { 
   assert.deepEqual(await highlights(), [
     ['history-list', 'aaaaaaaaaaa:20', 'time'], ['playlist-list', 'aaaaaaaaaaa', 'true'], ['marker-list', '1', 'time'],
   ]);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
+  await page.locator('#history-list [data-history-location="aaaaaaaaaaa:20"]').click({ button: 'right' });
+  const copyMenu = page.getByRole('menu', { name: 'List item actions' });
+  assert.equal(await copyMenu.getByRole('menuitem', { name: 'COPY TEXT' }).isVisible(), true);
+  assert.equal(await copyMenu.getByRole('menuitem', { name: 'COPY LINK' }).isVisible(), true);
+  assert.equal(await copyMenu.getByRole('menuitem', { name: 'REMOVE FROM VIDEOS', includeHidden: true }).isHidden(), true);
+  await copyMenu.getByRole('menuitem', { name: 'COPY LINK' }).click();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()),
+    'https://www.youtube.com/watch?v=aaaaaaaaaaa&t=20s');
+
   const segments = page.getByRole('radio', { name: 'SEGMENTS', exact: true });
   const videos = page.getByRole('radio', { name: 'VIDEOS', exact: true });
   assert.equal(await segments.isChecked(), true);
