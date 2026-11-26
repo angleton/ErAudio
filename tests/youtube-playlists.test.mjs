@@ -67,11 +67,12 @@ function item(id, videoId, title) {
   return { id, snippet: { title }, contentDetails: { videoId } };
 }
 
-async function setup(t, initScript, { unifiedSignIn = false, browserType = chromium } = {}) {
+async function setup(t, initScript, { unifiedSignIn = false, combinedSignIn = false, browserType = chromium } = {}) {
   const server = createServer(async (req, res) => {
     try {
       if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(
-        unifiedSignIn ? { historySync: { endpoint: 'https://history.example.test', googleClientId: 'test.apps.googleusercontent.com' } } : {},
+        unifiedSignIn || combinedSignIn ? { historySync: { endpoint: 'https://history.example.test',
+          googleClientId: 'test.apps.googleusercontent.com', combinedGoogleSignIn: combinedSignIn } } : {},
       ));
       const asset = assets.get(req.url);
       if (!asset) return res.writeHead(404).end();
@@ -101,6 +102,7 @@ async function setup(t, initScript, { unifiedSignIn = false, browserType = chrom
   await page.addInitScript(() => {
     window.oauthRequests = [];
     window.oauthCallbacks = [];
+    window.codeRequests = [];
     window.identityPrompts = 0;
     window.google = {
       accounts: {
@@ -123,6 +125,17 @@ async function setup(t, initScript, { unifiedSignIn = false, browserType = chrom
           disableAutoSelect() { window.identityAutoSelectDisabled = true; },
         },
         oauth2: {
+          initCodeClient: (options) => ({
+            requestCode: () => {
+              window.codeRequests.push({ client_id: options.client_id, scope: options.scope,
+                active: navigator.userActivation.isActive });
+              window.codeCallback = options.callback;
+              if (!window.deferCode) queueMicrotask(() => {
+                if (window.codePopupError) options.error_callback({ type: 'popup_failed_to_open' });
+                else options.callback(window.codeError ? { error: 'access_denied' } : { code: 'test-code' });
+              });
+            },
+          }),
           initTokenClient: ({ callback, client_id }) => ({
             requestAccessToken: (options) => {
               window.oauthRequests.push({ client_id, ...options });
@@ -141,6 +154,11 @@ async function setup(t, initScript, { unifiedSignIn = false, browserType = chrom
     if (url.origin === origin) return route.continue();
     if (url.hostname === 'history.example.test') {
       historyRequests.push({ path: url.pathname, authorization: request.headers().authorization });
+      if (url.pathname === '/google-code') {
+        assert.equal(request.headers()['x-requested-with'], 'XmlHttpRequest');
+        assert.deepEqual(request.postDataJSON(), { code: 'test-code' });
+        return route.fulfill({ json: { credential: 'history-id-token', accessToken: 'test-token' } });
+      }
       if (url.pathname === '/state') return route.fulfill({ status: historyStateStatus, json: {
         account: 'account-a', email: 'listener@example.test', epoch: 1, revision: 0, periodHistory: true,
       } });
@@ -440,6 +458,58 @@ test('one main Google sign-in syncs TOP without requesting YouTube access', asyn
   await page.reload();
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
   assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+});
+
+test('combined code flow starts in the click and connects history and YouTube without reconnecting on reload', async (t) => {
+  const { page, historyRequests } = await setup(t, null, { combinedSignIn: true });
+  assert.equal(await page.locator('#youtube-login').isHidden(), true);
+  await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();
+  await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'test-token');
+  assert.deepEqual(await page.evaluate(() => window.codeRequests), [{
+    client_id: 'test.apps.googleusercontent.com',
+    scope: 'openid email https://www.googleapis.com/auth/youtube.readonly',
+    active: true,
+  }]);
+  assert.equal(await page.evaluate(() => window.oauthRequests.length), 0);
+  assert.ok(historyRequests.some(({ path }) => path === '/google-code'));
+  await page.waitForFunction(() => document.querySelectorAll('#playlist-select option').length === 6);
+  const stored = await page.evaluate(() => Object.values(localStorage).join(' '));
+  assert.ok(!stored.includes('history-id-token') && !stored.includes('test-token'));
+  await page.locator('#youtube-settings').click();
+  assert.equal(await page.locator('#client-id-input').isDisabled(), true);
+  await page.locator('#credentials-cancel').click();
+  await page.locator('#account-sign-out:enabled').click();
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();
+  await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'test-token');
+  await page.reload();
+  assert.equal(await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).isVisible(), true);
+  assert.equal(await page.evaluate(() => Boolean(historySync?.token)), false);
+  assert.deepEqual(await page.evaluate(() => window.codeRequests), []);
+});
+
+test('combined code flow reports rejected consent and permits retry', async (t) => {
+  const { page, historyRequests } = await setup(t, () => { window.codeError = true; }, { combinedSignIn: true });
+  const button = page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' });
+  await button.click();
+  await page.waitForFunction(() => document.querySelector('#login-notice-message').textContent.includes('not completed'));
+  assert.equal(historyRequests.length, 0);
+  assert.equal(await button.isEnabled(), true);
+  await page.evaluate(() => { window.codeError = false; });
+  await button.click();
+  await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'test-token');
+});
+
+test('combined code flow reports a blocked popup and allows another attempt', async (t) => {
+  const { page, historyRequests } = await setup(t, () => { window.codePopupError = true; }, { combinedSignIn: true });
+  const button = page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' });
+  await button.click();
+  await page.waitForFunction(() => document.querySelector('#login-notice-message').textContent.includes('popup_failed_to_open'));
+  assert.equal(await button.isEnabled(), true);
+  assert.equal(historyRequests.length, 0);
+  await page.evaluate(() => { window.codePopupError = false; });
+  await button.click();
+  await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'test-token');
 });
 
 test('optional YouTube access reuses the signed-in account and reconnects only after prior consent', async (t) => {

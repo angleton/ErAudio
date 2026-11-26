@@ -1,4 +1,6 @@
 const googleKeysUrl = 'https://www.googleapis.com/oauth2/v3/certs';
+const googleTokenUrl = 'https://oauth2.googleapis.com/token';
+const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 const videoId = /^[A-Za-z0-9_-]{11}$/;
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 const decode = (part) => Uint8Array.from(atob(part.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
@@ -97,7 +99,7 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: {
         ...headers, 'Access-Control-Allow-Methods': 'GET, POST, DELETE',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type', 'Access-Control-Max-Age': '600',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Requested-With', 'Access-Control-Max-Age': '600',
       } });
     }
     if (!env.GOOGLE_CLIENT_ID || !env.HISTORY_DB) return reply({ error: 'Sync is not configured.' }, 503);
@@ -105,6 +107,54 @@ export default {
       const url = new URL(request.url);
       if (request.method === 'GET' && url.pathname === '/pairing-time') {
         return reply({ now: Math.floor(Date.now() / 1000) });
+      }
+      if (request.method === 'POST' && url.pathname === '/google-code') {
+        if (!env.GOOGLE_CLIENT_SECRET) return reply({ error: 'Combined sign-in is not configured.' }, 503);
+        if (request.headers.get('X-Requested-With') !== 'XmlHttpRequest'
+          || !request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) {
+          return reply({ error: 'Invalid authorization request.' }, 400);
+        }
+        const reader = request.body?.getReader();
+        if (!reader) return reply({ error: 'Missing authorization code.' }, 400);
+        const chunks = [];
+        let length = 0;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          length += value.length;
+          if (length > 8192) {
+            await reader.cancel();
+            return reply({ error: 'Authorization request is too large.' }, 413);
+          }
+          chunks.push(value);
+        }
+        const bytes = new Uint8Array(length);
+        let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+        let code;
+        try { ({ code } = JSON.parse(new TextDecoder().decode(bytes))); } catch {
+          return reply({ error: 'Invalid authorization request.' }, 400);
+        }
+        if (typeof code !== 'string' || !code || code.length > 4096) {
+          return reply({ error: 'Invalid authorization code.' }, 400);
+        }
+        const response = await fetch(googleTokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET,
+            redirect_uri: origin, grant_type: 'authorization_code',
+          }),
+          redirect: 'error', signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) return reply({ error: 'Google authorization could not be completed.' }, 401);
+        const tokens = await response.json();
+        if (!tokens || typeof tokens.id_token !== 'string' || typeof tokens.access_token !== 'string' || !tokens.access_token
+          || typeof tokens.scope !== 'string' || !tokens.scope.split(/\s+/).includes(youtubeScope)
+          || !await authenticate(`Bearer ${tokens.id_token}`, env.GOOGLE_CLIENT_ID, env.HISTORY_DB)) {
+          return reply({ error: 'Google did not grant the required sign-in and YouTube access.' }, 401);
+        }
+        return reply({ credential: tokens.id_token, accessToken: tokens.access_token });
       }
       const identity = await authenticate(request.headers.get('Authorization'), env.GOOGLE_CLIENT_ID, env.HISTORY_DB);
       if (!identity) return reply({ error: 'Sign in with Google again.' }, 401);

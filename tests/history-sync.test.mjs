@@ -10,6 +10,45 @@ const origin = 'http://localhost:8000';
 const endpoint = 'http://localhost:8787';
 const videoId = 'abcdefghijk';
 
+test('exchanges a Google code only for an allowed origin and validated YouTube grant', async (t) => {
+  const db = testDatabase();
+  t.after(() => db.close());
+  const env = { APP_ORIGINS: origin, GOOGLE_CLIENT_ID: audience, GOOGLE_CLIENT_SECRET: 'test-secret', HISTORY_DB: db };
+  let tokenReply = { id_token: token('10000001'), access_token: 'youtube-token',
+    scope: 'openid email https://www.googleapis.com/auth/youtube.readonly', refresh_token: 'never-return' };
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', (url, init) => {
+    if (String(url) === 'https://www.googleapis.com/oauth2/v3/certs') {
+      return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });
+    }
+    assert.equal(String(url), 'https://oauth2.googleapis.com/token');
+    assert.equal(init.body.get('redirect_uri'), origin);
+    assert.equal(init.body.get('client_id'), audience);
+    assert.equal(init.body.get('client_secret'), 'test-secret');
+    assert.equal(init.body.get('code'), 'one-time-code');
+    calls++;
+    return Response.json(tokenReply);
+  });
+  const request = (headers = {}, body = JSON.stringify({ code: 'one-time-code' })) => new Request(`${endpoint}/google-code`, {
+    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json',
+      'X-Requested-With': 'XmlHttpRequest', ...headers }, body,
+  });
+  assert.equal((await worker.fetch(request({ Origin: 'https://other.example' }), env)).status, 403);
+  assert.equal((await worker.fetch(request({ 'X-Requested-With': '' }), env)).status, 400);
+  assert.equal((await worker.fetch(request({}, JSON.stringify({ code: 'x'.repeat(9000) })), env)).status, 413);
+  assert.equal(calls, 0);
+  const response = await worker.fetch(request(), env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await response.json(), { credential: tokenReply.id_token, accessToken: 'youtube-token' });
+  tokenReply = { ...tokenReply, scope: 'openid email' };
+  assert.equal((await worker.fetch(request(), env)).status, 401);
+  tokenReply = { ...tokenReply, scope: 'openid https://www.googleapis.com/auth/youtube.readonly',
+    id_token: token('10000001', { aud: 'wrong' }) };
+  assert.equal((await worker.fetch(request(), env)).status, 401);
+  assert.equal((await worker.fetch(request(), { ...env, GOOGLE_CLIENT_SECRET: '' })).status, 503);
+});
+
 test('pairing migration preserves existing history and can be reapplied', () => {
   const db = new DatabaseSync(':memory:');
   try {

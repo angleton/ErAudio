@@ -1,5 +1,7 @@
 config.js
 cloudflare/.wrangler/
+cloudflare/.dev.vars*
+cloudflare/wrangler.local.toml
 node_modules/
 *.mp3
 *.wav

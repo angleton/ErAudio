@@ -91,6 +91,87 @@ Do not rerun this migration against the existing deployment or rerun
 `history-schema.sql` against an existing database. Automatic Worker deployment
 does not apply migrations.
 
+## Testing combined Google and YouTube authorization
+
+This experimental flow is disabled by default. Test it with a separate Worker,
+database and Google OAuth client; do not point a test app at the production
+Worker or production history database. The Google web client must allow the
+test app's exact origin and the `youtube.readonly` scope, and test accounts must
+be permitted by its consent screen.
+
+### Local test on a development computer
+
+1. Install Node.js and Python, then run `npm ci` in the repository. Create a
+   separate Google Cloud test project, enable YouTube Data API v3, configure
+   the OAuth consent screen and add your account as a test user. Create a Web
+   application OAuth client with `http://localhost:8000` as an authorized
+   JavaScript origin. Keep its client secret private.
+2. Create the ignored file `cloudflare/wrangler.local.toml`, replacing the
+   client ID placeholder with that test client's public ID:
+
+   ```toml
+   name = "eraudio-history-local-test"
+   main = "history-worker.mjs"
+   compatibility_date = "2026-11-19"
+
+   [vars]
+   APP_ORIGINS = "http://localhost:8000"
+   GOOGLE_CLIENT_ID = "YOUR_TEST_CLIENT_ID.apps.googleusercontent.com"
+
+   [[d1_databases]]
+   binding = "HISTORY_DB"
+   database_name = "eraudio-history-local-test"
+   database_id = "00000000-0000-0000-0000-000000000000"
+   ```
+
+3. Create the ignored file `cloudflare/.dev.vars` containing
+   `GOOGLE_CLIENT_SECRET=your-test-client-secret`, using the actual secret
+   without quotes. Never commit or share this file. From the `cloudflare`
+   directory, initialize the disposable **local** database and start the
+   Worker. Do not use `--remote` or `wrangler deploy` for this test.
+
+   ```powershell
+   npx wrangler@4 d1 execute eraudio-history-local-test --local --config wrangler.local.toml --file history-schema.sql
+   npx wrangler@4 d1 execute eraudio-history-local-test --local --config wrangler.local.toml --file pairing-schema.sql
+   npx wrangler@4 dev --local --config wrangler.local.toml --port 8787
+   ```
+
+4. In another terminal at the repository root, run `npm run site:build`.
+   **This cleans and rebuilds `dist/`.** In the ignored
+   `dist/eraudio/ErAudio.json`, set `historySync.endpoint` to
+   `http://localhost:8787`, set `historySync.googleClientId` to the same test
+   client ID, and add `"combinedGoogleSignIn": true` inside `historySync`.
+   Serve the built test copy with `py -m http.server 8000 --directory dist`,
+   then open `http://localhost:8000/eraudio/`.
+5. Test **AUTHORIZE GOOGLE AND YOUTUBE**, consent, TOP sync, playlist access,
+   denied consent, sign-out, and sign-in after reload. Stop both local servers
+   when finished. Local test data remains in `cloudflare/.wrangler/`; it is
+   not the production database.
+
+### Separate hosted test
+
+1. Configure and deploy a separate Worker and D1 database using the steps
+   below. Set its `APP_ORIGINS` and `GOOGLE_CLIENT_ID` to the test values.
+2. Store the matching OAuth client secret as the Worker secret
+   `GOOGLE_CLIENT_SECRET` using `wrangler secret put` with your separate
+   Worker's configuration. Never put it in the repository or app settings.
+3. In the **test copy** of `ErAudio.json`, set `historySync.endpoint` and
+   `historySync.googleClientId` to the test values and add
+   `"combinedGoogleSignIn": true` inside `historySync`. Do not commit test
+   endpoints or secrets to the production configuration.
+4. Serve the test copy from the authorized origin. Select **AUTHORIZE GOOGLE
+   AND YOUTUBE**, complete Google's consent, and verify TOP sync, playlists,
+   sign-out, denied consent, and signing in again after a reload.
+
+The Worker exchanges the one-time authorization code with Google and returns
+the identity and YouTube access tokens to the browser. It validates the
+identity token and required YouTube scope, and does not retain the access or
+refresh token. Tokens stay in page memory; combined sign-in does not
+automatically reconnect after a reload or expiry. The test Worker needs the
+new code before the flag is enabled; no database migration is needed. A
+Google account and a real isolated deployment are required to validate the
+actual popup and consent flow; automated tests use mocks.
+
 ## Configure your own deployment
 
 The repository is already configured for its existing Worker and database.

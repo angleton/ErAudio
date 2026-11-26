@@ -74,7 +74,10 @@
         <span class="title-bar-text title-bar-brand tooltip-target" tabindex="0" aria-describedby="brand-pronunciation" data-tooltip="ErAudio: /ɛr ˈɔdi.oʊ/ (“air-AW-dee-oh”)">ErAudio</span>
         <span class="sr-only" id="brand-pronunciation" role="tooltip">ErAudio: /ɛr ˈɔdi.oʊ/ (“air-AW-dee-oh”)</span>
         <div class="account-controls" id="account-controls" hidden>
-          <div id="account-google"><div id="account-google-button"></div></div>
+          <div id="account-google">
+            <div id="account-google-button"></div>
+            <button class="title-bar-text title-bar-login" id="account-combined-sign-in" type="button" hidden>AUTHORIZE GOOGLE AND YOUTUBE</button>
+          </div>
           <span class="title-bar-text" id="account-label" hidden></span>
           <button class="title-bar-text title-bar-login" id="account-sign-out" type="button" hidden>SIGN OUT</button>
         </div>
@@ -333,7 +336,7 @@
         <input id="api-key-input" type="password" autocomplete="off" spellcheck="false">
         <label for="client-id-input">GOOGLE OAUTH CLIENT ID (YOUTUBE PLAYLIST ACCESS)</label>
         <input id="client-id-input" type="password" autocomplete="off" spellcheck="false">
-        <p>Use CONNECT YOUTUBE after Google sign-in to authorize playlist access, or YOUTUBE LOGIN on a deployment without history sync. The API key can load public chapters without signing in.</p>
+        <p id="credentials-usage">Use CONNECT YOUTUBE after Google sign-in to authorize playlist access, or YOUTUBE LOGIN on a deployment without history sync. The API key can load public chapters without signing in.</p>
         <p>Restrict your key to YouTube Data API v3 and this website. Do not enter a client secret.</p>
         <a href="https://github.com/angleton/ErAudio#youtube-api-setup" target="_blank" rel="noopener noreferrer">Setup instructions</a>
         <p class="open-dialog-error" id="credentials-error" role="alert"></p>

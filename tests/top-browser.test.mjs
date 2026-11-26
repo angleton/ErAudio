@@ -805,6 +805,66 @@ async function importHistory(page, data) {
   await page.locator('#account-sign-out:enabled').waitFor();
 }
 
+test('combined authorization connects the browser to the real history Worker', { timeout: 20000 }, async (t) => {
+  const db = testDatabase();
+  t.after(() => db.close());
+  const env = { GOOGLE_CLIENT_ID: audience, GOOGLE_CLIENT_SECRET: 'test-secret', HISTORY_DB: db };
+  const endpoint = await serve(t, async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const request = new Request(new URL(req.url, endpoint), {
+      method: req.method, headers: req.headers, body: chunks.length ? Buffer.concat(chunks) : undefined,
+    });
+    const response = await worker.fetch(request, env);
+    res.writeHead(response.status, Object.fromEntries(response.headers))
+      .end(Buffer.from(await response.arrayBuffer()));
+  });
+  const origin = await serve(t, async (req, res) => {
+    const { pathname } = new URL(req.url, origin);
+    if (pathname === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' })
+      .end(JSON.stringify({ historySync: { endpoint, googleClientId: audience, combinedGoogleSignIn: true } }));
+    const asset = assets.get(pathname);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  env.APP_ORIGINS = origin;
+  t.mock.method(globalThis, 'fetch', (url, init) => {
+    if (url === 'https://www.googleapis.com/oauth2/v3/certs') {
+      return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });
+    }
+    assert.equal(url, 'https://oauth2.googleapis.com/token');
+    assert.equal(init.body.get('code'), 'one-time-code');
+    assert.equal(init.body.get('redirect_uri'), origin);
+    return Response.json({ id_token: token('10000001'), access_token: 'youtube-test-token',
+      scope: 'openid email https://www.googleapis.com/auth/youtube.readonly' });
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    window.google = { accounts: { oauth2: { initCodeClient(options) {
+      return { requestCode() { queueMicrotask(() => options.callback({ code: 'one-time-code' })); } };
+    } } } };
+  });
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    if ([origin, endpoint].includes(url.origin)) return route.continue();
+    if (url.hostname === 'www.googleapis.com' && url.pathname.endsWith('/channels')) {
+      return route.fulfill({ json: { items: [{ snippet: { title: 'Test channel' } }] } });
+    }
+    if (url.hostname === 'www.googleapis.com' && url.pathname.endsWith('/playlists')) {
+      return route.fulfill({ json: { items: [] } });
+    }
+    return route.abort();
+  });
+  await page.goto(origin);
+  await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();
+  await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'youtube-test-token');
+  assert.equal(await page.evaluate(() => Boolean(historySync.account)), true);
+  await page.waitForFunction(() => document.querySelector('#youtube-login-label').textContent.includes('Test channel'));
+});
+
 test('TOP converges in both directions across Chromium and Firefox', { timeout: 45000 }, async (t) => {
   const db = testDatabase();
   t.after(() => db.close());
@@ -889,7 +949,7 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
     await page.getByText('Private history synced.', { exact: true }).waitFor().catch(async (error) => {
       throw new Error(`Could not sign into local sync: ${await page.locator('#history-sync-status').innerText()}`, { cause: error });
     });
-    await page.locator('#account-google button').waitFor({ state: 'hidden' });
+    await page.locator('#account-google-button button').waitFor({ state: 'hidden' });
     await signOut.waitFor({ state: 'visible' });
     await help.click();
     await assertToolbarOrder();

@@ -66,6 +66,7 @@ const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeLoginLabel = document.querySelector('#youtube-login-label');
 const accountControls = document.querySelector('#account-controls');
 const accountGoogle = document.querySelector('#account-google');
+const accountCombinedSignIn = document.querySelector('#account-combined-sign-in');
 const accountLabel = document.querySelector('#account-label');
 const accountSignOut = document.querySelector('#account-sign-out');
 const youtubeSettingsButton = document.querySelector('#youtube-settings');
@@ -102,6 +103,7 @@ try {
 const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 const accountReconnectKey = 'eraudio:account-reconnect';
 let accountClientId = '';
+let combinedGoogleSignIn = false;
 let accountLoginHint = '';
 let accountSignInAllowed = true;
 let accountPrompted = false;
@@ -624,7 +626,7 @@ function focusAccountSignIn() {
 }
 
 function requestAccountReconnect() {
-  if (!accountClientId || accountPrompted || !accountSignInAllowed
+  if (combinedGoogleSignIn || !accountClientId || accountPrompted || !accountSignInAllowed
     || historySync?.token || historySync?.paired || sharedPairDialog.open
     || !readReconnectPreference(accountReconnectKey)) return;
   const identity = window.google?.accounts?.id;
@@ -649,6 +651,21 @@ function reportYouTubeLoginError(message, wasSilent) {
   }
 }
 
+async function activateYouTubeAccess(accessToken, generation) {
+  loginNotice.hidden = true;
+  resetAccountPlaylists('Loading YouTube playlists...', true);
+  youtubeAccessToken = accessToken;
+  const session = playlistSession;
+  ensureMarkers(playingTrack);
+  try {
+    await loadAccountPlaylists(generation, session, accessToken);
+  } catch (error) {
+    if (generation !== youtubeAuthGeneration || session !== playlistSession) return;
+    setPlaylistStatus('Could not load YouTube playlists. Local Videos is still available.', true);
+    showLoginError(`Could not load YouTube playlists: ${error.message}`);
+  }
+}
+
 function getTokenClient() {
   if (tokenClient) return tokenClient;
   if (!youtubeOAuthClientId() || !window.google?.accounts?.oauth2) return null;
@@ -669,19 +686,8 @@ function getTokenClient() {
         reportYouTubeLoginError('YouTube sign-in did not return an access token. Try connecting again.', wasSilent);
         return;
       }
-      loginNotice.hidden = true;
-      resetAccountPlaylists('Loading YouTube playlists...', true);
-      youtubeAccessToken = tokenResponse.access_token;
       if (accountClientId) saveReconnectPreference(youtubeReconnectKey(), true);
-      const session = playlistSession;
-      ensureMarkers(playingTrack);
-      try {
-        await loadAccountPlaylists(generation, session, youtubeAccessToken);
-      } catch (error) {
-        if (generation !== youtubeAuthGeneration || session !== playlistSession) return;
-        setPlaylistStatus('Could not load YouTube playlists. Local Videos is still available.', true);
-        showLoginError(`Could not load YouTube playlists: ${error.message}`);
-      }
+      await activateYouTubeAccess(tokenResponse.access_token, generation);
     },
     error_callback: (error) => {
       if (generation !== youtubeAuthGeneration) return;
@@ -746,6 +752,10 @@ function showCredentialsDialog(purpose = 'settings') {
   credentialsDialog.dataset.purpose = purpose;
   apiKeyInput.value = youtubeApiKey;
   clientIdInput.value = youtubeOAuthClientId();
+  clientIdInput.disabled = combinedGoogleSignIn;
+  document.querySelector('#credentials-usage').textContent = combinedGoogleSignIn
+    ? 'Combined sign-in uses the configured history client ID. The API key can load public chapters without signing in.'
+    : 'Use CONNECT YOUTUBE after Google sign-in to authorize playlist access, or YOUTUBE LOGIN on a deployment without history sync. The API key can load public chapters without signing in.';
   credentialsError.textContent = '';
   credentialsDialog.showModal();
   (purpose === 'login' ? clientIdInput : apiKeyInput).focus();
@@ -759,7 +769,8 @@ function resetAccountSession() {
   youtubeLoginLabel.textContent = accountClientId ? 'CONNECT YOUTUBE' : 'YOUTUBE LOGIN';
   youtubeLoginButton.dataset.tooltip = accountClientId ? 'Optional: connect your YouTube playlists' : 'Sign in to YouTube';
   youtubeLoginButton.setAttribute('aria-label', accountClientId ? 'Connect YouTube playlists' : 'Sign in to YouTube');
-  resetAccountPlaylists(accountClientId ? 'Connect YouTube to browse playlists. TOP sync does not require it.'
+  resetAccountPlaylists(combinedGoogleSignIn ? 'Authorize Google and YouTube to browse playlists.'
+    : accountClientId ? 'Connect YouTube to browse playlists. TOP sync does not require it.'
     : 'Sign in to browse YouTube playlists.');
 }
 
@@ -772,7 +783,7 @@ credentialsDialog.addEventListener('close', () => {
 credentialsForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const nextApiKey = apiKeyInput.value.trim();
-  const nextClientId = clientIdInput.value.trim();
+  const nextClientId = combinedGoogleSignIn ? googleClientId : clientIdInput.value.trim();
   if (nextClientId && !/^[^\s]+\.apps\.googleusercontent\.com$/.test(nextClientId)) {
     credentialsError.textContent = 'Enter a Google OAuth client ID ending in .apps.googleusercontent.com, not a client secret.';
     clientIdInput.focus();
@@ -1090,7 +1101,8 @@ function renderMarkers() {
   } else if (!markers) {
     placeholder(state === 'loading' ? 'Looking for chapters / timestamps...'
       : state === 'signin' ? accountClientId
-        ? 'Use CONNECT YOUTUBE after Google sign-in to detect chapters / timestamps.'
+        ? combinedGoogleSignIn ? 'Authorize Google and YouTube to detect chapters / timestamps.'
+          : 'Use CONNECT YOUTUBE after Google sign-in to detect chapters / timestamps.'
         : 'Sign in to YouTube to detect chapters / timestamps.'
         : 'Use API SETUP to enter a YouTube API key or sign in to detect chapters / timestamps.');
     markerInfo.textContent = state === 'loading' ? 'LOADING' : state === 'signin' ? 'SIGN IN REQUIRED' : 'SETUP REQUIRED';
@@ -2129,6 +2141,7 @@ function setupHistorySync(config) {
     return;
   }
   historyPairActions.hidden = false;
+  combinedGoogleSignIn = config.combinedGoogleSignIn === true;
   accountClientId = config.googleClientId;
   accountControls.hidden = false;
   accountControls.closest('.title-bar').classList.add('account-title');
@@ -2287,6 +2300,81 @@ function setupHistorySync(config) {
     }
   });
   const renderSignIn = () => {
+    if (combinedGoogleSignIn) {
+      if (!window.google?.accounts?.oauth2) {
+        showHistorySync('Google authorization did not load. Reload to try again.');
+        showLoginError('Google authorization did not load. Check your connection or browser blockers, then reload.');
+        return;
+      }
+      youtubeLoginButton.hidden = true;
+      accountCombinedSignIn.hidden = false;
+      showHistorySync('Authorize Google and YouTube to sync history and access playlists. Sign in again after reloading.');
+      accountCombinedSignIn.addEventListener('click', () => {
+        if (historySyncBusy || historySync?.token || sharedPairDialog.open) return;
+        accountSignInAllowed = true;
+        resetAccountSession();
+        const generation = youtubeAuthGeneration;
+        accountCombinedSignIn.disabled = true;
+        historySharedStart.disabled = true;
+        const finish = () => {
+          accountCombinedSignIn.disabled = false;
+          historySharedStart.disabled = false;
+        };
+        const fail = (message) => {
+          if (generation !== youtubeAuthGeneration) return;
+          finish();
+          showLoginError(message);
+          showHistorySync('Google and YouTube authorization did not complete. Try again.');
+        };
+        try {
+          const codeClient = google.accounts.oauth2.initCodeClient({
+            client_id: accountClientId,
+            scope: `openid email ${youtubeScope}`,
+            ux_mode: 'popup',
+            callback: async (result) => {
+              if (generation !== youtubeAuthGeneration) { finish(); return; }
+              if (result.error || typeof result.code !== 'string' || !result.code) {
+                fail('Google authorization was not completed. Try again.');
+                return;
+              }
+              try {
+                const response = await fetch(new URL('/google-code', endpoint), {
+                  method: 'POST', cache: 'no-store', credentials: 'omit', redirect: 'error',
+                  signal: AbortSignal.timeout(15000),
+                  headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XmlHttpRequest' },
+                  body: JSON.stringify({ code: result.code }),
+                });
+                if (!response.ok) throw new Error(`Authorization service returned HTTP ${response.status}.`);
+                const tokens = await response.json();
+                if (typeof tokens.credential !== 'string' || !tokens.credential
+                  || typeof tokens.accessToken !== 'string' || !tokens.accessToken) {
+                  throw new Error('Authorization service returned an invalid response.');
+                }
+                if (generation !== youtubeAuthGeneration) return;
+                if (!await signIn({ credential: tokens.credential })) {
+                  throw new Error('Could not connect private history.');
+                }
+                if (generation !== youtubeAuthGeneration || !historySync?.token) return;
+                accountLoginHint = historySync.email;
+                await activateYouTubeAccess(tokens.accessToken, generation);
+              } catch (error) {
+                if (generation === youtubeAuthGeneration) {
+                  console.error('Combined Google authorization failed:', error.message);
+                  showLoginError(`${error.message} Try signing in again.`);
+                }
+              } finally {
+                finish();
+              }
+            },
+            error_callback: (error) => fail(`Google authorization failed: ${error.type || 'unknown error'}. Try again.`),
+          });
+          codeClient.requestCode();
+        } catch (error) {
+          fail(`Google authorization could not start: ${error.message}. Try again.`);
+        }
+      });
+      return;
+    }
     const identity = window.google?.accounts?.id;
     if (!identity) {
       showHistorySync('Google sign-in did not load. Reload to try again.');
