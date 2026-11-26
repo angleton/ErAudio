@@ -936,7 +936,7 @@ test('YouTube playlists are read-only views and preserve the local list and play
   const saved = await page.evaluate(() => localStorage.getItem('eraudio:added-tracks'));
   await signIn(page);
   assert.deepEqual(await select.locator('option').allTextContents(),
-    ['Local Videos', 'Playlist A', 'Playlist B', 'Unavailable', 'Slow playlist', 'Empty playlist']);
+    ['Local Videos', 'Empty playlist', 'Playlist A', 'Playlist B', 'Slow playlist', 'Unavailable']);
   const eventsBefore = await page.evaluate(() => window.playerEvents.length);
   await select.selectOption('youtube:list-a');
   await page.waitForFunction(() => document.querySelector('#playlist-status').textContent.includes('1 unavailable item omitted'));
@@ -969,6 +969,61 @@ test('YouTube playlists are read-only views and preserve the local list and play
   assert.ok(requests.some((request) => request.path === 'playlists' && request.params.pageToken === 'catalog-next'));
   assert.ok(requests.some((request) => request.path === 'playlistItems' && request.params.pageToken === 'items-next'));
   assert.ok(requests.filter((request) => request.path === 'playlistItems').every((request) => request.authorization === 'Bearer test-token'));
+});
+
+test('playlist filter matches as typed without changing the selected list or playback', { timeout: 20000 }, async (t) => {
+  const { page, requests, releaseSlow } = await setup(t);
+  await page.getByRole('button', { name: 'YT', exact: true }).click();
+  await signIn(page);
+  const select = page.locator('#playlist-select');
+  const filter = page.getByRole('searchbox', { name: 'FIND' });
+  const visibleOptions = () => select.locator('option:not([hidden])').allTextContents();
+  assert.deepEqual(await visibleOptions(),
+    ['Local Videos', 'Empty playlist', 'Playlist A', 'Playlist B', 'Slow playlist', 'Unavailable']);
+
+  await select.selectOption('youtube:list-a');
+  await page.waitForFunction(() => document.querySelector('#playlist-info').textContent.includes('PLAYLIST A'));
+  await page.locator('#playlist-list button').first().click();
+  const eventsBefore = await page.evaluate(() => window.playerEvents.length);
+  const requestsBefore = requests.length;
+  await filter.fill('pLaYlIsT');
+  assert.deepEqual(await visibleOptions(), ['Empty playlist', 'Playlist A', 'Playlist B', 'Slow playlist']);
+  await filter.fill('playlist b');
+  assert.deepEqual(await visibleOptions(), ['Playlist B']);
+  assert.equal(await select.inputValue(), 'youtube:list-a');
+  assert.equal(await page.locator('#playlist-list button').count(), 3);
+  assert.equal(await page.evaluate(() => window.playerEvents.length), eventsBefore);
+  assert.equal(requests.length, requestsBefore);
+  await select.selectOption('youtube:list-b');
+  await page.waitForFunction(() => document.querySelector('#playlist-info').textContent.includes('PLAYLIST B'));
+  await filter.fill('no match');
+  assert.deepEqual(await visibleOptions(), []);
+  assert.match(await page.locator('#playlist-filter-status').textContent(), /No matching playlists/);
+  assert.equal(await select.inputValue(), 'youtube:list-b');
+  await filter.fill('local');
+  assert.deepEqual(await visibleOptions(), ['Local Videos']);
+  await select.selectOption('favorites');
+  assert.equal(await select.inputValue(), 'favorites');
+
+  await filter.fill('');
+  await select.selectOption('youtube:slow');
+  while (!requests.some((request) => request.params.playlistId === 'slow')) await page.waitForTimeout(20);
+  await filter.fill('empty');
+  releaseSlow();
+  await page.waitForFunction(() => document.querySelector('#playlist-info').textContent.includes('SLOW PLAYLIST'));
+  assert.equal(await select.inputValue(), 'youtube:slow');
+  assert.deepEqual(await visibleOptions(), ['Empty playlist']);
+  await filter.fill('');
+  assert.deepEqual(await visibleOptions(),
+    ['Local Videos', 'Empty playlist', 'Playlist A', 'Playlist B', 'Slow playlist', 'Unavailable']);
+  await filter.fill('unavailable');
+  await select.selectOption('youtube:fail');
+  await page.waitForFunction(() => document.querySelector('#playlist-status').textContent.includes('Could not load playlist'));
+  assert.equal(await select.inputValue(), 'youtube:slow');
+  assert.deepEqual(await visibleOptions(), ['Unavailable']);
+  await page.evaluate(() => resetAccountSession());
+  assert.equal(await filter.inputValue(), '');
+  assert.deepEqual(await visibleOptions(), ['Local Videos']);
 });
 
 test('playlist sorting uses view counts and all-time history without changing playback order', { timeout: 20000 }, async (t) => {

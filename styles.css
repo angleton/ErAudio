@@ -1300,7 +1300,8 @@ body {
   padding: 6px;
 }
 
-.playlist-source:not([hidden]) {
+.playlist-source:not([hidden]),
+.playlist-filter {
   align-items: center;
   display: flex;
   gap: 6px;
@@ -1308,18 +1309,29 @@ body {
 }
 
 .playlist-source label,
-.playlist-source select {
+.playlist-source select,
+.playlist-filter label,
+.playlist-filter input {
   color: var(--accent-gold);
   font-family: var(--font-mono);
   font-size: 10px;
 }
 
-.playlist-source select {
+.playlist-source select,
+.playlist-filter input {
   background: #080f08;
   border: 1px solid #003300;
   flex: 1;
   min-width: 0;
   padding: 2px 4px;
+}
+
+.playlist-filter input::placeholder {
+  color: #a0ad91;
+}
+
+.playlist-source-status:empty {
+  display: none;
 }
 
 .playlist-help-button {

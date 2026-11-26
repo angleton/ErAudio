@@ -44,6 +44,8 @@ const nudgeMessage = document.querySelector('#nudge-message');
 const savedLocationsStorageKey = 'eraudio:saved-locations';
 const maxSavedLocations = 50;
 const playlistSelect = document.querySelector('#playlist-select');
+const playlistFilter = document.querySelector('#playlist-filter');
+const playlistFilterStatus = document.querySelector('#playlist-filter-status');
 const playlistHelpButton = document.querySelector('#playlist-help-button');
 const playlistColumns = document.querySelector('#playlist-columns');
 const playlistSortStatus = document.querySelector('#playlist-sort-status');
@@ -454,6 +456,22 @@ async function fetchAllPages(path, params, { accessToken = youtubeAccessToken, i
   return items;
 }
 
+function filterPlaylistOptions() {
+  const query = playlistFilter.value.trim().toLocaleLowerCase();
+  let matches = 0;
+  for (const option of playlistSelect.options) {
+    const matchesQuery = option.textContent.toLocaleLowerCase().includes(query);
+    option.hidden = !matchesQuery;
+    if (matchesQuery) matches++;
+  }
+  playlistFilterStatus.textContent = query
+    ? matches ? `${matches} matching playlist${matches === 1 ? '' : 's'}.`
+      : 'No matching playlists. The current playlist is unchanged.'
+    : '';
+}
+
+playlistFilter.addEventListener('input', filterPlaylistOptions);
+
 function resetAccountPlaylists(message, important = false) {
   playlistSession++;
   playlistRequest++;
@@ -461,6 +479,8 @@ function resetAccountPlaylists(message, important = false) {
   favoriteLists.splice(1);
   playlistSelect.replaceChildren(new Option('Local Videos', favoriteLists[0].id));
   playlistSelect.value = favoriteLists[0].id;
+  playlistFilter.value = '';
+  filterPlaylistOptions();
   if (currentListId !== favoriteLists[0].id) renderFavoritesList(favoriteLists[0].id);
   setPlaylistStatus(message, important);
 }
@@ -480,10 +500,12 @@ async function loadAccountPlaylists(generation, session, accessToken) {
   if (playlists.some((playlist) => typeof playlist.id !== 'string' || typeof playlist.snippet?.title !== 'string')) {
     throw new Error('Invalid playlist response');
   }
+  playlists.sort((a, b) => a.snippet.title.localeCompare(b.snippet.title, undefined, { sensitivity: 'base', numeric: true }));
   playlistSelect.replaceChildren(new Option('Local Videos', favoriteLists[0].id), ...playlists.map((playlist) => (
     new Option(playlist.snippet.title, `youtube:${playlist.id}`)
   )));
   playlistSelect.value = currentListId;
+  filterPlaylistOptions();
   setPlaylistStatus(playlists.length
     ? 'Select a YouTube playlist to view its videos. YouTube playlists are read-only.'
     : 'No YouTube playlists found. Local Videos is still available.', !playlists.length);

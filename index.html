@@ -270,6 +270,11 @@
           </select>
           <button class="pl-btn playlist-help-button" id="playlist-help-button" type="button" aria-label="Show playlist information" aria-controls="playlist-status playlist-sort-status" aria-expanded="false">?</button>
         </div>
+        <div class="playlist-filter">
+          <label for="playlist-filter">FIND</label>
+          <input id="playlist-filter" type="search" placeholder="Filter playlists" autocomplete="off" aria-controls="playlist-select" aria-describedby="playlist-filter-status">
+        </div>
+        <p class="playlist-source-status" id="playlist-filter-status" role="status" aria-live="polite"></p>
         <p class="playlist-source-status" id="playlist-status" role="status" hidden>Sign in to browse YouTube playlists.</p>
         <p class="playlist-source-status" id="playlist-sort-status" role="status" hidden></p>
         <div class="playlist-table">
