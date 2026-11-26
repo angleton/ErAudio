@@ -32,6 +32,8 @@ Read the [ErAudio Privacy Policy](https://ericangleton.com/privacy.html). The so
 
 Squarespace holds the `ericangleton.com` registration and DNS; GitHub Pages hosts the site. The homepage currently redirects to ErAudio at `/eraudio/`, and the blog is at `/blog/`. Squarespace's apex A records point to GitHub Pages. Preserve email-related DNS records if making future web-hosting changes.
 
+The HTML pages include a limited Content Security Policy that blocks base URL changes and embedded objects. It does not restrict scripts or prevent framing. GitHub Pages does not support custom response headers; HSTS and framing protection require a hosting service or proxy that can set HTTP headers.
+
 ### Build and preview the unified site
 
 The Eleventy build creates the homepage redirect, blog index, and article pages in `dist/`, then copies the existing ErAudio app into `dist/eraudio/`. The original app files remain at the repository root, and the visualizer remains in its own `visualizer/` directory.

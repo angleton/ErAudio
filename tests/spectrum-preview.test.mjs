@@ -2,6 +2,32 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { chromium } from 'playwright';
 
+test('player and preview block injected base URLs and embedded objects', async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ offline: true });
+
+  for (const path of ['../index.html', '../visualizer/preview.html']) {
+    await page.goto(new URL(path, import.meta.url).href);
+    const result = await page.evaluate(async () => {
+      const violations = [];
+      document.addEventListener('securitypolicyviolation', (event) => violations.push(event.violatedDirective));
+      const originalBase = document.baseURI;
+      const base = document.createElement('base');
+      base.href = 'https://example.invalid/';
+      document.head.append(base);
+      const object = document.createElement('object');
+      object.data = 'https://example.invalid/plugin';
+      document.body.append(object);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { originalBase, currentBase: document.baseURI, violations };
+    });
+    assert.equal(result.currentBase, result.originalBase);
+    assert.ok(result.violations.includes('base-uri'));
+    assert.ok(result.violations.includes('object-src'));
+  }
+});
+
 test('standalone preview works offline, pauses and resumes, and changes band count', { timeout: 15000 }, async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
