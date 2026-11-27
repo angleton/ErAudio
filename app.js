@@ -66,6 +66,7 @@ const youtubeLoginButton = document.querySelector('#youtube-login');
 const youtubeLoginLabel = document.querySelector('#youtube-login-label');
 const accountControls = document.querySelector('#account-controls');
 const accountGoogle = document.querySelector('#account-google');
+const accountGoogleButton = document.querySelector('#account-google-button');
 const accountCombinedSignIn = document.querySelector('#account-combined-sign-in');
 const accountLabel = document.querySelector('#account-label');
 const accountSignOut = document.querySelector('#account-sign-out');
@@ -104,6 +105,7 @@ const youtubeScope = 'https://www.googleapis.com/auth/youtube.readonly';
 const accountReconnectKey = 'eraudio:account-reconnect';
 let accountClientId = '';
 let combinedGoogleSignIn = false;
+let combinedSignInFallback = false;
 let accountLoginHint = '';
 let accountSignInAllowed = true;
 let accountPrompted = false;
@@ -595,7 +597,7 @@ function showLoginError(message) {
 }
 
 function youtubeOAuthClientId() {
-  return googleClientId || accountClientId;
+  return combinedGoogleSignIn ? accountClientId : googleClientId || accountClientId;
 }
 
 function youtubeReconnectKey() {
@@ -626,7 +628,7 @@ function focusAccountSignIn() {
 }
 
 function requestAccountReconnect() {
-  if (combinedGoogleSignIn || !accountClientId || accountPrompted || !accountSignInAllowed
+  if (!accountClientId || accountPrompted || !accountSignInAllowed
     || historySync?.token || historySync?.paired || sharedPairDialog.open
     || !readReconnectPreference(accountReconnectKey)) return;
   const identity = window.google?.accounts?.id;
@@ -655,6 +657,7 @@ async function activateYouTubeAccess(accessToken, generation) {
   loginNotice.hidden = true;
   resetAccountPlaylists('Loading YouTube playlists...', true);
   youtubeAccessToken = accessToken;
+  if (combinedGoogleSignIn) showHistorySync(historySyncStatus.textContent);
   const session = playlistSession;
   ensureMarkers(playingTrack);
   try {
@@ -680,6 +683,12 @@ function getTokenClient() {
       silentAttempt = false;
       if (tokenResponse.error) {
         reportYouTubeLoginError(`YouTube sign-in failed: ${tokenResponse.error}. Try again or check the setup instructions.`, wasSilent);
+        return;
+      }
+      if (typeof tokenResponse.scope === 'string' && !tokenResponse.scope.split(/\s+/).includes(youtubeScope)) {
+        if (accountClientId) saveReconnectPreference(youtubeReconnectKey(), false);
+        reportYouTubeLoginError(`YouTube permission was not granted. ${historySync?.token
+          ? 'TOP remains connected; select CONNECT YOUTUBE to retry.' : 'Try YouTube sign-in again.'}`, wasSilent);
         return;
       }
       if (typeof tokenResponse.access_token !== 'string' || !tokenResponse.access_token) {
@@ -766,6 +775,7 @@ function resetAccountSession() {
   tokenClient = null;
   silentAttempt = false;
   youtubeAccessToken = '';
+  combinedSignInFallback = false;
   youtubeLoginLabel.textContent = accountClientId ? 'CONNECT YOUTUBE' : 'YOUTUBE LOGIN';
   youtubeLoginButton.dataset.tooltip = accountClientId ? 'Optional: connect your YouTube playlists' : 'Sign in to YouTube';
   youtubeLoginButton.setAttribute('aria-label', accountClientId ? 'Connect YouTube playlists' : 'Sign in to YouTube');
@@ -783,7 +793,7 @@ credentialsDialog.addEventListener('close', () => {
 credentialsForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const nextApiKey = apiKeyInput.value.trim();
-  const nextClientId = combinedGoogleSignIn ? googleClientId : clientIdInput.value.trim();
+  const nextClientId = combinedGoogleSignIn ? accountClientId : clientIdInput.value.trim();
   if (nextClientId && !/^[^\s]+\.apps\.googleusercontent\.com$/.test(nextClientId)) {
     credentialsError.textContent = 'Enter a Google OAuth client ID ending in .apps.googleusercontent.com, not a client secret.';
     clientIdInput.focus();
@@ -809,7 +819,7 @@ credentialsForm.addEventListener('submit', (event) => {
     credentialsError.textContent = 'Could not save YouTube settings in browser storage. No settings were changed.';
     return;
   }
-  const clientChanged = nextClientId !== googleClientId;
+  const clientChanged = !combinedGoogleSignIn && nextClientId !== googleClientId;
   const apiKeyChanged = nextApiKey !== youtubeApiKey;
   if (clientChanged && accountClientId) saveReconnectPreference(youtubeReconnectKey(), false);
   googleClientId = nextClientId;
@@ -2007,7 +2017,13 @@ function showHistorySync(message) {
     const paired = Boolean(historySync?.paired);
     const signedIn = Boolean(historySync?.token) || paired;
     accountControls.hidden = false;
-    accountGoogle.hidden = signedIn;
+    accountGoogle.hidden = signedIn && !(combinedGoogleSignIn && !paired && !youtubeAccessToken);
+    if (combinedGoogleSignIn) {
+      youtubeLoginButton.hidden = true;
+      accountGoogleButton.hidden = signedIn || !combinedSignInFallback;
+      accountCombinedSignIn.hidden = !signedIn && combinedSignInFallback;
+      accountCombinedSignIn.textContent = signedIn ? 'CONNECT YOUTUBE' : 'AUTHORIZE GOOGLE AND YOUTUBE';
+    }
     accountLabel.hidden = !signedIn;
     accountLabel.textContent = signedIn ? paired ? 'SHARED SESSION' : historySync.email || 'SIGNED IN' : '';
     accountLabel.title = accountLabel.textContent;
@@ -2305,31 +2321,74 @@ function setupHistorySync(config) {
     }
   });
   const renderSignIn = () => {
+    let combinedAuthorizationPending = false;
+    const identity = window.google?.accounts?.id;
+    if (!identity) {
+      showHistorySync('Google sign-in did not load. Reload to try again.');
+      showLoginError('Google sign-in did not load. Check your connection or browser blockers, then reload.');
+      return;
+    }
+    try {
+      identity.initialize({
+        client_id: accountClientId,
+        auto_select: true,
+        callback: async (response) => {
+          if (combinedAuthorizationPending || !accountSignInAllowed || historySync?.token
+            || historySync?.paired || sharedPairDialog.open) return;
+          if (!await signIn(response)) {
+            showLoginError(historySyncStatus.textContent);
+            return;
+          }
+          accountLoginHint = historySync.email;
+          resetAccountSession();
+          accountPrompted = false;
+          saveReconnectPreference(accountReconnectKey, true);
+          if (accountLoginHint && readReconnectPreference(youtubeReconnectKey())) trySilentLogin();
+        },
+      });
+      identity.renderButton(accountGoogleButton, {
+        theme: 'outline', size: 'small',
+        click_listener: () => { accountSignInAllowed = true; },
+      });
+    } catch (error) {
+      console.error('Could not initialize Google sign-in.', error);
+      showHistorySync('Google sign-in could not start. Reload to try again.');
+      showLoginError('Google sign-in could not start. Reload to try again.');
+      return;
+    }
     if (combinedGoogleSignIn) {
       if (!window.google?.accounts?.oauth2) {
-        showHistorySync('Google authorization did not load. Reload to try again.');
-        showLoginError('Google authorization did not load. Check your connection or browser blockers, then reload.');
-        return;
+        combinedSignInFallback = true;
+        showHistorySync('YouTube authorization did not load. Use Sign in with Google for TOP only.');
+        showLoginError('YouTube authorization did not load. TOP-only Google sign-in is still available.');
+      } else {
+        showHistorySync('Sign in to sync TOP and connect YouTube. YouTube permission is optional.');
       }
-      youtubeLoginButton.hidden = true;
-      accountCombinedSignIn.hidden = false;
-      showHistorySync('Authorize Google and YouTube to sync history and access playlists. Sign in again after reloading.');
       accountCombinedSignIn.addEventListener('click', () => {
-        if (historySyncBusy || historySync?.token || sharedPairDialog.open) return;
+        if (historySync?.paired || sharedPairDialog.open) return;
+        if (historySync?.token) {
+          requestYouTubeLogin();
+          return;
+        }
+        if (historySyncBusy) return;
         accountSignInAllowed = true;
+        identity.cancel();
         resetAccountSession();
         const generation = youtubeAuthGeneration;
+        combinedAuthorizationPending = true;
         accountCombinedSignIn.disabled = true;
         historySharedStart.disabled = true;
         const finish = () => {
+          combinedAuthorizationPending = false;
           accountCombinedSignIn.disabled = false;
           historySharedStart.disabled = false;
         };
         const fail = (message) => {
           if (generation !== youtubeAuthGeneration) return;
           finish();
-          showLoginError(message);
-          showHistorySync('Google and YouTube authorization did not complete. Try again.');
+          combinedSignInFallback = true;
+          showLoginError(`${message} Use Sign in with Google for TOP only, then connect YouTube if desired.`);
+          showHistorySync('Combined authorization did not complete. TOP-only Google sign-in is available.');
         };
         try {
           const codeClient = google.accounts.oauth2.initCodeClient({
@@ -2349,10 +2408,13 @@ function setupHistorySync(config) {
                   headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XmlHttpRequest' },
                   body: JSON.stringify({ code: result.code }),
                 });
-                if (!response.ok) throw new Error(`Authorization service returned HTTP ${response.status}.`);
+                if (!response.ok) {
+                  const result = await response.json();
+                  throw new Error(`${typeof result.error === 'string' ? result.error : 'Authorization service failed'} (HTTP ${response.status}).`);
+                }
                 const tokens = await response.json();
                 if (typeof tokens.credential !== 'string' || !tokens.credential
-                  || typeof tokens.accessToken !== 'string' || !tokens.accessToken) {
+                  || (tokens.accessToken !== null && (typeof tokens.accessToken !== 'string' || !tokens.accessToken))) {
                   throw new Error('Authorization service returned an invalid response.');
                 }
                 if (generation !== youtubeAuthGeneration) return;
@@ -2361,11 +2423,20 @@ function setupHistorySync(config) {
                 }
                 if (generation !== youtubeAuthGeneration || !historySync?.token) return;
                 accountLoginHint = historySync.email;
-                await activateYouTubeAccess(tokens.accessToken, generation);
+                accountPrompted = false;
+                saveReconnectPreference(accountReconnectKey, true);
+                saveReconnectPreference(youtubeReconnectKey(), tokens.accessToken !== null);
+                if (tokens.accessToken !== null) {
+                  await activateYouTubeAccess(tokens.accessToken, generation);
+                } else {
+                  showLoginError('YouTube permission was not granted. TOP is connected; select CONNECT YOUTUBE if desired.');
+                  setPlaylistStatus('TOP is connected. Select CONNECT YOUTUBE to authorize playlist access.', true);
+                }
               } catch (error) {
                 if (generation === youtubeAuthGeneration) {
                   console.error('Combined Google authorization failed:', error.message);
-                  showLoginError(`${error.message} Try signing in again.`);
+                  if (historySync?.token) showLoginError(`${error.message} TOP remains connected.`);
+                  else fail(error.message);
                 }
               } finally {
                 finish();
@@ -2378,41 +2449,8 @@ function setupHistorySync(config) {
           fail(`Google authorization could not start: ${error.message}. Try again.`);
         }
       });
-      return;
     }
-    const identity = window.google?.accounts?.id;
-    if (!identity) {
-      showHistorySync('Google sign-in did not load. Reload to try again.');
-      showLoginError('Google sign-in did not load. Check your connection or browser blockers, then reload.');
-      return;
-    }
-    try {
-      identity.initialize({
-        client_id: accountClientId,
-        auto_select: true,
-        callback: async (response) => {
-          if (!accountSignInAllowed || historySync?.paired || sharedPairDialog.open) return;
-          if (!await signIn(response)) {
-            showLoginError(historySyncStatus.textContent);
-            return;
-          }
-          accountLoginHint = historySync.email;
-          resetAccountSession();
-          accountPrompted = false;
-          saveReconnectPreference(accountReconnectKey, true);
-          if (accountLoginHint && readReconnectPreference(youtubeReconnectKey())) trySilentLogin();
-        },
-      });
-      identity.renderButton(document.querySelector('#account-google-button'), {
-        theme: 'outline', size: 'small',
-        click_listener: () => { accountSignInAllowed = true; },
-      });
-      requestAccountReconnect();
-    } catch (error) {
-      console.error('Could not initialize Google sign-in.', error);
-      showHistorySync('Google sign-in could not start. Reload to try again.');
-      showLoginError('Google sign-in could not start. Reload to try again.');
-    }
+    requestAccountReconnect();
   };
   if (window.google?.accounts?.id) renderSignIn();
   else {

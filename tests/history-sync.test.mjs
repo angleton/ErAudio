@@ -10,7 +10,7 @@ const origin = 'http://localhost:8000';
 const endpoint = 'http://localhost:8787';
 const videoId = 'abcdefghijk';
 
-test('exchanges a Google code only for an allowed origin and validated YouTube grant', async (t) => {
+test('exchanges Google codes for verified identity and only returns access tokens with YouTube permission', async (t) => {
   const db = testDatabase();
   t.after(() => db.close());
   const env = { APP_ORIGINS: origin, GOOGLE_CLIENT_ID: audience, GOOGLE_CLIENT_SECRET: 'test-secret', HISTORY_DB: db };
@@ -42,7 +42,9 @@ test('exchanges a Google code only for an allowed origin and validated YouTube g
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
   assert.deepEqual(await response.json(), { credential: tokenReply.id_token, accessToken: 'youtube-token' });
   tokenReply = { ...tokenReply, scope: 'openid email' };
-  assert.equal((await worker.fetch(request(), env)).status, 401);
+  const partial = await worker.fetch(request(), env);
+  assert.equal(partial.status, 200);
+  assert.deepEqual(await partial.json(), { credential: tokenReply.id_token, accessToken: null });
   tokenReply = { ...tokenReply, scope: 'openid https://www.googleapis.com/auth/youtube.readonly',
     id_token: token('10000001', { aud: 'wrong' }) };
   assert.equal((await worker.fetch(request(), env)).status, 401);

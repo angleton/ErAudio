@@ -150,11 +150,12 @@ export default {
         if (!response.ok) return reply({ error: 'Google authorization could not be completed.' }, 401);
         const tokens = await response.json();
         if (!tokens || typeof tokens.id_token !== 'string' || typeof tokens.access_token !== 'string' || !tokens.access_token
-          || typeof tokens.scope !== 'string' || !tokens.scope.split(/\s+/).includes(youtubeScope)
+          || typeof tokens.scope !== 'string'
           || !await authenticate(`Bearer ${tokens.id_token}`, env.GOOGLE_CLIENT_ID, env.HISTORY_DB)) {
-          return reply({ error: 'Google did not grant the required sign-in and YouTube access.' }, 401);
+          return reply({ error: 'Google did not return a valid sign-in.' }, 401);
         }
-        return reply({ credential: tokens.id_token, accessToken: tokens.access_token });
+        return reply({ credential: tokens.id_token,
+          accessToken: tokens.scope.split(/\s+/).includes(youtubeScope) ? tokens.access_token : null });
       }
       const identity = await authenticate(request.headers.get('Authorization'), env.GOOGLE_CLIENT_ID, env.HISTORY_DB);
       if (!identity) return reply({ error: 'Sign in with Google again.' }, 401);

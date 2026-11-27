@@ -1060,6 +1060,7 @@ test('combined authorization connects the browser to the real history Worker', {
     res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
   });
   env.APP_ORIGINS = origin;
+  let grantedScope = 'openid email https://www.googleapis.com/auth/youtube.readonly';
   t.mock.method(globalThis, 'fetch', (url, init) => {
     if (url === 'https://www.googleapis.com/oauth2/v3/certs') {
       return Response.json({ keys: [jwk] }, { headers: { 'Cache-Control': 'max-age=3600' } });
@@ -1068,13 +1069,15 @@ test('combined authorization connects the browser to the real history Worker', {
     assert.equal(init.body.get('code'), 'one-time-code');
     assert.equal(init.body.get('redirect_uri'), origin);
     return Response.json({ id_token: token('10000001'), access_token: 'youtube-test-token',
-      scope: 'openid email https://www.googleapis.com/auth/youtube.readonly' });
+      scope: grantedScope });
   });
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.addInitScript(() => {
-    window.google = { accounts: { oauth2: { initCodeClient(options) {
+    window.google = { accounts: { id: {
+      initialize() {}, renderButton() {}, cancel() {}, prompt() {}, disableAutoSelect() {},
+    }, oauth2: { initCodeClient(options) {
       return { requestCode() { queueMicrotask(() => options.callback({ code: 'one-time-code' })); } };
     } } } };
   });
@@ -1094,6 +1097,13 @@ test('combined authorization connects the browser to the real history Worker', {
   await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'youtube-test-token');
   assert.equal(await page.evaluate(() => Boolean(historySync.account)), true);
   await page.waitForFunction(() => document.querySelector('#youtube-login-label').textContent.includes('Test channel'));
+  await page.locator('#account-sign-out:enabled').click();
+  grantedScope = 'openid email';
+  await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  assert.equal(await page.getByRole('button', { name: 'CONNECT YOUTUBE', exact: true }).isVisible(), true);
+  assert.match(await page.locator('#login-notice-message').innerText(), /TOP is connected/);
 });
 
 test('TOP converges in both directions across Chromium and Firefox', { timeout: 45000 }, async (t) => {

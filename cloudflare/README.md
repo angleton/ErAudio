@@ -144,7 +144,8 @@ be permitted by its consent screen.
    Serve the built test copy with `py -m http.server 8000 --directory dist`,
    then open `http://localhost:8000/eraudio/`.
 5. Test **AUTHORIZE GOOGLE AND YOUTUBE**, consent, TOP sync, playlist access,
-   denied consent, sign-out, and sign-in after reload. Stop both local servers
+   partial and denied consent, TOP-only fallback, sign-out, and reconnection
+   after reload. Stop both local servers
    when finished. Local test data remains in `cloudflare/.wrangler/`; it is
    not the production database.
 
@@ -161,14 +162,28 @@ be permitted by its consent screen.
    endpoints or secrets to the production configuration.
 4. Serve the test copy from the authorized origin. Select **AUTHORIZE GOOGLE
    AND YOUTUBE**, complete Google's consent, and verify TOP sync, playlists,
-   sign-out, denied consent, and signing in again after a reload.
+   sign-out, partial and denied consent, TOP-only fallback, and reconnection
+   after a reload.
 
 The Worker exchanges the one-time authorization code with Google and returns
-the identity and YouTube access tokens to the browser. It validates the
-identity token and required YouTube scope, and does not retain the access or
-refresh token. Tokens stay in page memory; combined sign-in does not
-automatically reconnect after a reload or expiry. The test Worker needs the
-new code before the flag is enabled; no database migration is needed. A
+the identity token and, only when YouTube permission is granted, the YouTube
+access token to the browser. It validates the identity token and checks the
+YouTube scope, and does not retain the access or refresh token. A partial
+grant returns `accessToken: null`, allowing TOP to connect without YouTube.
+Popup failures, denied identity consent, or Worker errors offer an explicit
+**Sign in with Google** fallback for TOP only. Connecting YouTube afterward
+starts from a separate click, never from the identity callback.
+
+Tokens stay in page memory. Reconnection preferences ask Google to reconnect
+TOP after reload or expiry; YouTube reconnection is attempted only after
+previous YouTube consent and verified Google history sign-in. A failed
+YouTube reconnection leaves TOP connected and offers **CONNECT YOUTUBE** in
+the same account-control location. Google may still require a manual click.
+
+The test Worker needs the new code and its client secret before the flag is
+enabled. Its CORS preflight must allow `X-Requested-With`; the existing
+production Worker does not support the combined endpoint. No database
+migration is needed for an existing test database. A
 Google account and a real isolated deployment are required to validate the
 actual popup and consent flow; automated tests use mocks.
 
