@@ -109,7 +109,7 @@ For a small Windows console experiment, see the [PowerShell audio visualizer](./
 
 ### Current Stage: Version 5.0
 * **Standalone UI (`index.html`, `styles.css`, `app.js`):** Pixel-styled HTML5 layout for the ErAudio player, audio playlist, and Pitchfork plugin deck.
-  The interface fills the browser window; the spectrum and open lists expand when more height is available. Drag the main player's bottom edge to change its height, or focus the resize handle and press **Up** or **Down**. The chosen height is saved in this browser and capped at the visible browser height. In smaller windows, scroll to reach the remaining controls. Browser zoom remains available to adjust the overall size.
+  The interface fills the browser window; the spectrum and open lists expand when more height is available. Drag the main player's bottom edge to change its height, or focus the resize handle and press **Up** or **Down**. The chosen height is saved in this browser and capped at the visible browser height. In smaller windows, scroll to reach the remaining controls. Transport and pane-button tooltips appear above the controls without adding an internal scrollbar. Browser zoom remains available to adjust the overall size.
 * **Audio-First Design:** Focuses on pure audio playlist playback with no embedded video player screen.
 * **Granular Controls:** The horizontal speed slider spans the bottom of Pitchfork, from -50% (`0.5x`) to +50% (`1.5x`), with normal speed (0%) at its midpoint. The slider marker and main speed readout show the requested value, rounded to `0.0001x`; the arrow keys adjust it by that amount. The separate **YouTube actual** readout shows the rate reported by the player. YouTube may round unsupported requests toward normal speed, so the reported rate may differ or remain unchanged until a supported step is reached. The actual rate is unavailable until a video is loaded.
 * **Semantic Controls:** Transport buttons, toggle buttons, playlist items, checkboxes, and range sliders are real HTML controls with keyboard focus and accessible names.
@@ -145,6 +145,10 @@ For a small Windows console experiment, see the [PowerShell audio visualizer](./
 ### Private listening history sync
 
 See the [Cloudflare sync guide](./cloudflare/README.md) for why ErAudio uses Cloudflare and how to use cross-browser history sync.
+
+TOP's **SEARCH** matches track titles, segment names, and video IDs (case-insensitive; all entered words must match). Search examines all history in the selected period, including entries beyond the 200-row display limit. The footer shows how many entries or matches are displayed.
+
+Click **RANK**, **TRACK / SEGMENT**, **PLAYS** or **LISTENS**, **TIME**, or **LENGTH** to sort; click again to reverse direction. **TIME** is time listened in ErAudio, while **LENGTH** is video duration in VIDEOS or segment duration in SEGMENTS. Unknown lengths show `--` and sort last in either direction. To compare longer sets, select VIDEOS and sort LENGTH; sort TIME or PLAYS to compare popularity. Rank always preserves each entry's popularity position by listening time within the selected period, regardless of search or sorting. Legacy counts marked `≥` are lower bounds, not complete counts. Search and sorting do not change playback or exported history.
 
 When sync is configured, select **?** in **TOP** to show history help, sync status, and shared-computer options. Sign-in and sign-out controls are in the main window.
 

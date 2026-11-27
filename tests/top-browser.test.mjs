@@ -181,6 +181,55 @@ test('the main player can grow and shrink with every panel open', { timeout: 200
   assert.ok(await panel.evaluate((element) => element.scrollTop > 0));
 });
 
+test('main-pane tooltips do not cause persistent scrollbars or prevent resizing', { timeout: 20000 }, async (t) => {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+  const panel = page.locator('.main-window');
+  const size = () => panel.evaluate((element) => ({
+    height: element.offsetHeight, client: element.clientHeight, scroll: element.scrollHeight, top: element.scrollTop,
+  }));
+  const before = await size();
+  assert.equal(before.scroll, before.client);
+  const buttons = panel.locator('.control-panel .tooltip-target');
+  for (const button of await buttons.all()) {
+    await button.hover();
+    assert.equal(await button.evaluate((element) => getComputedStyle(element, '::after').visibility), 'visible');
+    assert.equal((await size()).scroll, (await size()).client);
+    await button.focus();
+    assert.equal((await size()).scroll, (await size()).client);
+  }
+  const handle = page.locator('#player-resize');
+  for (let i = 0; i < 80; i++) await handle.press('ArrowUp');
+  const minimum = await size();
+  assert.ok(minimum.height < before.height - 200);
+  assert.equal(minimum.scroll, minimum.client);
+  for (let i = 0; i < 20; i++) await handle.press('ArrowDown');
+  const grown = await size();
+  assert.equal(grown.height, minimum.height + 200);
+  assert.equal(grown.scroll, grown.client);
+  await page.setViewportSize({ width: 1000, height: 180 });
+  await handle.scrollIntoViewIfNeeded();
+  assert.ok((await size()).top > 0);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  const restored = await size();
+  assert.equal(restored.height, grown.height);
+  assert.equal(restored.scroll, restored.client);
+  assert.equal(restored.top, 0);
+  await page.reload();
+  assert.equal((await size()).height, grown.height);
+  assert.equal((await size()).scroll, (await size()).client);
+});
+
 test('a populated TOP list can shrink to one or two visible entries', { timeout: 20000 }, async (t) => {
   const origin = await serve(t, async (req, res) => {
     if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
@@ -608,6 +657,129 @@ function fixture(entries) {
   };
 }
 
+async function openHistory(t, data) {
+  const origin = await serve(t, async (req, res) => {
+    if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
+    const asset = assets.get(req.url);
+    if (!asset) return res.writeHead(404).end();
+    const [file, type] = asset;
+    res.writeHead(200, { 'Content-Type': type }).end(await readFile(new URL(`../${file}`, import.meta.url)));
+  });
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.goto(origin);
+  await page.evaluate(async (data) => {
+    await localHistoryReady;
+    await localHistory.importData(data);
+  }, data);
+  await page.locator('#btn-hist').click();
+  await page.locator('#history-list [data-history-location]').first().waitFor();
+  return page;
+}
+
+function waitForHistoryRows(page, expected) {
+  return page.waitForFunction((expected) => {
+    const rows = [...document.querySelectorAll('#history-list [data-history-location]')].map((button) =>
+      [button.dataset.historyLocation, button.querySelector('.history-rank').textContent]);
+    return JSON.stringify(rows) === JSON.stringify(expected);
+  }, expected);
+}
+
+test('TOP sorts every column in both directions without changing popularity ranks', async (t) => {
+  const data = fixture([['a', Date.now()], ['b', Date.now()], ['z', Date.now()]]);
+  for (const [index, title, duration, plays, seconds] of [
+    [0, 'Beta Short Mix', 600, 8, 10], [1, 'Alpha Long Set', 7200, 3, 40], [2, 'Gamma Unknown', 0, 10, 20],
+  ]) {
+    Object.assign(data.videos[index], { title, duration, plays, chapters: [] });
+    data.spans[index].end = seconds;
+  }
+  const page = await openHistory(t, data);
+  await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
+  const a = [`${ids.a}:0`, '3'];
+  const b = [`${ids.b}:0`, '1'];
+  const z = [`${ids.z}:0`, '2'];
+  await waitForHistoryRows(page, [b, z, a]);
+  for (const [column, first, second] of [
+    ['title', [b, a, z], [z, a, b]],
+    ['listens', [z, a, b], [b, a, z]],
+    ['seconds', [b, z, a], [a, z, b]],
+    ['length', [b, a, z], [a, b, z]],
+    ['rank', [b, z, a], [a, z, b]],
+  ]) {
+    const header = page.locator(`[data-history-sort="${column}"]`);
+    await header.click();
+    await waitForHistoryRows(page, first);
+    assert.equal(await header.getAttribute('aria-pressed'), 'true');
+    await header.click();
+    await waitForHistoryRows(page, second);
+  }
+  assert.equal(await page.locator(`[data-history-location="${ids.b}:0"] .history-length`).innerText(), '2:00:00');
+  assert.equal(await page.locator(`[data-history-location="${ids.z}:0"] .history-length`).innerText(), '--');
+  await page.getByRole('searchbox', { name: 'Search listening history' }).fill('SHORT');
+  await waitForHistoryRows(page, [a]);
+  assert.equal(await page.locator('#history-results').innerText(), '1 OF 1 MATCHES / 3 ENTRIES');
+});
+
+test('TOP searches all entries before its display limit and keeps full-list ranks', async (t) => {
+  const now = Date.now();
+  const videos = Array.from({ length: 201 }, (_, index) => ({
+    videoId: `video${String(index).padStart(6, '0')}`,
+    title: index === 200 ? 'Deep Night Set' : `Other set ${index}`,
+    duration: 7200, chapters: [], timestamps: [], plays: 1, lastPlayed: now,
+  }));
+  const page = await openHistory(t, {
+    type: 'eraudio-listening-history', version: 1, videos,
+    spans: videos.map(({ videoId }, index) => ({ videoId, start: 0, end: 201 - index, playedAt: now })),
+  });
+  await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#history-results').textContent === '200 OF 201 ENTRIES');
+  const search = page.getByRole('searchbox', { name: 'Search listening history' });
+  for (const query of ['  NIGHT   deep  ', 'VIDEO000200']) {
+    await search.fill(query);
+    await waitForHistoryRows(page, [['video000200:0', '201']]);
+    assert.equal(await page.locator('#history-results').innerText(), '1 OF 1 MATCHES / 201 ENTRIES');
+  }
+  await search.fill('not a matching track');
+  await page.getByText('No history matches your search.', { exact: true }).waitFor();
+  assert.equal(await page.locator('#history-results').innerText(), '0 OF 0 MATCHES / 201 ENTRIES');
+  await search.fill('');
+  await page.waitForFunction(() => document.querySelectorAll('#history-list [data-history-location]').length === 200);
+  await page.setViewportSize({ width: 320, height: 600 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.equal(await page.locator('.history-table').evaluate((table) => table.scrollWidth > table.clientWidth), true);
+  await page.locator('[data-history-sort="length"]').scrollIntoViewIfNeeded();
+  assert.ok((await page.locator('[data-history-sort="length"]').boundingBox()).width > 0);
+});
+
+test('TOP searches segment names and uses segment length without guessing unknown endings', async (t) => {
+  const data = fixture([['a', Date.now()], ['b', Date.now()]]);
+  Object.assign(data.videos[0], {
+    title: 'Long Set', duration: 120, chapters: [{ start: 0, title: 'Opening' }, { start: 10, title: 'Closing' }],
+  });
+  Object.assign(data.videos[1], {
+    title: 'Unknown Set', duration: 0, chapters: [{ start: 0, title: 'Opening' }, { start: 20, title: 'Closing' }],
+  });
+  data.spans.push({ videoId: ids.a, start: 10, end: 40, playedAt: Date.now() },
+    { videoId: ids.b, start: 20, end: 25, playedAt: Date.now() });
+  const page = await openHistory(t, data);
+  await page.getByRole('searchbox', { name: 'Search listening history' }).fill('closing');
+  await waitForHistoryRows(page, [[`${ids.a}:10`, '1'], [`${ids.b}:20`, '4']]);
+  assert.equal(await page.locator(`[data-history-location="${ids.a}:10"] .history-length`).innerText(), '01:50');
+  assert.equal(await page.locator(`[data-history-location="${ids.b}:20"] .history-length`).innerText(), '--');
+  const length = page.locator('[data-history-sort="length"]');
+  await length.click();
+  await waitForHistoryRows(page, [[`${ids.a}:10`, '1'], [`${ids.b}:20`, '4']]);
+  await length.click();
+  await waitForHistoryRows(page, [[`${ids.a}:10`, '1'], [`${ids.b}:20`, '4']]);
+  await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
+  await page.getByText('No history matches your search.', { exact: true }).waitFor();
+  await page.getByRole('searchbox', { name: 'Search listening history' }).fill('long');
+  await waitForHistoryRows(page, [[`${ids.a}:0`, '1']]);
+  assert.equal(await page.locator('.history-length').innerText(), '02:00');
+});
+
 test('TOP filters calendar periods and preserves dated plays in backups', { timeout: 20000 }, async (t) => {
   const origin = await serve(t, async (req, res) => {
     if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
@@ -660,14 +832,19 @@ test('TOP filters calendar periods and preserves dated plays in backups', { time
   await period.selectOption('today');
   await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('#history-list button').length === 2);
-  assert.match(await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"]').innerText(), /PLAYS 1 \/ TIME 00:10/);
-  assert.match(await page.locator('#history-list [data-history-location="zzzzzzzzzzz:0"]').innerText(), /PLAYS ≥0 \/ TIME 00:10/);
+  assert.equal(await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"] .history-count').innerText(), '1');
+  assert.equal(await page.locator('#history-list [data-history-location="aaaaaaaaaaa:0"] .history-time').innerText(), '00:10');
+  assert.equal(await page.locator('#history-list [data-history-location="zzzzzzzzzzz:0"] .history-count').innerText(), '≥0');
   assert.equal(await page.locator('#history-list [data-history-location="bbbbbbbbbbb:0"]').count(), 0);
   assert.equal(await page.locator('#history-period-note').evaluate((note) => note.hidden), false);
+  await page.getByRole('searchbox', { name: 'Search listening history' }).fill('Older');
+  await page.getByText('No history matches your search.', { exact: true }).waitFor();
   await period.selectOption('week');
+  await waitForHistoryRows(page, [[`${ids.b}:0`, '2']]);
+  await page.getByRole('searchbox', { name: 'Search listening history' }).fill('');
   await page.waitForFunction(() => document.querySelectorAll('#history-list button').length === 3);
   await period.selectOption('all');
-  await page.waitForFunction(() => document.querySelector('#history-list [data-history-location="zzzzzzzzzzz:0"] .history-detail')?.textContent === 'PLAYS 5 / TIME 00:10');
+  await page.waitForFunction(() => document.querySelector('#history-list [data-history-location="zzzzzzzzzzz:0"] .history-count')?.textContent === '5');
   assert.equal(await page.locator('#history-period-note').evaluate((note) => note.hidden), true);
   const clear = page.getByRole('button', { name: 'CLEAR', exact: true });
   await clear.hover();
@@ -750,6 +927,10 @@ test('playing video and segment highlights follow playback across the lists', { 
   await copyMenu.getByRole('menuitem', { name: 'COPY LINK' }).click();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()),
     'https://www.youtube.com/watch?v=aaaaaaaaaaa&t=20s');
+  await page.locator('#history-list [data-history-location="aaaaaaaaaaa:20"]').click({ button: 'right' });
+  await copyMenu.getByRole('menuitem', { name: 'COPY TEXT' }).click();
+  assert.match(await page.evaluate(() => navigator.clipboard.readText()),
+    /^\d+\. Test video \/ \[00:20\] Middle \/ LISTENS \d+ \/ TIME \d+:\d+ \/ LENGTH 00:20$/);
 
   const segments = page.getByRole('radio', { name: 'SEGMENTS', exact: true });
   const videos = page.getByRole('radio', { name: 'VIDEOS', exact: true });
@@ -785,8 +966,8 @@ function waitForTop(page, mode, entries) {
     const buttons = Array.from(document.querySelectorAll('#history-list button'));
     const rows = buttons.map((button) => [
       button.dataset.historyLocation,
-      button.firstChild.textContent,
-      button.querySelector('.history-detail').textContent,
+      `${button.querySelector('.history-rank').textContent}. ${button.querySelector('.history-title').textContent}`,
+      `${document.querySelector('[data-history-sort="listens"]').textContent.split(' ')[0]} ${button.querySelector('.history-count').textContent} / TIME ${button.querySelector('.history-time').textContent}`,
     ]);
     return JSON.stringify(rows) === JSON.stringify(wanted);
   }, expected, { timeout: 8000 }).catch(async (error) => {
