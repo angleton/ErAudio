@@ -87,18 +87,30 @@ test('uses weaker alternating beats without doubling a genuine slow tempo', () =
   assert.equal(feed(detector, 10000, 14000, alternating), 124);
 });
 
-test('a tap hint can resolve half/double tempo but expires and is discarded on reset', () => {
+test('a tap hint lasts beyond 15 seconds, expires after 30 seconds, and is discarded on reset', () => {
   const detector = new LiveTempo();
   const slowBeat = beat(62);
   const alternating = (time) => 0.65 + 0.2 * slowBeat(time) + 0.064 * slowBeat(time + 60000 / 124);
   assert.equal(feed(detector, 0, 10000, alternating), 124);
   detector.setTempoHint(62);
   assert.equal(feed(detector, 10000, 12000, alternating), 62);
-  assert.equal(feed(detector, 12000, 22000, alternating), 62);
-  assert.equal(feed(detector, 22000, 27000, alternating), 124);
+  assert.equal(feed(detector, 12000, 27000, alternating), 62);
+  assert.equal(feed(detector, 27000, 42000, alternating), 124);
   detector.setTempoHint(62);
   detector.reset();
-  assert.equal(feed(detector, 27000, 35000, alternating), 124);
+  assert.equal(feed(detector, 42000, 50000, alternating), 124);
+});
+
+test('a steady tap favors a weaker audio beat initially, then its influence fades', () => {
+  const detector = new LiveTempo();
+  const slowBeat = beat(62);
+  const alternating = (time) => 0.65 + 0.2 * slowBeat(time) + 0.05 * slowBeat(time + 60000 / 124);
+  assert.equal(feed(detector, 0, 10000, alternating), 62);
+  detector.setTempoHint(124);
+  assert.equal(feed(detector, 10000, 20000, alternating), 124);
+  assert.equal(feed(detector, 20000, 22000, alternating), 124);
+  assert.equal(feed(detector, 22000, 30000, alternating), 62);
+  assert.equal(feed(detector, 30000, 42000, alternating), 62);
 });
 
 test('a tap hint does not create an unsupported audio tempo or an estimate in silence', () => {

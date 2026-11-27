@@ -7,9 +7,10 @@
   const confidenceHoldMs = 3000;
   const maxInterpolationMs = 120;
   const maxGapMs = 500;
-  const tempoHintMs = 15000;
+  const tempoHintMs = 30000;
+  const tempoHintFadeMs = 20000;
 
-  function estimateTempo(onsets, hintBpm) {
+  function estimateTempo(onsets, hintBpm, hintStrength) {
     const observed = onsets.filter((value) => value !== null);
     const mean = observed.reduce((sum, value) => sum + value, 0) / observed.length;
     const signal = onsets.slice(1, -1).map((value, i) => {
@@ -44,9 +45,10 @@
     const half = peaks.find((lag) => Math.abs(2 * lag - peak) <= 2
       && scores[lag] >= Math.max(0.34, scores[peak] * 0.45));
     if (half !== undefined) peak = half;
-    if (hintBpm !== undefined) {
-      // A tap can resolve competing peaks, but cannot supply missing audio evidence.
-      const hinted = peaks.filter((lag) => scores[lag] >= Math.max(0.34, best * 0.45)
+    if (hintBpm !== undefined && hintStrength > 0) {
+      // Taps favor weaker audio-supported peaks, with the advantage fading over time.
+      const minimumScore = Math.max(0.25, best * 0.35, scores[peak] - best * 0.65 * hintStrength);
+      const hinted = peaks.filter((lag) => scores[lag] >= minimumScore
         && Math.abs(60000 / (lag * sampleMs) - hintBpm) <= hintBpm * 0.08)
         .sort((a, b) => scores[b] - scores[a])[0];
       if (hinted !== undefined) peak = hinted;
@@ -125,7 +127,8 @@
       if (now - this.lastOnset <= 2000 && this.onsets.length >= 300 && now >= this.nextEstimate) {
         this.nextEstimate = now + 1000;
         const hint = this.tempoHint;
-        const estimate = estimateTempo(this.onsets, hint && now < hint.expiresAt ? hint.bpm : undefined);
+        const strength = hint ? Math.min(1, Math.max(0, (hint.expiresAt - now) / tempoHintFadeMs)) : 0;
+        const estimate = estimateTempo(this.onsets, hint?.bpm, strength);
         if (estimate !== null) {
           this.bpm = estimate;
           this.lastConfidentAt = now;
