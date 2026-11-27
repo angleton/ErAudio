@@ -697,6 +697,8 @@ test('TOP sorts every column in both directions without changing popularity rank
   }
   const page = await openHistory(t, data);
   await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'TIME', exact: true }).innerText(), 'TIME');
+  assert.equal(await page.getByRole('button', { name: 'DURATION', exact: true }).innerText(), 'DURATION');
   const a = [`${ids.a}:0`, '3'];
   const b = [`${ids.b}:0`, '1'];
   const z = [`${ids.z}:0`, '2'];
@@ -714,12 +716,60 @@ test('TOP sorts every column in both directions without changing popularity rank
     assert.equal(await header.getAttribute('aria-pressed'), 'true');
     await header.click();
     await waitForHistoryRows(page, second);
+    if (column === 'seconds') assert.equal(await header.getAttribute('aria-label'), 'TIME, sorted ascending');
   }
   assert.equal(await page.locator(`[data-history-location="${ids.b}:0"] .history-length`).innerText(), '2:00:00');
   assert.equal(await page.locator(`[data-history-location="${ids.z}:0"] .history-length`).innerText(), '--');
   await page.getByRole('searchbox', { name: 'Search listening history' }).fill('SHORT');
   await waitForHistoryRows(page, [a]);
   assert.equal(await page.locator('#history-results').innerText(), '1 OF 1 MATCHES / 3 ENTRIES');
+});
+
+test('TOP groups listening metrics on hover and keyboard focus while keeping duration separate', async (t) => {
+  const page = await openHistory(t, fixture([['a', Date.now()]]));
+  const group = page.getByRole('group', { name: 'Your listening', exact: true });
+  const listens = group.getByRole('button', { name: 'LISTENS', exact: true });
+  const time = group.getByRole('button', { name: 'TIME', exact: true });
+  const duration = page.getByRole('button', { name: 'DURATION', exact: true });
+  const layout = await page.evaluate(() => ({
+    height: document.querySelector('#history-columns').getBoundingClientRect().height,
+    legendTop: document.querySelector('.history-listening-heading').getBoundingClientRect().top,
+    tableTop: document.querySelector('.history-table').getBoundingClientRect().top,
+    searchBottom: document.querySelector('#history-search').getBoundingClientRect().bottom,
+    titleBottom: document.querySelector('[data-history-sort="title"]').getBoundingClientRect().bottom,
+    timeBottom: document.querySelector('[data-history-sort="seconds"]').getBoundingClientRect().bottom,
+  }));
+  assert.ok(layout.height <= 34, `the grouped header should fit one compact row, got ${layout.height}px`);
+  assert.ok(layout.legendTop >= layout.tableTop, 'the border legend must not be clipped by the scrolling table');
+  assert.ok(layout.legendTop >= layout.searchBottom, 'the border legend must not overlap the search field');
+  assert.ok(layout.legendTop - layout.searchBottom <= 4, 'the search field should sit close to the listening group');
+  assert.equal(layout.titleBottom, layout.timeBottom);
+  const color = (element) => element.evaluate((button) => getComputedStyle(button).color);
+  const initial = await color(listens);
+  const durationColor = await color(duration);
+  await listens.hover();
+  const highlighted = await color(listens);
+  assert.notEqual(highlighted, initial);
+  assert.equal(await color(time), highlighted);
+  assert.equal(await color(duration), durationColor);
+  await page.mouse.move(0, 0);
+  await duration.focus();
+  assert.equal(await color(listens), initial);
+  await duration.press('Shift+Tab');
+  assert.equal(await time.evaluate((button) => document.activeElement === button), true);
+  assert.equal(await color(listens), highlighted);
+  assert.equal(await color(time), highlighted);
+  assert.equal(await color(duration), durationColor);
+  await time.press('Tab');
+  assert.equal(await color(listens), initial);
+  await page.setViewportSize({ width: 360, height: 800 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.equal(await page.locator('.history-table').evaluate((table) => table.scrollWidth > table.clientWidth), true);
+  const positions = await page.evaluate(() => ({
+    header: document.querySelector('[data-history-sort="listens"]').getBoundingClientRect().left,
+    cell: document.querySelector('.history-count').getBoundingClientRect().left,
+  }));
+  assert.ok(Math.abs(positions.header - positions.cell) <= 1, 'grouped headings must stay aligned with their row cells');
 });
 
 test('TOP searches all entries before its display limit and keeps full-list ranks', async (t) => {
@@ -930,7 +980,7 @@ test('playing video and segment highlights follow playback across the lists', { 
   await page.locator('#history-list [data-history-location="aaaaaaaaaaa:20"]').click({ button: 'right' });
   await copyMenu.getByRole('menuitem', { name: 'COPY TEXT' }).click();
   assert.match(await page.evaluate(() => navigator.clipboard.readText()),
-    /^\d+\. Test video \/ \[00:20\] Middle \/ LISTENS \d+ \/ TIME \d+:\d+ \/ LENGTH 00:20$/);
+    /^\d+\. Test video \/ \[00:20\] Middle \/ LISTENS \d+ \/ LISTEN TIME \d+:\d+ \/ DURATION 00:20$/);
 
   const segments = page.getByRole('radio', { name: 'SEGMENTS', exact: true });
   const videos = page.getByRole('radio', { name: 'VIDEOS', exact: true });
@@ -960,14 +1010,14 @@ function waitForTop(page, mode, entries) {
     `${ids[name]}:${start}`,
     `${rank + 1}. Video ${name.toUpperCase()}${mode === 'LISTENS'
       ? ` / [00:${String(start).padStart(2, '0')}] ${start ? 'Next' : 'Opening'}` : ''}`,
-    `${mode} ${count} / TIME 00:${seconds}`,
+    `${mode} ${count} / LISTEN TIME 00:${seconds}`,
   ]);
   return page.waitForFunction((wanted) => {
     const buttons = Array.from(document.querySelectorAll('#history-list button'));
     const rows = buttons.map((button) => [
       button.dataset.historyLocation,
       `${button.querySelector('.history-rank').textContent}. ${button.querySelector('.history-title').textContent}`,
-      `${document.querySelector('[data-history-sort="listens"]').textContent.split(' ')[0]} ${button.querySelector('.history-count').textContent} / TIME ${button.querySelector('.history-time').textContent}`,
+      `${document.querySelector('[data-history-sort="listens"]').textContent.split(' ')[0]} ${button.querySelector('.history-count').textContent} / LISTEN TIME ${button.querySelector('.history-time').textContent}`,
     ]);
     return JSON.stringify(rows) === JSON.stringify(wanted);
   }, expected, { timeout: 8000 }).catch(async (error) => {

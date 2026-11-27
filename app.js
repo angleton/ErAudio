@@ -2507,7 +2507,7 @@ function sortedHistoryEntries(entries) {
 
 function updateHistoryColumns(historyView) {
   const labels = { rank: 'RANK', title: 'TRACK / SEGMENT', listens: historyView === 'videos' ? 'PLAYS' : 'LISTENS',
-    seconds: 'TIME', length: 'LENGTH' };
+    seconds: 'TIME', length: 'DURATION' };
   historyColumns.querySelectorAll('[data-history-sort]').forEach((button) => {
     const active = button.dataset.historySort === historySortMode;
     const label = labels[button.dataset.historySort];
@@ -2606,8 +2606,8 @@ async function renderHistory() {
     const time = formatDuration(entry.seconds);
     const length = entry.length === null ? '--' : formatDuration(entry.length);
     const countLabel = historyView === 'videos' ? 'PLAYS' : 'LISTENS';
-    button.dataset.copyText = `${entry.rank}. ${title} / ${countLabel} ${count} / TIME ${time} / LENGTH ${length}`;
-    button.setAttribute('aria-label', `Rank ${entry.rank}. ${title}. ${countLabel} ${count}. Listening time ${time}. Length ${length}.`);
+    button.dataset.copyText = `${entry.rank}. ${title} / ${countLabel} ${count} / LISTEN TIME ${time} / DURATION ${length}`;
+    button.setAttribute('aria-label', `Rank ${entry.rank}. ${title}. ${countLabel} ${count}. Listening time ${time}. Duration ${length}.`);
     const cells = [
       ['history-rank', String(entry.rank)], ['history-title', title],
       ['history-count history-metric', count], ['history-time history-metric', time],

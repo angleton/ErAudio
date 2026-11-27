@@ -34,9 +34,12 @@
           <div class="history-columns" id="history-columns" role="group" aria-label="Sort listening history">
             <button type="button" data-history-sort="rank">RANK</button>
             <button type="button" data-history-sort="title">TRACK / SEGMENT</button>
-            <button type="button" data-history-sort="listens">LISTENS</button>
-            <button type="button" data-history-sort="seconds">TIME</button>
-            <button type="button" data-history-sort="length">LENGTH</button>
+            <div class="history-listening-columns" role="group" aria-label="Your listening">
+              <span class="history-listening-heading" aria-hidden="true">YOUR LISTENING</span>
+              <button type="button" data-history-sort="listens">LISTENS</button>
+              <button type="button" data-history-sort="seconds">TIME</button>
+            </div>
+            <button type="button" data-history-sort="length">DURATION</button>
           </div>
           <div class="history-list" id="history-list" role="list" aria-label="Most listened videos and segments"></div>
         </div>
