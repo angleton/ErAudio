@@ -1802,6 +1802,9 @@ const { buildSegments, segmentStats, heatBuckets, heatColor, heatGradient } = Er
 const listenHeat = document.querySelector('#listen-heat');
 const historyWindow = document.querySelector('#history-window');
 const historyList = document.querySelector('#history-list');
+const historySearch = document.querySelector('#history-search');
+const historyColumns = document.querySelector('#history-columns');
+const historyResults = document.querySelector('#history-results');
 const historyInfo = document.querySelector('#history-info');
 const historyMessage = document.querySelector('#history-message');
 const historyViewControl = document.querySelector('#history-view');
@@ -1831,6 +1834,8 @@ const heatBucketCount = 100;
 const maxHistoryRows = 200;
 let heatRefreshId = 0;
 let historyRenderId = 0;
+let historySortMode = 'rank';
+let historySortDirection = 'ascending';
 
 function changeHistoryStore(store, { erasePrevious = false } = {}) {
   const previous = listeningHistory;
@@ -2461,7 +2466,7 @@ function historyEntries(videos, spans, historyView) {
     if (historyView === 'videos') {
       if (video.plays || total) {
         entries.push({ videoId: video.videoId, start: 0, title, label: '', listens: video.plays || 0,
-          incompletePlays: video.incompletePlays, seconds: total });
+          incompletePlays: video.incompletePlays, seconds: total, length: video.duration > 0 ? video.duration : null });
       }
       return;
     }
@@ -2479,12 +2484,41 @@ function historyEntries(videos, spans, historyView) {
         label: markers.length && !segment.lead ? `[${formatClock(segment.start)}] ${name}` : name,
         listens: stat.listens,
         seconds: stat.seconds,
+        length: !video.duration && index === segments.length - 1 ? null : segment.end - segment.start,
       });
     });
   });
   entries.sort((a, b) => Math.round(b.seconds * 10) - Math.round(a.seconds * 10) || b.listens - a.listens
     || (a.videoId < b.videoId ? -1 : a.videoId > b.videoId ? 1 : a.start - b.start));
-  return entries;
+  return entries.map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+function sortedHistoryEntries(entries) {
+  return entries.sort((a, b) => {
+    const left = historySortMode === 'title' ? `${a.title} / ${a.label}` : a[historySortMode];
+    const right = historySortMode === 'title' ? `${b.title} / ${b.label}` : b[historySortMode];
+    if (left === null) return right === null ? a.rank - b.rank : 1;
+    if (right === null) return -1;
+    const comparison = historySortMode === 'title' ? left.localeCompare(right, undefined, { sensitivity: 'base' })
+      : left - right;
+    return comparison * (historySortDirection === 'ascending' ? 1 : -1) || a.rank - b.rank;
+  });
+}
+
+function updateHistoryColumns(historyView) {
+  const labels = { rank: 'RANK', title: 'TRACK / SEGMENT', listens: historyView === 'videos' ? 'PLAYS' : 'LISTENS',
+    seconds: 'TIME', length: 'LENGTH' };
+  historyColumns.querySelectorAll('[data-history-sort]').forEach((button) => {
+    const active = button.dataset.historySort === historySortMode;
+    const label = labels[button.dataset.historySort];
+    button.textContent = `${label}${active ? (historySortDirection === 'ascending' ? ' ↑' : ' ↓') : ''}`;
+    button.setAttribute('aria-pressed', String(active));
+    button.setAttribute('aria-label', active ? `${label}, sorted ${historySortDirection}` : label);
+    if (button.dataset.historySort === 'rank') button.title = 'Popularity rank by listening time in the selected period';
+    if (button.dataset.historySort === 'seconds') button.title = 'Total listening time in ErAudio';
+    if (button.dataset.historySort === 'length') button.title = historyView === 'videos'
+      ? 'Video duration; unknown durations appear last' : 'Segment duration; unknown durations appear last';
+  });
 }
 
 function playHistoryEntry({ videoId, start, title }) {
@@ -2508,6 +2542,8 @@ function playHistoryEntry({ videoId, start, title }) {
 async function renderHistory() {
   if (historyWindow.hidden) return;
   const renderId = ++historyRenderId;
+  const historyView = historyViewControl.querySelector(':checked').value;
+  updateHistoryColumns(historyView);
   historyPeriodNote.hidden = historyPeriod.value === 'all';
   const placeholder = (text) => {
     const empty = document.createElement('div');
@@ -2518,27 +2554,40 @@ async function renderHistory() {
   if (!listeningHistory.available) {
     placeholder('Listening history is unavailable because this browser could not open its local storage.');
     historyInfo.textContent = 'STORAGE UNAVAILABLE';
+    historyResults.textContent = '';
     return;
   }
   const history = await readHistory();
   if (renderId !== historyRenderId) return;
   const { videos, spans } = ErAudioHistory.filterPeriod(history, historyPeriod.value);
-  const historyView = historyViewControl.querySelector(':checked').value;
   const entries = historyEntries(videos, spans, historyView);
+  const terms = historySearch.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const matches = sortedHistoryEntries(entries.filter((entry) => {
+    const text = `${entry.title} ${entry.label} ${entry.videoId}`.toLocaleLowerCase();
+    return terms.every((term) => text.includes(term));
+  }));
   const totalSeconds = spans.reduce((sum, span) => sum + (span.end - span.start), 0);
   const totalPlays = videos.reduce((sum, video) => sum + (video.plays || 0), 0);
   historyInfo.textContent = videos.length || spans.length
     ? `${videos.length} VIDEOS / ${videos.some((video) => video.incompletePlays) ? '≥' : ''}${totalPlays} PLAYS / ${formatDuration(totalSeconds)}`
     : historyPeriod.value === 'all' ? 'NO HISTORY' : 'NO HISTORY IN PERIOD';
   if (!entries.length) {
+    historyResults.textContent = '';
     placeholder(historyPeriod.value === 'all' ? 'Nothing listened to yet. Play a video for at least a few seconds.'
       : 'Nothing listened to in this period.');
+    return;
+  }
+  historyResults.textContent = terms.length
+    ? `${Math.min(matches.length, maxHistoryRows)} OF ${matches.length} MATCHES / ${entries.length} ENTRIES`
+    : `${Math.min(matches.length, maxHistoryRows)} OF ${entries.length} ENTRIES`;
+  if (!matches.length) {
+    placeholder('No history matches your search.');
     return;
   }
   const focusedLocation = historyList.contains(document.activeElement)
     ? document.activeElement.dataset.historyLocation : undefined;
   let nextFocus;
-  historyList.replaceChildren(...entries.slice(0, maxHistoryRows).map((entry, index) => {
+  historyList.replaceChildren(...matches.slice(0, maxHistoryRows).map((entry) => {
     const item = document.createElement('div');
     item.setAttribute('role', 'listitem');
     const button = document.createElement('button');
@@ -2552,11 +2601,24 @@ async function renderHistory() {
     }
     highlightHistoryEntry(button);
     if (button.dataset.historyLocation === focusedLocation) nextFocus = button;
-    button.append(`${index + 1}. ${entry.title}${entry.label ? ` / ${entry.label}` : ''}`);
-    const detail = document.createElement('span');
-    detail.className = 'history-detail';
-    detail.textContent = `${historyView === 'videos' ? 'PLAYS' : 'LISTENS'} ${entry.incompletePlays ? '≥' : ''}${entry.listens} / TIME ${formatDuration(entry.seconds)}`;
-    button.append(detail);
+    const title = `${entry.title}${entry.label ? ` / ${entry.label}` : ''}`;
+    const count = `${entry.incompletePlays ? '≥' : ''}${entry.listens}`;
+    const time = formatDuration(entry.seconds);
+    const length = entry.length === null ? '--' : formatDuration(entry.length);
+    const countLabel = historyView === 'videos' ? 'PLAYS' : 'LISTENS';
+    button.dataset.copyText = `${entry.rank}. ${title} / ${countLabel} ${count} / TIME ${time} / LENGTH ${length}`;
+    button.setAttribute('aria-label', `Rank ${entry.rank}. ${title}. ${countLabel} ${count}. Listening time ${time}. Length ${length}.`);
+    const cells = [
+      ['history-rank', String(entry.rank)], ['history-title', title],
+      ['history-count history-metric', count], ['history-time history-metric', time],
+      ['history-length history-metric', length],
+    ];
+    cells.forEach(([className, text]) => {
+      const cell = document.createElement('span');
+      cell.className = className;
+      cell.textContent = text;
+      button.append(cell);
+    });
     button.addEventListener('click', () => playHistoryEntry(entry));
     item.append(button);
     return item;
@@ -2579,6 +2641,17 @@ localHistory.onChange = refreshHistoryViews;
 historyViewControl.addEventListener('change', renderHistory);
 
 historyPeriod.addEventListener('change', renderHistory);
+historySearch.addEventListener('input', renderHistory);
+historyColumns.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-history-sort]');
+  if (!button) return;
+  const mode = button.dataset.historySort;
+  historySortDirection = mode === historySortMode
+    ? historySortDirection === 'ascending' ? 'descending' : 'ascending'
+    : mode === 'title' || mode === 'rank' ? 'ascending' : 'descending';
+  historySortMode = mode;
+  renderHistory();
+});
 
 document.querySelector('#history-export').addEventListener('click', async () => {
   let url;
@@ -3644,7 +3717,7 @@ function closeCopyMenu(restoreFocus = false) {
       item,
       videoList,
       track,
-      text: isPlaylistItem ? item.dataset.copyText : item.textContent.trim(),
+      text: item.dataset.copyText ?? item.textContent.trim(),
       videoId: isPlaylistItem || isHistoryItem ? item.dataset.videoId : playingTrack?.videoId,
       position: list === markerList ? currentMarkerEntries()[Number(item.dataset.marker)]?.start
         : isHistoryItem && item.hasAttribute('data-history-end') ? Number(item.dataset.historyStart) : null,

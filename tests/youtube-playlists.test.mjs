@@ -1524,13 +1524,19 @@ async function checkPlaylistHistory(t, endFirst) {
   const today = await page.evaluate((data) => ErAudioHistory.filterPeriod(data, 'today'), history);
   assert.equal(today.videos[0].plays, 2);
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'LISTENS 2 / TIME 00:14');
+  await page.waitForFunction(() => document.querySelector('#history-list .history-count')?.textContent === '2'
+    && document.querySelector('#history-list .history-time')?.textContent === '00:14'
+    && document.querySelector('[data-history-sort="listens"]').textContent.startsWith('LISTENS'));
   await page.getByRole('radio', { name: 'VIDEOS', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'PLAYS 2 / TIME 00:14');
+  await page.waitForFunction(() => document.querySelector('#history-list .history-count')?.textContent === '2'
+    && document.querySelector('#history-list .history-time')?.textContent === '00:14'
+    && document.querySelector('[data-history-sort="listens"]').textContent.startsWith('PLAYS'));
   await page.reload();
   await page.waitForFunction(() => ytReady);
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#history-list .history-detail')?.textContent === 'LISTENS 2 / TIME 00:14');
+  await page.waitForFunction(() => document.querySelector('#history-list .history-count')?.textContent === '2'
+    && document.querySelector('#history-list .history-time')?.textContent === '00:14'
+    && document.querySelector('[data-history-sort="listens"]').textContent.startsWith('LISTENS'));
 }
 
 test('TOP combines the same video across playlists after finishing', { timeout: 20000 }, (t) => checkPlaylistHistory(t, true));
