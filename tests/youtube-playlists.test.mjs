@@ -204,6 +204,88 @@ async function openVideo(page, videoId) {
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
 
+test('main BPM readout measures pointer and keyboard taps without changing playback or DJ counters', async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+  const mainBpm = page.getByRole('button', { name: /Tap to measure BPM/ });
+  const djReadings = await page.locator('[data-bpm]').allTextContents();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+
+  await mainBpm.click();
+  await page.clock.runFor(500);
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  await page.clock.runFor(2999);
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  await page.clock.runFor(1);
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await page.clock.runFor(600);
+  await mainBpm.press('Space');
+  assert.equal(await mainBpm.textContent(), '100 BPM');
+  await page.clock.runFor(900);
+  await mainBpm.press('Enter');
+  assert.equal(await mainBpm.textContent(), '80 BPM');
+  assert.deepEqual(await page.locator('[data-bpm]').allTextContents(), djReadings);
+  assert.equal(await page.locator('#bpm-left-auto').isChecked(), true);
+  assert.equal(await page.locator('#bpm-right-auto').isChecked(), true);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlaybackRate()), 1);
+
+  await page.evaluate(() => {
+    resetLiveTempo();
+    playerIsPlaying = true;
+    liveTempo.update(0, new Float32Array(3));
+  });
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  for (let tap = 1; tap < 4; tap++) {
+    await page.clock.runFor(500);
+    await mainBpm.click();
+    if (tap === 2) assert.equal(await page.evaluate(() => liveTempo.tempoHint), null);
+  }
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  assert.equal(await page.evaluate(() => liveTempo.tempoHint?.bpm), 120);
+  await page.evaluate(() => showLiveTempo(135));
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  await page.clock.runFor(3000);
+  assert.equal(await mainBpm.textContent(), '135 BPM');
+
+  await page.evaluate(() => showLiveTempo(null));
+  await mainBpm.click();
+  await page.clock.runFor(500);
+  await mainBpm.click();
+  await page.evaluate(() => {
+    ytPlayer.pauseVideo();
+    onPlayerStateChange({ data: YT.PlayerState.PAUSED });
+  });
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await page.clock.runFor(750);
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '80 BPM');
+  await page.evaluate(() => seekPlayback(20));
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  await page.locator('[data-pf="AC"]').click();
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  assert.deepEqual(await page.locator('[data-bpm]').allTextContents(), djReadings);
+  assert.equal(await page.locator('#bpm-left-auto').isChecked(), true);
+  assert.equal(await page.locator('#bpm-right-auto').isChecked(), true);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlaybackRate()), 1);
+});
+
 function comment(id, text, likes, author = 'Listener') {
   return { snippet: { topLevelComment: { id, snippet: { textDisplay: text, likeCount: likes, authorDisplayName: author } } } };
 }

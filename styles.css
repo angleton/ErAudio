@@ -936,12 +936,17 @@ body {
 .live-bpm {
   margin-left: auto;
   margin-right: 7px;
+  border: 0;
+  background: transparent;
   color: #a0a0a0;
   font: bold 12px var(--font-mono);
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.live-bpm.active {
+.live-bpm.active,
+.live-bpm:hover,
+.live-bpm:focus-visible {
   color: var(--accent-gold);
 }
 

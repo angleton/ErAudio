@@ -1596,8 +1596,10 @@ function renderMainBpm() {
   const label = `${bpm ?? '--'} BPM`;
   if (liveBpm.textContent !== label) liveBpm.textContent = label;
   liveBpm.classList.toggle('active', bpm !== null);
-  liveBpm.title = tappedBpm !== null ? 'Manually tapped tempo'
+  const description = tappedBpm !== null ? 'Manually tapped tempo'
     : 'Estimated tempo of the shared tab audio at the current playback speed';
+  liveBpm.title = `${description}. Tap in time with the music to measure BPM.`;
+  liveBpm.setAttribute('aria-label', `${label}. Tap to measure BPM`);
 }
 
 function showLiveTempo(bpm) {
@@ -3669,7 +3671,7 @@ document.addEventListener('click', (event) => {
 
   announceEvent({
     type: 'click',
-    name: button.dataset.action || button.dataset.track || (button.hasAttribute('data-bpm') ? button.id : button.textContent.trim()),
+    name: button.dataset.action || button.dataset.track || (button.hasAttribute('data-bpm') || button === liveBpm ? button.id : button.textContent.trim()),
   });
 });
 
@@ -4437,6 +4439,33 @@ function updateTappedTempo(bpm, taps) {
   }
 }
 
+function tapBpm(button) {
+  const taps = bpmTaps.get(button.id);
+  const now = performance.now();
+  if (taps.length && now - taps[taps.length - 1] > bpmMaxGapMs) taps.length = 0;
+  taps.push(now);
+  if (taps.length > bpmMaxTaps) taps.shift();
+  if (button !== liveBpm) useManualBpm(button, bpmValues.get(button.id));
+  if (taps.length < 2) {
+    announceEvent({ type: 'button', name: button.id });
+    return;
+  }
+  const bpm = 60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1));
+  const displayedBpm = Math.round(bpm);
+  if (!Number.isFinite(displayedBpm) || displayedBpm <= 0) {
+    bpmMessage.textContent = 'Could not measure BPM. Tap the button again.';
+    announceEvent({ type: 'error', name: bpmMessage.textContent });
+    return;
+  }
+  bpmMessage.textContent = '';
+  if (button !== liveBpm) useManualBpm(button, displayedBpm);
+  updateTappedTempo(displayedBpm, taps);
+  announceEvent({ type: 'bpm', name: button.id, value: bpm.toFixed(1) });
+}
+
+bpmTaps.set(liveBpm.id, []);
+liveBpm.addEventListener('click', () => tapBpm(liveBpm));
+
 document.querySelectorAll('[data-bpm]').forEach((button) => {
   const taps = [];
   bpmTaps.set(button.id, taps);
@@ -4466,28 +4495,7 @@ document.querySelectorAll('[data-bpm]').forEach((button) => {
     openBpmAutoMenu(button, rect.left, rect.bottom, button);
   });
 
-  button.addEventListener('click', () => {
-    const now = performance.now();
-    if (taps.length && now - taps[taps.length - 1] > bpmMaxGapMs) taps.length = 0;
-    taps.push(now);
-    if (taps.length > bpmMaxTaps) taps.shift();
-    useManualBpm(button, bpmValues.get(button.id));
-    if (taps.length < 2) {
-      announceEvent({ type: 'button', name: button.id });
-      return;
-    }
-    const bpm = 60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1));
-    const displayedBpm = Math.round(bpm);
-    if (!Number.isFinite(displayedBpm) || displayedBpm <= 0) {
-      bpmMessage.textContent = 'Could not measure BPM. Tap the button again.';
-      announceEvent({ type: 'error', name: bpmMessage.textContent });
-      return;
-    }
-    bpmMessage.textContent = '';
-    useManualBpm(button, displayedBpm);
-    updateTappedTempo(displayedBpm, taps);
-    announceEvent({ type: 'bpm', name: button.id, value: bpm.toFixed(1) });
-  });
+  button.addEventListener('click', () => tapBpm(button));
 });
 
 refreshAutoBpmButtons();
