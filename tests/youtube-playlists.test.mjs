@@ -123,11 +123,13 @@ async function setup(t, initScript, { unifiedSignIn = false, browserType = chrom
           disableAutoSelect() { window.identityAutoSelectDisabled = true; },
         },
         oauth2: {
-          initTokenClient: ({ callback, client_id }) => ({
+          initTokenClient: ({ callback, client_id, error_callback }) => ({
             requestAccessToken: (options) => {
               window.oauthRequests.push({ client_id, ...options });
               window.oauthCallbacks.push(callback);
-              if (!window.deferYouTube) callback(window.youtubeError
+              if (window.youtubeThrow) throw new Error('Authorization could not start');
+              if (window.youtubePopupError) error_callback({ type: 'popup_failed_to_open' });
+              else if (!window.deferYouTube) callback(window.youtubeError
                 ? { error: 'consent_required' } : { access_token: 'test-token' });
             },
           }),
@@ -420,8 +422,8 @@ test('Pitchfork distinguishes requested and actual speed in Chromium', { timeout
 test('Pitchfork distinguishes requested and actual speed in Firefox', { timeout: 20000 },
   (t) => checkPitchforkSpeed(t, firefox));
 
-test('one main Google sign-in syncs TOP without requesting YouTube access', async (t) => {
-  const { page, historyRequests } = await setup(t, null, { unifiedSignIn: true });
+test('Google sign-in connects TOP even when its first automatic YouTube attempt needs consent', async (t) => {
+  const { page, historyRequests } = await setup(t, () => { window.youtubeError = true; }, { unifiedSignIn: true });
   const google = page.getByRole('button', { name: 'Sign in with Google', exact: true });
   assert.equal(await google.count(), 1);
   assert.equal(await page.locator('.main-window').getByRole('button', { name: 'Sign in with Google', exact: true }).count(), 1);
@@ -431,7 +433,11 @@ test('one main Google sign-in syncs TOP without requesting YouTube access', asyn
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
   assert.equal(await page.locator('#account-label').innerText(), 'listener@example.test');
   assert.equal(await page.locator('#account-sign-out').isVisible(), true);
-  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), [{
+    client_id: 'test.apps.googleusercontent.com', prompt: 'none', login_hint: 'listener@example.test',
+  }]);
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  assert.match(await page.locator('#playlist-status').innerText(), /Select CONNECT YOUTUBE/);
   assert.ok(historyRequests.length > 0);
   assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
   await page.setViewportSize({ width: 320, height: 700 });
@@ -439,20 +445,21 @@ test('one main Google sign-in syncs TOP without requesting YouTube access', asyn
   await page.addInitScript(() => { window.autoIdentity = true; });
   await page.reload();
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
-  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  assert.equal(await page.evaluate(() => window.oauthRequests.length), 1);
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
 });
 
-test('optional YouTube access reuses the signed-in account and reconnects only after prior consent', async (t) => {
+test('Google sign-in attempts YouTube without a stored connection preference and reuses the verified account', async (t) => {
   const { page, historyRequests, requests } = await setup(t, null, { unifiedSignIn: true });
   await page.locator('#youtube-login').click();
   assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
   assert.match(await page.locator('#login-notice-message').innerText(), /Sign in with Google in the main window first/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:youtube-reconnect:test.apps.googleusercontent.com')), null);
   await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
-  await page.locator('#youtube-login').click();
   await page.waitForFunction(() => document.querySelectorAll('#playlist-select option').length === 6);
   assert.deepEqual(await page.evaluate(() => window.oauthRequests), [{
-    client_id: 'test.apps.googleusercontent.com', prompt: '', login_hint: 'listener@example.test',
+    client_id: 'test.apps.googleusercontent.com', prompt: 'none', login_hint: 'listener@example.test',
   }]);
   assert.ok(requests.every((request) => request.authorization === 'Bearer test-token'));
   assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
@@ -472,11 +479,9 @@ test('optional YouTube access reuses the signed-in account and reconnects only a
 });
 
 test('sign-out clears both sessions and rejects late authorization and automatic sign-in', async (t) => {
-  const { page } = await setup(t, null, { unifiedSignIn: true });
+  const { page } = await setup(t, () => { window.deferYouTube = true; }, { unifiedSignIn: true });
   await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
-  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
-  await page.evaluate(() => { window.deferYouTube = true; });
-  await page.locator('#youtube-login').click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy && window.oauthRequests.length === 1);
   await page.locator('#account-sign-out').click();
   await page.evaluate(() => {
     window.oauthCallbacks[0]({ access_token: 'late-token' });
@@ -497,7 +502,6 @@ test('sign-out clears both sessions and rejects late authorization and automatic
 test('failed YouTube reconnection leaves history signed in and offers manual reconnection', async (t) => {
   const { page } = await setup(t, () => {
     localStorage.setItem('eraudio:account-reconnect', 'true');
-    localStorage.setItem('eraudio:youtube-reconnect:test.apps.googleusercontent.com', 'true');
     window.autoIdentity = true;
     window.youtubeError = true;
   }, { unifiedSignIn: true });
@@ -509,6 +513,21 @@ test('failed YouTube reconnection leaves history signed in and offers manual rec
   await page.locator('#youtube-login').click();
   await page.waitForFunction(() => youtubeAccessToken === 'test-token');
 });
+
+for (const failure of ['youtubePopupError', 'youtubeThrow']) {
+  test(`automatic YouTube failure (${failure}) preserves TOP and permits manual connection`, async (t) => {
+    const { page } = await setup(t, () => { window.deferYouTube = true; }, { unifiedSignIn: true });
+    await page.evaluate((failure) => { window[failure] = true; }, failure);
+    await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+    await page.waitForFunction(() => historySync?.token && !historySyncBusy && window.oauthRequests.length === 1);
+    assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+    assert.match(await page.locator('#playlist-status').innerText(), /Select CONNECT YOUTUBE/);
+    await page.evaluate((failure) => { window[failure] = false; window.deferYouTube = false; }, failure);
+    await page.locator('#youtube-login').click();
+    await page.waitForFunction(() => youtubeAccessToken === 'test-token');
+    assert.ok(await page.evaluate(() => Boolean(historySync?.token)));
+  });
+}
 
 test('expired history sign-in reconnects once and shared-computer pairing suppresses Google reconnection', async (t) => {
   const { page, setHistoryStateStatus } = await setup(t, null, { unifiedSignIn: true });
@@ -527,9 +546,11 @@ test('expired history sign-in reconnects once and shared-computer pairing suppre
   await page.locator('#btn-hist').click();
   await page.locator('#history-sync-help').click();
   setHistoryStateStatus(401);
+  const youtubeAttempts = await page.evaluate(() => window.oauthRequests.length);
   await page.locator('#history-shared-start').click();
   await page.evaluate(() => google.accounts.id.options.callback({ credential: 'history-id-token', select_by: 'auto' }));
   assert.equal(await page.evaluate(() => historySync), null);
+  assert.equal(await page.evaluate(() => window.oauthRequests.length), youtubeAttempts);
   assert.equal(await page.evaluate(() => window.identityCancelled), true);
   await page.locator('#shared-pair-cancel').click();
 });

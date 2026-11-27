@@ -733,7 +733,12 @@ function trySilentLogin(attemptsLeft = 20, generation = youtubeAuthGeneration) {
   if (generation !== youtubeAuthGeneration) return;
   if (!youtubeOAuthClientId()) return;
   if (window.google?.accounts?.oauth2) {
-    requestYouTubeLogin({ silent: true });
+    try {
+      requestYouTubeLogin({ silent: true });
+    } catch (error) {
+      silentAttempt = false;
+      reportYouTubeLoginError(`Automatic YouTube connection could not start: ${error.message}`, true);
+    }
   } else if (attemptsLeft > 0) {
     setTimeout(() => trySilentLogin(attemptsLeft - 1, generation), 250);
   } else {
@@ -2312,7 +2317,7 @@ function setupHistorySync(config) {
           resetAccountSession();
           accountPrompted = false;
           saveReconnectPreference(accountReconnectKey, true);
-          if (accountLoginHint && readReconnectPreference(youtubeReconnectKey())) trySilentLogin();
+          if (accountLoginHint) trySilentLogin();
         },
       });
       identity.renderButton(document.querySelector('#account-google-button'), {
