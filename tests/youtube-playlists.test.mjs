@@ -552,10 +552,10 @@ test('Google sign-in connects TOP even when its first automatic YouTube attempt 
   assert.equal(await page.evaluate(() => youtubeAccessToken), '');
 });
 
-test('combined sign-in uses one direct-click button and reconnects only after prior consent', async (t) => {
+test('combined sign-in uses one direct-click button with saved API settings and reconnects after consent', async (t) => {
   const { page, historyRequests } = await setup(t, () => {
     localStorage.setItem('eraudio:youtube-credentials', JSON.stringify({
-      googleClientId: 'legacy.apps.googleusercontent.com', youtubeApiKey: '',
+      googleClientId: 'legacy.apps.googleusercontent.com', youtubeApiKey: 'test-key',
     }));
   }, { combinedSignIn: true });
   assert.equal(await page.locator('#youtube-login').isHidden(), true);
@@ -580,8 +580,10 @@ test('combined sign-in uses one direct-click button and reconnects only after pr
   await page.locator('#youtube-settings').click();
   assert.equal(await page.locator('#client-id-input').isDisabled(), true);
   assert.equal(await page.locator('#client-id-input').inputValue(), 'test.apps.googleusercontent.com');
+  assert.equal(await page.locator('#api-key-input').inputValue(), 'test-key');
   await page.locator('#credentials-form button[type="submit"]').click();
   assert.equal(await page.evaluate(() => youtubeAccessToken), 'test-token');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('eraudio:youtube-credentials')).youtubeApiKey), 'test-key');
   await page.locator('#account-sign-out:enabled').click();
   assert.equal(await page.evaluate(() => youtubeAccessToken), '');
   await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();

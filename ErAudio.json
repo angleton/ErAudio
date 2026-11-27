@@ -2,5 +2,5 @@
   "permanent": { "large": 0.10, "small": 0.01 },
   "temporary": { "large": 0.10, "small": 0.01 },
   "ramp": { "percentPerSecond": 1 },
-  "historySync": { "endpoint": "https://eraudio-history.angleton.workers.dev", "googleClientId": "496741257133-nabe9n84t4vfh2fdp8foiqg399n0ueth.apps.googleusercontent.com" }
+  "historySync": { "endpoint": "https://eraudio-history.angleton.workers.dev", "googleClientId": "496741257133-nabe9n84t4vfh2fdp8foiqg399n0ueth.apps.googleusercontent.com", "combinedGoogleSignIn": true }
 }

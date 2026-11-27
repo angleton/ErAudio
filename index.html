@@ -75,7 +75,7 @@
         </select>
         <button class="pl-btn" id="history-export" type="button">EXPORT</button>
         <button class="pl-btn" id="history-import" type="button">IMPORT</button>
-        <button class="pl-btn" id="history-clear" type="button">CLEAR</button>
+        <button class="pl-btn" id="history-manage" type="button">MANAGE HISTORY</button>
         <input id="history-file" type="file" accept=".json,application/json" hidden>
       </div>
       <div class="playlist-footer">
@@ -343,6 +343,23 @@
     <span>ErAudio is an audio-first YouTube player with playback-speed controls and optional private listening-history sync.</span>
     <a href="privacy.html">Privacy Policy</a>
   </footer>
+  <dialog class="open-dialog" id="history-manage-dialog" aria-labelledby="history-manage-title">
+    <form class="open-dialog-form" id="history-manage-form">
+      <div class="title-bar"><h2 class="title-bar-text" id="history-manage-title">MANAGE LISTENING HISTORY</h2></div>
+      <div class="open-dialog-body">
+        <p id="history-manage-scope"></p>
+        <p>Deletion cannot be undone. Export a backup first if you may want to restore this history later.</p>
+        <button class="pl-btn" id="history-manage-export" type="button">EXPORT BACKUP</button>
+        <label for="history-delete-confirm">Type DELETE HISTORY to enable deletion</label>
+        <input id="history-delete-confirm" type="text" autocomplete="off" spellcheck="false">
+        <p class="open-dialog-error" id="history-manage-status" role="status" aria-live="polite"></p>
+      </div>
+      <div class="open-dialog-actions">
+        <button class="pl-btn" id="history-manage-cancel" type="button">CANCEL</button>
+        <button class="pl-btn" id="history-clear" type="submit" disabled>DELETE HISTORY</button>
+      </div>
+    </form>
+  </dialog>
   <dialog class="open-dialog" id="credentials-dialog" aria-labelledby="credentials-title" closedby="any">
     <form class="open-dialog-form" id="credentials-form" novalidate>
       <div class="title-bar">

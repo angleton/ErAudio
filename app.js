@@ -1847,6 +1847,12 @@ const historyPairActions = document.querySelector('#history-pair-actions');
 const historySharedStart = document.querySelector('#history-shared-start');
 const historySharedApprove = document.querySelector('#history-shared-approve');
 const historySharedRevoke = document.querySelector('#history-shared-revoke');
+const historyManage = document.querySelector('#history-manage');
+const historyManageDialog = document.querySelector('#history-manage-dialog');
+const historyManageForm = document.querySelector('#history-manage-form');
+const historyManageScope = document.querySelector('#history-manage-scope');
+const historyManageStatus = document.querySelector('#history-manage-status');
+const historyDeleteConfirm = document.querySelector('#history-delete-confirm');
 const historyClear = document.querySelector('#history-clear');
 const sharedPairDialog = document.querySelector('#shared-pair-dialog');
 const sharedPairCode = document.querySelector('#shared-pair-code');
@@ -1858,6 +1864,8 @@ const sharedApproveStatus = document.querySelector('#shared-approve-status');
 const historyResize = document.querySelector('#history-resize');
 let historySync = null;
 let historySyncBusy = false;
+let historyManageContext = null;
+let historyDeleteBusy = false;
 let historySyncHelpExpanded = false;
 const heatBucketCount = 100;
 const maxHistoryRows = 200;
@@ -2019,7 +2027,7 @@ function showHistorySync(message) {
   historySharedStart.hidden = Boolean(historySync?.token);
   historySharedApprove.hidden = !historySync?.token || historySync.paired;
   historySharedRevoke.hidden = !historySync?.token || historySync.paired;
-  historyClear.disabled = Boolean(historySync?.paired);
+  historyManage.disabled = Boolean(historySync?.paired);
   if (accountClientId) {
     const paired = Boolean(historySync?.paired);
     const signedIn = Boolean(historySync?.token) || paired;
@@ -2786,15 +2794,18 @@ historyColumns.addEventListener('click', (event) => {
   renderHistory();
 });
 
-document.querySelector('#history-export').addEventListener('click', async () => {
+async function exportHistory() {
   let url;
   try {
     if (!listeningHistory.available) throw new Error('Listening history storage is unavailable.');
+    const store = listeningHistory;
+    const sync = historySync;
     listeningHistory.flushCurrent();
     const data = ErAudioHistory.ListeningHistory.exportSnapshot(await readHistory());
+    if (store !== listeningHistory || sync !== historySync) throw new Error('History account changed. Try exporting again.');
     if (!data.spans.length) {
       historyStatus('There is no listening history to export.');
-      return;
+      return 'There is no listening history to export.';
     }
     url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
@@ -2802,12 +2813,24 @@ document.querySelector('#history-export').addEventListener('click', async () => 
     link.download = 'ErAudio-listening-history.json';
     link.click();
     historyStatus('Export started for your listening history.');
+    return 'Export started. Check that the backup was downloaded before deleting.';
   } catch (error) {
     console.error(error);
     historyStatus('Could not export listening history.');
+    return 'Could not export listening history. No history was deleted.';
   } finally {
     if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+}
+
+document.querySelector('#history-export').addEventListener('click', exportHistory);
+document.querySelector('#history-manage-export').addEventListener('click', async () => {
+  if (!historyManageContext || historyManageContext.store !== listeningHistory
+    || historyManageContext.sync !== historySync) {
+    historyManageStatus.textContent = 'The history account changed. Close this dialog and try again.';
+    return;
+  }
+  historyManageStatus.textContent = await exportHistory();
 });
 
 document.querySelector('#history-import').addEventListener('click', () => historyFile.click());
@@ -2829,18 +2852,54 @@ historyFile.addEventListener('change', async () => {
   }
 });
 
-document.querySelector('#history-clear').addEventListener('click', async () => {
-  if (!listeningHistory.available) return;
+historyManage.addEventListener('click', () => {
   const sync = historySync;
-  if (historySyncBusy || (sync && !sync.token)) {
-    historyStatus('Wait for sync or sign in again before clearing your account history.');
+  historyManageContext = { sync, store: listeningHistory };
+  historyManageScope.textContent = sync
+    ? `Deleting removes synced history for ${sync.email || 'the signed-in Google account'} from the service and, on their next sync, other browsers. Separate signed-out history is not deleted.`
+    : 'Deleting removes all signed-out listening history stored in this browser. Synced account history is not deleted.';
+  historyDeleteConfirm.value = '';
+  historyClear.disabled = true;
+  historyManageStatus.textContent = !listeningHistory.available
+    ? 'Listening history storage is unavailable.'
+    : historySyncBusy || (sync && (!sync.token || sync.paired))
+      ? 'Wait for sync or sign in again before clearing your account history.'
+      : '';
+  historyManageDialog.showModal();
+  document.querySelector('#history-manage-cancel').focus();
+});
+
+historyDeleteConfirm.addEventListener('input', () => {
+  historyClear.disabled = historyDeleteConfirm.value !== 'DELETE HISTORY';
+});
+document.querySelector('#history-manage-cancel').addEventListener('click', () => historyManageDialog.close());
+historyManageDialog.addEventListener('cancel', (event) => {
+  if (historyDeleteBusy) event.preventDefault();
+});
+historyManageDialog.addEventListener('close', () => {
+  historyManageContext = null;
+  historyDeleteConfirm.value = '';
+  historyClear.disabled = true;
+});
+
+historyManageForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const context = historyManageContext;
+  const sync = historySync;
+  if (historyDeleteConfirm.value !== 'DELETE HISTORY') return;
+  if (!context || context.store !== listeningHistory || context.sync !== sync || !listeningHistory.available
+    || historySyncBusy || (sync && (!sync.token || sync.paired))) {
+    historyManageStatus.textContent = 'History changed or sync is busy. Close this dialog and try again.';
     return;
   }
-  const question = sync ? 'Erase the synced history for this Google account on all browsers? The separate signed-out history is not deleted.'
-    : 'Erase all listening history stored in this browser? Export it first if you want a backup.';
-  if (!window.confirm(question)) return;
   historySyncBusy = true;
+  historyDeleteBusy = true;
   accountSignOut.disabled = true;
+  historyClear.disabled = true;
+  historyDeleteConfirm.disabled = true;
+  document.querySelector('#history-manage-cancel').disabled = true;
+  document.querySelector('#history-manage-export').disabled = true;
+  historyManageStatus.textContent = 'Deleting listening history...';
   try {
     if (sync) {
       const previous = listeningHistory;
@@ -2860,13 +2919,21 @@ document.querySelector('#history-clear').addEventListener('click', async () => {
       await listeningHistory.clear();
     }
     historyStatus('Listening history cleared.');
+    historyManageDialog.close();
   } catch (error) {
     console.error(error);
     historyStatus('Could not clear listening history.');
+    historyManageStatus.textContent = 'Deletion could not be completed. Some history may already have been deleted. Close this dialog and check your history before trying again.';
+    historyDeleteConfirm.value = '';
+    historyManageContext = null;
     if (sync && error.status === 401) reportHistorySyncError(error);
   } finally {
     historySyncBusy = false;
+    historyDeleteBusy = false;
     accountSignOut.disabled = false;
+    historyDeleteConfirm.disabled = false;
+    document.querySelector('#history-manage-cancel').disabled = false;
+    document.querySelector('#history-manage-export').disabled = false;
   }
 });
 

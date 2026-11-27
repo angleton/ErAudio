@@ -115,7 +115,7 @@ test('the interface fills the viewport while retaining usable controls in smalle
   assert.ok(smallMain.y + smallMain.height <= smallDj.y);
   assert.ok(smallDj.y + smallDj.height <= smallVideos.y);
   assert.ok(smallVideos.y + smallVideos.height <= smallChapters.y);
-  const lastControl = page.locator('#history-clear');
+  const lastControl = page.locator('#history-manage');
   await lastControl.scrollIntoViewIfNeeded();
   const box = await lastControl.boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= small.width);
@@ -286,7 +286,7 @@ test('a populated TOP list can shrink to one or two visible entries', { timeout:
   const rows = await visibleRows();
   assert.ok(rows >= 1 && rows <= 2, `expected 1 or 2 complete rows after shrinking, got ${rows}`);
   assert.equal(await list.evaluate((element) => element.scrollHeight > element.clientHeight), true);
-  await page.locator('#history-clear').click({ trial: true });
+  await page.locator('#history-manage').click({ trial: true });
   const compactHeight = (await panel.boundingBox()).height;
   await page.reload();
   await openTop();
@@ -687,6 +687,60 @@ function waitForHistoryRows(page, expected) {
   }, expected);
 }
 
+test('history management requires deliberate confirmation and offers a restorable backup', async (t) => {
+  const data = fixture([['a', Date.now()]]);
+  const page = await openHistory(t, data);
+  const manage = page.getByRole('button', { name: 'MANAGE HISTORY' });
+  const dialog = page.getByRole('dialog', { name: 'MANAGE LISTENING HISTORY' });
+  const confirm = dialog.getByLabel('Type DELETE HISTORY to enable deletion');
+  const remove = dialog.getByRole('button', { name: 'DELETE HISTORY', exact: true });
+
+  await manage.click();
+  assert.match(await dialog.locator('#history-manage-scope').innerText(), /this browser.*Synced account history is not deleted/);
+  assert.equal(await remove.isDisabled(), true);
+  await confirm.fill('delete history');
+  assert.equal(await remove.isDisabled(), true);
+  const downloadPromise = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'EXPORT BACKUP' }).click();
+  const download = await downloadPromise;
+  assert.deepEqual(JSON.parse(await readFile(await download.path(), 'utf8')).spans, data.spans);
+  await confirm.fill('DELETE HISTORY');
+  assert.equal(await remove.isEnabled(), true);
+  await dialog.getByRole('button', { name: 'CANCEL' }).click();
+  assert.equal((await page.evaluate(() => localHistory.getAll())).spans.length, 1);
+
+  await manage.click();
+  assert.equal(await confirm.inputValue(), '');
+  await confirm.fill('DELETE HISTORY');
+  await page.evaluate(() => { historySync = { token: 'new-account', email: 'other@example.test' }; });
+  await remove.click();
+  assert.match(await dialog.locator('#history-manage-status').innerText(), /History changed/);
+  assert.equal((await page.evaluate(() => localHistory.getAll())).spans.length, 1);
+  await page.evaluate(() => { historySync = null; });
+  await dialog.getByRole('button', { name: 'CANCEL' }).click();
+
+  await page.evaluate(() => {
+    window.originalHistoryClear = localHistory.clear;
+    localHistory.clear = async () => { throw new Error('Simulated storage failure'); };
+  });
+  await manage.click();
+  await confirm.fill('DELETE HISTORY');
+  await remove.click();
+  await dialog.getByText('Deletion could not be completed.', { exact: false }).waitFor();
+  assert.equal(await dialog.isVisible(), true);
+  assert.equal(await remove.isDisabled(), true);
+  assert.equal((await page.evaluate(() => localHistory.getAll())).spans.length, 1);
+  await dialog.getByRole('button', { name: 'CANCEL' }).click();
+  await page.evaluate(() => { localHistory.clear = window.originalHistoryClear; });
+
+  await manage.click();
+  await confirm.fill('DELETE HISTORY');
+  await remove.click();
+  await page.waitForFunction(async () => (await localHistory.getAll()).spans.length === 0);
+  await page.evaluate((snapshot) => localHistory.importData(snapshot), data);
+  assert.equal((await page.evaluate(() => localHistory.getAll())).spans.length, 1);
+});
+
 test('TOP sorts every column in both directions without changing popularity ranks', async (t) => {
   const data = fixture([['a', Date.now()], ['b', Date.now()], ['z', Date.now()]]);
   for (const [index, title, duration, plays, seconds] of [
@@ -896,11 +950,14 @@ test('TOP filters calendar periods and preserves dated plays in backups', { time
   await period.selectOption('all');
   await page.waitForFunction(() => document.querySelector('#history-list [data-history-location="zzzzzzzzzzz:0"] .history-count')?.textContent === '5');
   assert.equal(await page.locator('#history-period-note').evaluate((note) => note.hidden), true);
-  const clear = page.getByRole('button', { name: 'CLEAR', exact: true });
+  await page.getByRole('button', { name: 'MANAGE HISTORY' }).click();
+  const dialog = page.getByRole('dialog', { name: 'MANAGE LISTENING HISTORY' });
+  await dialog.getByLabel('Type DELETE HISTORY to enable deletion').fill('DELETE HISTORY');
+  const clear = dialog.getByRole('button', { name: 'DELETE HISTORY', exact: true });
   await clear.hover();
   const [red, green, blue] = await clear.evaluate((button) =>
     getComputedStyle(button).backgroundColor.match(/\d+/g).map(Number));
-  assert.ok(green > 128 && blue > 128 && red > Math.max(green, blue), 'CLEAR should have a light-red hover background');
+  assert.ok(green > 128 && blue > 128 && red > Math.max(green, blue), 'DELETE HISTORY should have a light-red hover background');
 });
 
 test('playing video and segment highlights follow playback across the lists', { timeout: 20000 }, async (t) => {
@@ -1097,6 +1154,27 @@ test('combined authorization connects the browser to the real history Worker', {
   await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'youtube-test-token');
   assert.equal(await page.evaluate(() => Boolean(historySync.account)), true);
   await page.waitForFunction(() => document.querySelector('#youtube-login-label').textContent.includes('Test channel'));
+  const accountData = fixture([['a', Date.now()]]);
+  const localData = fixture([['b', Date.now()]]);
+  await page.evaluate(async ({ accountData, localData }) => {
+    await localHistory.importData(localData);
+    await listeningHistory.importData(accountData);
+    await syncHistory();
+  }, { accountData, localData });
+  assert.ok((await db.prepare('SELECT count(*) AS count FROM history_rows').bind().first()).count > 0);
+  await page.locator('#account-sign-out:enabled').click();
+  assert.ok((await db.prepare('SELECT count(*) AS count FROM history_rows').bind().first()).count > 0);
+  await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();
+  await page.waitForFunction(() => historySync?.token && youtubeAccessToken === 'youtube-test-token' && !historySyncBusy);
+  await page.locator('#btn-hist').click();
+  await page.getByRole('button', { name: 'MANAGE HISTORY' }).click();
+  const manageDialog = page.getByRole('dialog', { name: 'MANAGE LISTENING HISTORY' });
+  assert.match(await manageDialog.locator('#history-manage-scope').innerText(), /synced history.*other browsers.*signed-out history is not deleted/i);
+  await manageDialog.getByLabel('Type DELETE HISTORY to enable deletion').fill('DELETE HISTORY');
+  await manageDialog.getByRole('button', { name: 'DELETE HISTORY', exact: true }).click();
+  await page.waitForFunction(() => !historySyncBusy);
+  assert.equal((await db.prepare('SELECT count(*) AS count FROM history_rows').bind().first()).count, 0);
+  assert.equal((await page.evaluate(() => localHistory.getAll())).spans.length, 1);
   await page.locator('#account-sign-out:enabled').click();
   grantedScope = 'openid email';
   await page.getByRole('button', { name: 'AUTHORIZE GOOGLE AND YOUTUBE' }).click();
@@ -1240,7 +1318,7 @@ test('TOP converges in both directions across Chromium and Firefox', { timeout: 
   await first.page.getByRole('button', { name: 'APPROVE', exact: true }).click();
   await shared.getByText('Shared-computer history synced.', { exact: false }).waitFor();
   await waitForTop(shared, 'LISTENS', initial);
-  assert.equal(await shared.locator('#history-clear').isDisabled(), true);
+  assert.equal(await shared.locator('#history-manage').isDisabled(), true);
   assert.ok(sharedCredentials.length > 0);
   assert.ok(sharedCredentials.every((credential) => credential.startsWith('Bearer ers_')));
   assert.ok(sharedCredentials.every((credential) => !credential.includes(code)));

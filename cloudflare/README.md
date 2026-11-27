@@ -9,8 +9,9 @@ cannot provide on its own.
 The Worker verifies Google ID tokens and keeps accounts separate. It stores
 video IDs, titles, timeline labels, played ranges, timestamps, playback
 session identifiers, and counts in D1. History is not publicly browsable.
-History sync does not require YouTube permission; an automatic YouTube
-connection attempt follows successful Google sign-in without blocking TOP.
+History sync does not require YouTube permission. In the separate-sign-in
+flow, an automatic YouTube connection attempt follows successful Google
+sign-in without blocking TOP.
 See the [privacy policy](../privacy.html) for more information.
 
 Only listening history is synced. Settings, saved locations, and the Local
@@ -21,8 +22,8 @@ profile and site origin. Use history and location exports for backups.
 
 1. Open ErAudio over HTTPS, or run it locally at `http://localhost:8000`
    using the [local server instructions](../README.md#option-2-use-a-local-http-server).
-2. In the main window, select **Sign in with Google**. This also connects
-   **TOP**.
+2. In this branch's main window, select **AUTHORIZE GOOGLE AND YOUTUBE**.
+   Google identity connects **TOP**; YouTube permission remains optional.
    If prompted, choose whether
    to copy that browser's existing local history into your account.
 3. Sign in with the same Google account in another browser or browser profile.
@@ -33,7 +34,7 @@ Sync runs about once a minute while the page is in use, and when you open
 new listens are saved locally and retried. After a reload or sign-in
 expiration, ErAudio attempts Google reconnection if you previously signed in.
 If Google requires interaction, use the main sign-in button. While signed out, history remains
-separate in that browser. **CLEAR** while signed in deletes account history
+separate in that browser. Confirmed deletion under **MANAGE HISTORY** while signed in deletes account history
 from the service; other browsers receive the deletion on their next sync.
 Select **?** under **TOP** for sync status and help.
 
@@ -43,8 +44,10 @@ account email as a login hint. This attempt does not require a saved YouTube
 connection preference. **CONNECT YOUTUBE** remains available for first-time
 consent or when browser or Google restrictions prevent automatic connection.
 History sync does not depend on YouTube permission or a successful connection.
-Identity and YouTube access tokens stay separate and in page memory. The
-YouTube token is never sent to the Worker. Signing out from the main
+Identity and YouTube access tokens stay separate and in page memory. In this
+separate-sign-in flow, the YouTube token is never sent to the Worker.
+The experimental combined flow below exchanges the authorization code at the
+Worker instead. Signing out from the main
 window clears both ErAudio sessions and disables automatic Google
 reconnection until you sign in again; it does not sign out of Google elsewhere.
 
@@ -95,61 +98,19 @@ does not apply migrations.
 
 ## Testing combined Google and YouTube authorization
 
-This experimental flow is disabled by default. Test it with a separate Worker,
-database and Google OAuth client; do not point a test app at the production
-Worker or production history database. The Google web client must allow the
-test app's exact origin and the `youtube.readonly` scope, and test accounts must
+This branch enables the experimental flow in its configuration. The production
+Worker was updated and given its matching OAuth client secret for branch testing;
+the live website still runs the published version. A later Worker deployment
+from `main` can overwrite the branch Worker. Do not deploy the branch or alter
+the production Worker without approval. An isolated test uses a separate Worker,
+database and Google OAuth client. The Google web client must allow the test
+app's exact origin and the `youtube.readonly` scope, and test accounts must
 be permitted by its consent screen.
 
 ### Local test on a development computer
 
-1. Install Node.js and Python, then run `npm ci` in the repository. Create a
-   separate Google Cloud test project, enable YouTube Data API v3, configure
-   the OAuth consent screen and add your account as a test user. Create a Web
-   application OAuth client with `http://localhost:8000` as an authorized
-   JavaScript origin. Keep its client secret private.
-2. Create the ignored file `cloudflare/wrangler.local.toml`, replacing the
-   client ID placeholder with that test client's public ID:
-
-   ```toml
-   name = "eraudio-history-local-test"
-   main = "history-worker.mjs"
-   compatibility_date = "2026-11-19"
-
-   [vars]
-   APP_ORIGINS = "http://localhost:8000"
-   GOOGLE_CLIENT_ID = "YOUR_TEST_CLIENT_ID.apps.googleusercontent.com"
-
-   [[d1_databases]]
-   binding = "HISTORY_DB"
-   database_name = "eraudio-history-local-test"
-   database_id = "00000000-0000-0000-0000-000000000000"
-   ```
-
-3. Create the ignored file `cloudflare/.dev.vars` containing
-   `GOOGLE_CLIENT_SECRET=your-test-client-secret`, using the actual secret
-   without quotes. Never commit or share this file. From the `cloudflare`
-   directory, initialize the disposable **local** database and start the
-   Worker. Do not use `--remote` or `wrangler deploy` for this test.
-
-   ```powershell
-   npx wrangler@4 d1 execute eraudio-history-local-test --local --config wrangler.local.toml --file history-schema.sql
-   npx wrangler@4 d1 execute eraudio-history-local-test --local --config wrangler.local.toml --file pairing-schema.sql
-   npx wrangler@4 dev --local --config wrangler.local.toml --port 8787
-   ```
-
-4. In another terminal at the repository root, run `npm run site:build`.
-   **This cleans and rebuilds `dist/`.** In the ignored
-   `dist/eraudio/ErAudio.json`, set `historySync.endpoint` to
-   `http://localhost:8787`, set `historySync.googleClientId` to the same test
-   client ID, and add `"combinedGoogleSignIn": true` inside `historySync`.
-   Serve the built test copy with `py -m http.server 8000 --directory dist`,
-   then open `http://localhost:8000/eraudio/`.
-5. Test **AUTHORIZE GOOGLE AND YOUTUBE**, consent, TOP sync, playlist access,
-   partial and denied consent, TOP-only fallback, sign-out, and reconnection
-   after reload. Stop both local servers
-   when finished. Local test data remains in `cloudflare/.wrangler/`; it is
-   not the production database.
+See the [local testing guide](./local-testing/README.md) for a step-by-step
+isolated test without deploying the site or touching production history.
 
 ### Separate hosted test
 
@@ -183,8 +144,7 @@ YouTube reconnection leaves TOP connected and offers **CONNECT YOUTUBE** in
 the same account-control location. Google may still require a manual click.
 
 The test Worker needs the new code and its client secret before the flag is
-enabled. Its CORS preflight must allow `X-Requested-With`; the existing
-production Worker does not support the combined endpoint. No database
+enabled. Its CORS preflight must allow `X-Requested-With`. No database
 migration is needed for an existing test database. A
 Google account and a real isolated deployment are required to validate the
 actual popup and consent flow; automated tests use mocks.
@@ -251,8 +211,8 @@ unless you intend to set up a separate deployment.
    for local-only history.
 7. Test with two browser profiles using the same account. Play at least five
    seconds in the first, then check **TOP** and the heat map in the second.
-   Test a different account to verify isolation, and verify **CLEAR** reaches
-   the other profile.
+   Test a different account to verify isolation. To test deletion propagation,
+   use disposable test history only, never production listening history.
 
 The client ID is public, but Cloudflare API tokens are secrets: never commit
 them. The browser must use the authenticated Worker rather than access D1
