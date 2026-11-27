@@ -1,5 +1,9 @@
 # ErAudio YouTube Web Player (with Pitchfork High-Granularity Control)
 
+**No installation. No browser extension. No account required to start listening.**
+
+Open [ErAudio](https://ericangleton.com/eraudio/) in your browser for Winamp-inspired YouTube playback, precise speed controls, and private listening statistics. Google sign-in is optional for history sync; live audio visualization and automatic BPM detection require permission to share the ErAudio tab's audio.
+
 **ErAudio’s TOP panel ranks both whole videos and specific segments by time actually played in ErAudio.** See which videos you listen to most and which parts you keep coming back to.
 
 **ErAudio:** /ɛr ˈɔdi.oʊ/ (“air-AW-dee-oh”)
