@@ -137,12 +137,14 @@ async function setup(t, initScript, { unifiedSignIn = false, combinedSignIn = fa
               });
             },
           }),
-          initTokenClient: ({ callback, client_id }) => ({
+          initTokenClient: ({ callback, client_id, error_callback }) => ({
             requestAccessToken: (options) => {
               window.oauthRequests.push({ client_id, ...options });
               window.oauthActivations.push(navigator.userActivation.isActive);
               window.oauthCallbacks.push(callback);
-              if (!window.deferYouTube) callback(window.youtubeError
+              if (window.youtubeThrow) throw new Error('Authorization could not start');
+              if (window.youtubePopupError) error_callback({ type: 'popup_failed_to_open' });
+              else if (!window.deferYouTube) callback(window.youtubeError
                 ? { error: 'consent_required' } : { access_token: 'test-token',
                   scope: window.youtubeGrantedScope ?? 'https://www.googleapis.com/auth/youtube.readonly' });
             },
@@ -222,6 +224,88 @@ async function openVideo(page, videoId) {
   await page.getByLabel('VIDEO URL OR ID').fill(videoId);
   await page.getByRole('button', { name: 'OPEN', exact: true }).click();
 }
+
+test('main BPM readout measures pointer and keyboard taps without changing playback or DJ counters', async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+  const mainBpm = page.getByRole('button', { name: /Tap to measure BPM/ });
+  const djReadings = await page.locator('[data-bpm]').allTextContents();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+
+  await mainBpm.click();
+  await page.clock.runFor(500);
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  await page.clock.runFor(2999);
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  await page.clock.runFor(1);
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await page.clock.runFor(600);
+  await mainBpm.press('Space');
+  assert.equal(await mainBpm.textContent(), '100 BPM');
+  await page.clock.runFor(900);
+  await mainBpm.press('Enter');
+  assert.equal(await mainBpm.textContent(), '80 BPM');
+  assert.deepEqual(await page.locator('[data-bpm]').allTextContents(), djReadings);
+  assert.equal(await page.locator('#bpm-left-auto').isChecked(), true);
+  assert.equal(await page.locator('#bpm-right-auto').isChecked(), true);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlaybackRate()), 1);
+
+  await page.evaluate(() => {
+    resetLiveTempo();
+    playerIsPlaying = true;
+    liveTempo.update(0, new Float32Array(3));
+  });
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  for (let tap = 1; tap < 4; tap++) {
+    await page.clock.runFor(500);
+    await mainBpm.click();
+    if (tap === 2) assert.equal(await page.evaluate(() => liveTempo.tempoHint), null);
+  }
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  assert.equal(await page.evaluate(() => liveTempo.tempoHint?.bpm), 120);
+  await page.evaluate(() => showLiveTempo(135));
+  assert.equal(await mainBpm.textContent(), '120 BPM');
+  await page.clock.runFor(3000);
+  assert.equal(await mainBpm.textContent(), '135 BPM');
+
+  await page.evaluate(() => showLiveTempo(null));
+  await mainBpm.click();
+  await page.clock.runFor(500);
+  await mainBpm.click();
+  await page.evaluate(() => {
+    ytPlayer.pauseVideo();
+    onPlayerStateChange({ data: YT.PlayerState.PAUSED });
+  });
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await page.clock.runFor(750);
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '80 BPM');
+  await page.evaluate(() => seekPlayback(20));
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  await page.locator('[data-pf="AC"]').click();
+  await mainBpm.click();
+  assert.equal(await mainBpm.textContent(), '-- BPM');
+  assert.deepEqual(await page.locator('[data-bpm]').allTextContents(), djReadings);
+  assert.equal(await page.locator('#bpm-left-auto').isChecked(), true);
+  assert.equal(await page.locator('#bpm-right-auto').isChecked(), true);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlaybackRate()), 1);
+});
 
 function comment(id, text, likes, author = 'Listener') {
   return { snippet: { topLevelComment: { id, snippet: { textDisplay: text, likeCount: likes, authorDisplayName: author } } } };
@@ -441,8 +525,8 @@ test('Pitchfork distinguishes requested and actual speed in Chromium', { timeout
 test('Pitchfork distinguishes requested and actual speed in Firefox', { timeout: 20000 },
   (t) => checkPitchforkSpeed(t, firefox));
 
-test('one main Google sign-in syncs TOP without requesting YouTube access', async (t) => {
-  const { page, historyRequests } = await setup(t, null, { unifiedSignIn: true });
+test('Google sign-in connects TOP even when its first automatic YouTube attempt needs consent', async (t) => {
+  const { page, historyRequests } = await setup(t, () => { window.youtubeError = true; }, { unifiedSignIn: true });
   const google = page.getByRole('button', { name: 'Sign in with Google', exact: true });
   assert.equal(await google.count(), 1);
   assert.equal(await page.locator('.main-window').getByRole('button', { name: 'Sign in with Google', exact: true }).count(), 1);
@@ -452,7 +536,11 @@ test('one main Google sign-in syncs TOP without requesting YouTube access', asyn
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
   assert.equal(await page.locator('#account-label').innerText(), 'listener@example.test');
   assert.equal(await page.locator('#account-sign-out').isVisible(), true);
-  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  assert.deepEqual(await page.evaluate(() => window.oauthRequests), [{
+    client_id: 'test.apps.googleusercontent.com', prompt: 'none', login_hint: 'listener@example.test',
+  }]);
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+  assert.match(await page.locator('#playlist-status').innerText(), /Select CONNECT YOUTUBE/);
   assert.ok(historyRequests.length > 0);
   assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
   await page.setViewportSize({ width: 320, height: 700 });
@@ -460,7 +548,8 @@ test('one main Google sign-in syncs TOP without requesting YouTube access', asyn
   await page.addInitScript(() => { window.autoIdentity = true; });
   await page.reload();
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
-  assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
+  assert.equal(await page.evaluate(() => window.oauthRequests.length), 1);
+  assert.equal(await page.evaluate(() => youtubeAccessToken), '');
 });
 
 test('combined sign-in uses one direct-click button and reconnects only after prior consent', async (t) => {
@@ -613,17 +702,17 @@ test('failed combined-mode reconnection preserves TOP and cancels a late YouTube
   assert.equal(await page.evaluate(() => historySync), null);
 });
 
-test('optional YouTube access reuses the signed-in account and reconnects only after prior consent', async (t) => {
+test('Google sign-in attempts YouTube without a stored connection preference and reuses the verified account', async (t) => {
   const { page, historyRequests, requests } = await setup(t, null, { unifiedSignIn: true });
   await page.locator('#youtube-login').click();
   assert.deepEqual(await page.evaluate(() => window.oauthRequests), []);
   assert.match(await page.locator('#login-notice-message').innerText(), /Sign in with Google in the main window first/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('eraudio:youtube-reconnect:test.apps.googleusercontent.com')), null);
   await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
   await page.waitForFunction(() => historySync?.token && !historySyncBusy);
-  await page.locator('#youtube-login').click();
   await page.waitForFunction(() => document.querySelectorAll('#playlist-select option').length === 6);
   assert.deepEqual(await page.evaluate(() => window.oauthRequests), [{
-    client_id: 'test.apps.googleusercontent.com', prompt: '', login_hint: 'listener@example.test',
+    client_id: 'test.apps.googleusercontent.com', prompt: 'none', login_hint: 'listener@example.test',
   }]);
   assert.ok(requests.every((request) => request.authorization === 'Bearer test-token'));
   assert.ok(historyRequests.every((request) => request.authorization === 'Bearer history-id-token'));
@@ -643,11 +732,9 @@ test('optional YouTube access reuses the signed-in account and reconnects only a
 });
 
 test('sign-out clears both sessions and rejects late authorization and automatic sign-in', async (t) => {
-  const { page } = await setup(t, null, { unifiedSignIn: true });
+  const { page } = await setup(t, () => { window.deferYouTube = true; }, { unifiedSignIn: true });
   await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
-  await page.waitForFunction(() => historySync?.token && !historySyncBusy);
-  await page.evaluate(() => { window.deferYouTube = true; });
-  await page.locator('#youtube-login').click();
+  await page.waitForFunction(() => historySync?.token && !historySyncBusy && window.oauthRequests.length === 1);
   await page.locator('#account-sign-out').click();
   await page.evaluate(() => {
     window.oauthCallbacks[0]({ access_token: 'late-token' });
@@ -668,7 +755,6 @@ test('sign-out clears both sessions and rejects late authorization and automatic
 test('failed YouTube reconnection leaves history signed in and offers manual reconnection', async (t) => {
   const { page } = await setup(t, () => {
     localStorage.setItem('eraudio:account-reconnect', 'true');
-    localStorage.setItem('eraudio:youtube-reconnect:test.apps.googleusercontent.com', 'true');
     window.autoIdentity = true;
     window.youtubeError = true;
   }, { unifiedSignIn: true });
@@ -680,6 +766,21 @@ test('failed YouTube reconnection leaves history signed in and offers manual rec
   await page.locator('#youtube-login').click();
   await page.waitForFunction(() => youtubeAccessToken === 'test-token');
 });
+
+for (const failure of ['youtubePopupError', 'youtubeThrow']) {
+  test(`automatic YouTube failure (${failure}) preserves TOP and permits manual connection`, async (t) => {
+    const { page } = await setup(t, () => { window.deferYouTube = true; }, { unifiedSignIn: true });
+    await page.evaluate((failure) => { window[failure] = true; }, failure);
+    await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+    await page.waitForFunction(() => historySync?.token && !historySyncBusy && window.oauthRequests.length === 1);
+    assert.equal(await page.evaluate(() => youtubeAccessToken), '');
+    assert.match(await page.locator('#playlist-status').innerText(), /Select CONNECT YOUTUBE/);
+    await page.evaluate((failure) => { window[failure] = false; window.deferYouTube = false; }, failure);
+    await page.locator('#youtube-login').click();
+    await page.waitForFunction(() => youtubeAccessToken === 'test-token');
+    assert.ok(await page.evaluate(() => Boolean(historySync?.token)));
+  });
+}
 
 test('expired history sign-in reconnects once and shared-computer pairing suppresses Google reconnection', async (t) => {
   const { page, setHistoryStateStatus } = await setup(t, null, { unifiedSignIn: true });
@@ -698,9 +799,11 @@ test('expired history sign-in reconnects once and shared-computer pairing suppre
   await page.locator('#btn-hist').click();
   await page.locator('#history-sync-help').click();
   setHistoryStateStatus(401);
+  const youtubeAttempts = await page.evaluate(() => window.oauthRequests.length);
   await page.locator('#history-shared-start').click();
   await page.evaluate(() => google.accounts.id.options.callback({ credential: 'history-id-token', select_by: 'auto' }));
   assert.equal(await page.evaluate(() => historySync), null);
+  assert.equal(await page.evaluate(() => window.oauthRequests.length), youtubeAttempts);
   assert.equal(await page.evaluate(() => window.identityCancelled), true);
   await page.locator('#shared-pair-cancel').click();
 });
