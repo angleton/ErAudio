@@ -14,7 +14,7 @@ this isolated test.
    privately; do not paste the secret into chat, API SETUP, or a committed file.
    The test client is separate from the production client, even if API SETUP
    already contains a client ID.
-2. With the `fix/google-youtube-sign-in` branch checked out, create
+2. With the current app checked out, create
    `C:\ErAudio\cloudflare\wrangler.local.toml` (ignored by Git). Replace the
    placeholder with the test client's **ID**, not its secret:
 

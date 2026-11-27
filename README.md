@@ -2,8 +2,6 @@
 
 **No installation. No browser extension. No account required to start listening.**
 
-> This branch enables experimental combined sign-in. The production Worker was updated for branch testing, but the live website still runs the published version. Do not deploy further changes without approval.
-
 Open [ErAudio](https://ericangleton.com/eraudio/) in your browser for Winamp-inspired YouTube playback, precise speed controls, and private listening statistics. Google sign-in is optional for history sync; live audio visualization and automatic BPM detection require permission to share the ErAudio tab's audio.
 
 **ErAudio’s TOP panel ranks both whole videos and specific segments by time actually played in ErAudio.** See which videos you listen to most and which parts you keep coming back to.
@@ -162,7 +160,7 @@ Sign in once with Google in the main window to connect **TOP**. Sign in with the
 
 After a successful sign-in, ErAudio remembers a reconnection preference and asks Google to reconnect on later visits or after history sign-in expires. Google may still require interaction, and the main-window button remains available. With the default sign-in flow, each successful Google history sign-in also makes a best-effort YouTube connection attempt without consent screens, using the verified account email as a login hint, even if this browser has no saved YouTube connection preference. First-time consent, expired permissions, browser popup restrictions, or multiple Google accounts may still require a manual **CONNECT YOUTUBE** click. Failed YouTube attempts never undo Google sign-in or prevent TOP sync; the two tokens remain separate.
 
-This branch enables the experimental combined authorization flow. One **AUTHORIZE GOOGLE AND YOUTUBE** button starts consent directly from your click. Declining YouTube permission still connects TOP when Google identity is granted. If the popup or authorization service fails, the same location offers **Sign in with Google** for TOP only; **CONNECT YOUTUBE** is then available there without a second login button elsewhere. Previously connected accounts use best-effort reconnection, and YouTube failures never prevent TOP sync. The production Worker has been updated and configured for testing; see the [Cloudflare guide](./cloudflare/README.md#testing-combined-google-and-youtube-authorization).
+The configured combined authorization flow uses one **AUTHORIZE GOOGLE AND YOUTUBE** button to start consent directly from your click. Declining YouTube permission still connects TOP when Google identity is granted. If the popup or authorization service fails, the same location offers **Sign in with Google** for TOP only; **CONNECT YOUTUBE** is then available there without a second login button elsewhere. Previously connected accounts use best-effort reconnection, and YouTube failures never prevent TOP sync. See the [Cloudflare guide](./cloudflare/README.md#testing-combined-google-and-youtube-authorization) for service configuration and testing.
 
 **SIGN OUT** in the main window clears both ErAudio account sessions and disables automatic Google reconnection until you sign in again. It does not sign you out of Google on other websites or revoke previously granted permissions. Tokens and the account login hint remain in page memory; browser storage contains only reconnection preferences, not tokens.
 

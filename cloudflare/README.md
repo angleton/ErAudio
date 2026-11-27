@@ -22,7 +22,7 @@ profile and site origin. Use history and location exports for backups.
 
 1. Open ErAudio over HTTPS, or run it locally at `http://localhost:8000`
    using the [local server instructions](../README.md#option-2-use-a-local-http-server).
-2. In this branch's main window, select **AUTHORIZE GOOGLE AND YOUTUBE**.
+2. In the main window, select **AUTHORIZE GOOGLE AND YOUTUBE**.
    Google identity connects **TOP**; YouTube permission remains optional.
    If prompted, choose whether
    to copy that browser's existing local history into your account.
@@ -38,7 +38,7 @@ separate in that browser. Confirmed deletion under **MANAGE HISTORY** while sign
 from the service; other browsers receive the deletion on their next sync.
 Select **?** under **TOP** for sync status and help.
 
-In the default flow, after Google history sign-in succeeds, ErAudio automatically attempts
+In the separate-sign-in flow, after Google history sign-in succeeds, ErAudio automatically attempts
 read-only YouTube playlist access without consent screens, using the verified
 account email as a login hint. This attempt does not require a saved YouTube
 connection preference. **CONNECT YOUTUBE** remains available for first-time
@@ -46,7 +46,7 @@ consent or when browser or Google restrictions prevent automatic connection.
 History sync does not depend on YouTube permission or a successful connection.
 Identity and YouTube access tokens stay separate and in page memory. In this
 separate-sign-in flow, the YouTube token is never sent to the Worker.
-The experimental combined flow below exchanges the authorization code at the
+The combined flow below exchanges the authorization code at the
 Worker instead. Signing out from the main
 window clears both ErAudio sessions and disables automatic Google
 reconnection until you sign in again; it does not sign out of Google elsewhere.
@@ -98,14 +98,12 @@ does not apply migrations.
 
 ## Testing combined Google and YouTube authorization
 
-This branch enables the experimental flow in its configuration. The production
-Worker was updated and given its matching OAuth client secret for branch testing;
-the live website still runs the published version. A later Worker deployment
-from `main` can overwrite the branch Worker. Do not deploy the branch or alter
-the production Worker without approval. An isolated test uses a separate Worker,
-database and Google OAuth client. The Google web client must allow the test
-app's exact origin and the `youtube.readonly` scope, and test accounts must
-be permitted by its consent screen.
+The app's configuration enables combined authorization. Its Worker must support
+the combined endpoint and have the matching OAuth client secret configured.
+Do not deploy or alter the production Worker without approval. An isolated test
+uses a separate Worker, database and Google OAuth client. The Google web client
+must allow the test app's exact origin and the `youtube.readonly` scope, and
+test accounts must be permitted by its consent screen.
 
 ### Local test on a development computer
 
