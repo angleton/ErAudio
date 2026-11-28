@@ -8,6 +8,8 @@ Open [preview.html](./preview.html) directly in a browser. It works offline and 
 
 Edit a file, save it, and reload the preview to see the change. Edits to the shared renderer affect both the preview and the player.
 
+For an unrelated mixer navigation concept, open [carousel-preview.html](./carousel-preview.html) directly in a browser. It shows six mock players around a stationary mixer placeholder, including one marked as audible in a simulated mix. Select players by clicking them, using the numbered or previous/next buttons, or pressing left/right arrows while the carousel is focused. It plays no audio and does not change ErAudio. Its appearance is in the HTML file and its sample players and navigation are in [carousel-preview.js](./carousel-preview.js).
+
 ## Files and responsibilities
 
 | File | Purpose |
@@ -16,6 +18,7 @@ Edit a file, save it, and reload the preview to see the change. Edits to the sha
 | [drawn-spectrum.js](./drawn-spectrum.js) | Shift-drag handling and audio-reactive freehand spectra, shared by the player and preview. |
 | [preview.html](./preview.html) | Standalone preview page and controls. |
 | [preview.js](./preview.js) | Simulated frequency levels and preview controls. It does not affect the player's audio or BPM detection. |
+| [carousel-preview.html](./carousel-preview.html), [carousel-preview.js](./carousel-preview.js) | Offline mockup of carousel navigation between six future mixer players. |
 | [../styles.css](../styles.css) | Shared `.vis-container` background and `#live-spectrum` canvas size and glow. Changes to these rules affect both displays. |
 | [../app.js](../app.js) | Manages tab audio capture, the audio analyzers, player pause state, and the renderer's animation loop. BPM detection is separate in [../tempo.js](../tempo.js). |
 

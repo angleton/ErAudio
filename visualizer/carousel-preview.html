@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="base-uri 'none'; object-src 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ErAudio Carousel Preview</title>
+  <script src="carousel-preview.js" defer></script>
+  <style>
+    :root { color-scheme: dark; font-family: "Trebuchet MS", Arial, sans-serif; background: #101113; color: #ddd; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 16px 40px; }
+    main { max-width: 1000px; margin: auto; }
+    h1 { margin: 0 0 8px; color: #eee; font-size: 22px; }
+    p { line-height: 1.5; }
+    .intro { color: #b6b9b4; font-size: 14px; }
+    .intro strong { color: #e4c96e; }
+    .carousel { margin-top: 20px; border: 1px solid #444551; background: #1d1e24; box-shadow: 0 8px 24px #0008; }
+    .heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 9px 14px; background: linear-gradient(90deg, #000080, #1084d0); color: white; font: bold 12px monospace; }
+    .stage { position: relative; height: 500px; overflow: hidden; background: radial-gradient(ellipse at center, #2e3430 0, #151918 62%, #101113 100%); }
+    .stage::after { position: absolute; bottom: 18px; left: 15%; width: 70%; height: 40px; border-radius: 50%; background: #0008; filter: blur(20px); content: ""; pointer-events: none; }
+    .player { position: absolute; top: 50%; left: 50%; width: min(270px, 66vw); padding: 3px; border: 2px solid #60606c; background: #2b2b34; color: #ddd; box-shadow: 4px 8px 18px #000a; cursor: pointer; text-align: left; transform-origin: center; transition: transform 450ms ease, opacity 450ms ease, border-color 200ms; }
+    .player.selected { border-color: #e5bf45; box-shadow: 0 0 0 1px #705c1c, 4px 10px 24px #000c; }
+    .player:focus-visible, .controls button:focus-visible { outline: 2px solid #ffcc00; outline-offset: 3px; }
+    .player-title { display: flex; justify-content: space-between; gap: 6px; padding: 4px 6px; background: linear-gradient(90deg, #000080, #1084d0); color: white; font: bold 11px monospace; }
+    .player-title span:last-child { white-space: nowrap; }
+    .screen { min-height: 116px; padding: 8px; border: 2px inset #34383a; background: #0b180c; color: #7dff74; font: 11px monospace; }
+    .track { overflow: hidden; color: #e5ef9e; font-weight: bold; text-overflow: ellipsis; white-space: nowrap; }
+    .screen-meta { display: flex; justify-content: space-between; gap: 5px; margin-top: 6px; color: #a4d49b; }
+    .spectrum { display: flex; align-items: end; gap: 3px; height: 37px; margin-top: 6px; }
+    .spectrum span { flex: 1; background: linear-gradient(to top, #12c63d 0%, #a9d92f 65%, #ef6342 100%); }
+    .seek { height: 8px; margin: 8px 2px 6px; border: 1px solid #101014; background: linear-gradient(90deg, #5d725c 40%, #17171b 40%); }
+    .player-controls { display: flex; align-items: center; gap: 4px; padding: 0 2px 3px; }
+    .player-controls span { padding: 4px 6px; border: 1px outset #676777; background: #393944; color: #dedee4; font: 10px monospace; }
+    .player-controls .volume { flex: 1; height: 5px; padding: 0; border: 0; background: linear-gradient(90deg, #30d34c 60%, #121412 60%); }
+    .mixer { position: absolute; z-index: 20; top: calc(50% - 12px); left: 50%; width: 156px; padding: 3px; border: 2px solid #797986; background: #292a33; box-shadow: 4px 8px 18px #000b; transform: translate(-50%, -50%); }
+    .mixer-title { display: flex; justify-content: space-between; padding: 5px 6px; background: linear-gradient(90deg, #000080, #1084d0); color: #fff; font: bold 11px monospace; }
+    .mixer-body { padding: 5px; border: 2px inset #42434b; background: #181a1b; }
+    .mixer-label { color: #d3ca95; font: 8px monospace; text-align: center; }
+    .mixer-channels { display: flex; justify-content: space-around; gap: 2px; margin: 5px 0; }
+    .channel { display: grid; justify-items: center; gap: 3px; color: #a4a7a5; font: 9px monospace; }
+    .channel.audible { color: #ffda64; }
+    .fader { position: relative; width: 15px; height: 37px; background: linear-gradient(90deg, transparent 6px, #080a08 6px, #080a08 9px, transparent 9px); }
+    .fader::after { position: absolute; left: 0; top: var(--position); width: 13px; height: 7px; border: 1px solid #999; background: #60616b; content: ""; }
+    .meter { width: 11px; height: 4px; background: #35423a; }
+    .audible .meter { background: #a9e533; box-shadow: 0 0 4px #a9e533; }
+    .mixer-output { padding: 4px; border: 1px solid #38543a; background: #0b180c; color: #aada92; font: 9px monospace; text-align: center; }
+    .controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 7px; padding: 16px 12px 8px; }
+    .controls button { min-width: 36px; min-height: 34px; padding: 6px 9px; border: 1px solid #777784; background: #34343f; color: #ddd; cursor: pointer; font: bold 12px monospace; }
+    .controls button:hover { border-color: #e5bf45; color: #fff; }
+    .controls button[aria-pressed="true"] { border-color: #ffcc00; background: #66551e; color: #fff5c3; }
+    .selector { display: flex; gap: 5px; }
+    .selection { min-height: 56px; padding: 2px 16px 14px; text-align: center; color: #b9c7b9; font: 12px/1.5 monospace; }
+    .selection strong { color: #e7d285; }
+    .help { margin: 12px 0 0; color: #b6b9b4; font-size: 13px; }
+    @media (max-width: 800px) {
+      .stage { height: 440px; }
+      .player { width: clamp(150px, 30vw, 190px); }
+      .screen { min-height: 84px; padding: 5px; font-size: 10px; }
+      .spectrum { height: 25px; margin-top: 4px; }
+      .player-controls span { padding: 3px 4px; }
+    }
+    @media (max-width: 620px) {
+      .stage { height: 410px; }
+      .player-title { font-size: 9px; }
+      .player-title span:last-child { font-size: 8px; }
+      .mixer { width: 135px; }
+      .mixer-title { font-size: 9px; }
+      .fader { width: 12px; height: 30px; background: linear-gradient(90deg, transparent 5px, #080a08 5px, #080a08 7px, transparent 7px); }
+      .fader::after { width: 10px; }
+      .meter { width: 9px; }
+    }
+    @media (max-width: 560px) {
+      body { padding: 16px 8px 28px; }
+      .controls { gap: 4px; }
+      .controls button { min-width: 31px; padding: 6px; }
+      .selector { gap: 3px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .player { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ErAudio Carousel Preview</h1>
+    <p class="intro">A concept for navigating six independent ErAudio players. <strong>Everything here is simulated</strong>: no audio plays, and selecting a player does not change the mix.</p>
+    <section class="carousel" aria-label="ErAudio player carousel">
+      <div class="heading"><span>ERAUDIO / MIXER CONCEPT</span><span>6 MOCK PLAYERS</span></div>
+      <div class="stage" id="carousel-stage" aria-label="Mock players surrounding a simulated mixer">
+        <div class="mixer" role="img" aria-label="Simulated mixer with six channels; channel 4 is audible">
+          <div class="mixer-title"><span>MIXER</span><span>CONCEPT</span></div>
+          <div class="mixer-body" aria-hidden="true">
+            <div class="mixer-label">SIX CHANNELS / ONE MIX</div>
+            <div class="mixer-channels">
+              <div class="channel"><span>01</span><span class="meter"></span><span class="fader" style="--position: 75%"></span></div>
+              <div class="channel"><span>02</span><span class="meter"></span><span class="fader" style="--position: 75%"></span></div>
+              <div class="channel"><span>03</span><span class="meter"></span><span class="fader" style="--position: 75%"></span></div>
+              <div class="channel audible"><span>04</span><span class="meter"></span><span class="fader" style="--position: 25%"></span></div>
+              <div class="channel"><span>05</span><span class="meter"></span><span class="fader" style="--position: 75%"></span></div>
+              <div class="channel"><span>06</span><span class="meter"></span><span class="fader" style="--position: 75%"></span></div>
+            </div>
+            <div class="mixer-output">OUTPUT &nbsp; 04 AUDIBLE</div>
+          </div>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="previous" type="button" aria-label="Previous player">&#9664; PREV</button>
+        <div class="selector" id="selector" role="group" aria-label="Choose a player"></div>
+        <button id="next" type="button" aria-label="Next player">NEXT &#9654;</button>
+      </div>
+      <div class="selection" id="selection" aria-live="polite"></div>
+    </section>
+    <p class="help">The mixer stays in the middle; its controls are only a placeholder. Click a player, use PREV / NEXT or the numbered buttons, or use the left and right arrow keys while focused on the carousel. Gold marks the selected player; <strong>AUDIBLE IN MIX</strong> marks the simulated song you are hearing.</p>
+    <noscript><p>This preview needs JavaScript to display and navigate the mock players.</p></noscript>
+  </main>
+</body>
+</html>

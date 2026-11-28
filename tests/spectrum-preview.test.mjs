@@ -7,7 +7,7 @@ test('player and preview block injected base URLs and embedded objects', async (
   t.after(() => browser.close());
   const page = await browser.newPage({ offline: true });
 
-  for (const path of ['../index.html', '../visualizer/preview.html']) {
+  for (const path of ['../index.html', '../visualizer/preview.html', '../visualizer/carousel-preview.html']) {
     await page.goto(new URL(path, import.meta.url).href);
     const result = await page.evaluate(async () => {
       const violations = [];
@@ -26,6 +26,67 @@ test('player and preview block injected base URLs and embedded objects', async (
     assert.ok(result.violations.includes('base-uri'));
     assert.ok(result.violations.includes('object-src'));
   }
+});
+
+test('carousel preview navigates mock players offline without changing the simulated mix', async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ offline: true, reducedMotion: 'reduce' });
+  const errors = [];
+  const remoteRequests = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    if (/^https?:/.test(request.url())) remoteRequests.push(request.url());
+  });
+  await page.goto(new URL('../visualizer/carousel-preview.html', import.meta.url).href);
+  const selection = page.locator('#selection');
+  assert.equal(await page.locator('.player').count(), 6);
+  assert.match(await selection.textContent(), /ErAudio 01 \/ Night Drive.*NOT AUDIBLE IN MIX/);
+  const mixer = page.getByRole('img', { name: /Simulated mixer with six channels/ });
+  const mixerPosition = () => mixer.evaluate((element) => {
+    const mixerRect = element.getBoundingClientRect();
+    const stageRect = element.parentElement.getBoundingClientRect();
+    return { x: mixerRect.x - stageRect.x, y: mixerRect.y - stageRect.y };
+  });
+  const initialPosition = await mixerPosition();
+  const layers = await page.evaluate(() => {
+    const mixer = document.querySelector('.mixer');
+    const player = document.querySelector('.player.selected');
+    return {
+      overlap: mixer.getBoundingClientRect().bottom - player.getBoundingClientRect().top,
+      mixerLayer: Number(getComputedStyle(mixer).zIndex),
+      playerLayer: Number(getComputedStyle(player).zIndex),
+      sideLayers: [1, 5].map((index) => Number(getComputedStyle(document.querySelectorAll('.player')[index]).zIndex)),
+      rearLayer: Number(getComputedStyle(document.querySelectorAll('.player')[3]).zIndex),
+    };
+  });
+  assert.ok(layers.overlap > 0);
+  assert.ok(layers.playerLayer > layers.mixerLayer);
+  assert.ok(layers.sideLayers.every((layer) => layer > layers.mixerLayer && layer < layers.playerLayer));
+  assert.ok(layers.rearLayer < layers.mixerLayer);
+
+  await page.getByRole('button', { name: 'Previous player' }).click();
+  assert.match(await selection.textContent(), /ErAudio 06 \/ Last Light/);
+  assert.deepEqual(await mixerPosition(), initialPosition);
+  await page.getByRole('button', { name: 'Next player' }).click();
+  assert.match(await selection.textContent(), /ErAudio 01 \/ Night Drive/);
+  await page.getByRole('button', { name: /Select ErAudio 4: Electric Current/ }).click();
+  assert.match(await selection.textContent(), /ErAudio 04 \/ Electric Current.*AUDIBLE IN MIX/);
+  assert.equal(await page.locator('.player[aria-pressed="true"]').count(), 1);
+  await page.keyboard.press('ArrowRight');
+  assert.match(await selection.textContent(), /ErAudio 05 \/ Distant Signals.*NOT AUDIBLE IN MIX/);
+  assert.match(await page.locator('.player').nth(3).textContent(), /AUDIBLE IN MIX/);
+  await page.locator('.player').nth(4).press('ArrowLeft');
+  assert.match(await selection.textContent(), /ErAudio 04 \/ Electric Current/);
+  await page.locator('.player').nth(2).click({ position: { x: 10, y: 8 } });
+  assert.match(await selection.textContent(), /ErAudio 03 \/ After Hours/);
+
+  await page.setViewportSize({ width: 360, height: 740 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.getByRole('button', { name: /Select ErAudio 4: Electric Current/ }).click();
+  assert.match(await selection.textContent(), /ErAudio 04 \/ Electric Current/);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(remoteRequests, []);
 });
 
 test('standalone preview works offline, pauses and resumes, and changes band count', { timeout: 15000 }, async (t) => {
