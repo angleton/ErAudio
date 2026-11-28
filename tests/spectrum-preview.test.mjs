@@ -101,7 +101,7 @@ test('standalone preview works offline, pauses and resumes, and changes band cou
   assert.deepEqual(remoteRequests, []);
 });
 
-test('drawn spectra respond to levels perpendicular to the line and expire after five seconds', async (t) => {
+test('drawn spectra respond to levels perpendicular to the line and expire after ten seconds', async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
@@ -121,15 +121,15 @@ test('drawn spectra respond to levels perpendicular to the line and expire after
     };
     renderer.strokes.push({
       points: [{ x: 0.1, y: 0.5 }, { x: 0.9, y: 0.5 }],
-      expiresAt: 5000,
+      expiresAt: 10000,
     });
-    renderer.draw(drawing, new Float32Array([1]), 4999, 1);
+    renderer.draw(drawing, new Float32Array([1]), 9999, 1);
     const loud = paths.slice();
     paths.length = 0;
-    renderer.draw(drawing, new Float32Array([0]), 4999, 1);
+    renderer.draw(drawing, new Float32Array([0]), 9999, 1);
     const silent = paths.slice();
     paths.length = 0;
-    renderer.draw(drawing, new Float32Array([1]), 5000, 1);
+    renderer.draw(drawing, new Float32Array([1]), 10000, 1);
     return { loud, silent, expired: paths, remaining: renderer.strokes.length };
   });
   assert.deepEqual(result.loud, [[[10, 50], [90, 50]], [[50, 50], [50, 25]]]);
@@ -138,7 +138,7 @@ test('drawn spectra respond to levels perpendicular to the line and expire after
   assert.equal(result.remaining, 0);
 });
 
-test('completed drawn spectra fade during the last second while active strokes stay visible', async (t) => {
+test('completed drawn spectra fade from five to ten seconds while active strokes stay visible', async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
@@ -162,15 +162,17 @@ test('completed drawn spectra fade during the last second while active strokes s
       renderer.draw(drawing, new Float32Array([1]), now, 1);
       return [...alphas];
     };
-    const active = at(6000);
-    stroke.expiresAt = 5000;
-    const full = at(4000);
-    const halfway = at(4500);
-    const almostGone = at(4999);
-    const expired = at(5000);
-    return { active, full, halfway, almostGone, expired };
+    const active = at(12000);
+    stroke.expiresAt = 10000;
+    const beforeFade = at(4999);
+    const full = at(5000);
+    const halfway = at(7500);
+    const almostGone = at(9999);
+    const expired = at(10000);
+    return { active, beforeFade, full, halfway, almostGone, expired };
   });
   assert.deepEqual(result.active, [0.9, 0.9]);
+  assert.deepEqual(result.beforeFade, [0.9, 0.9]);
   assert.deepEqual(result.full, [0.9, 0.9]);
   assert.deepEqual(result.halfway, [0.45, 0.45]);
   assert.ok(result.almostGone.every((alpha) => alpha > 0 && alpha < 0.001));

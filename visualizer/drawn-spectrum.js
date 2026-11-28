@@ -1,6 +1,6 @@
 (() => {
-  const lifetimeMs = 5000;
-  const fadeMs = 1000;
+  const lifetimeMs = 10000;
+  const fadeMs = 5000;
   const maxStrokes = 32;
   const maxPoints = 1024;
   const pointSpacing = 3;

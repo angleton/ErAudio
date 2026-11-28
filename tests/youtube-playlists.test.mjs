@@ -1258,7 +1258,7 @@ test('Shift-drag draws temporary live spectra without toggling playback', { time
   assert.equal(await page.evaluate(() => drawnSpectrum.strokes.length), 1);
   assert.ok(await page.evaluate(() => drawnSpectrum.strokes[0].points.length > 2));
   const lifetime = await page.evaluate(() => drawnSpectrum.strokes[0].expiresAt - performance.now());
-  assert.ok(lifetime > 4500 && lifetime <= 5000);
+  assert.ok(lifetime > 9500 && lifetime <= 10000);
 
   await page.keyboard.down('ShiftRight');
   await page.mouse.move(x, y - 20);
