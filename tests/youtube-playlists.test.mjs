@@ -525,6 +525,92 @@ test('Pitchfork distinguishes requested and actual speed in Chromium', { timeout
 test('Pitchfork distinguishes requested and actual speed in Firefox', { timeout: 20000 },
   (t) => checkPitchforkSpeed(t, firefox));
 
+async function checkTemporarySpeedMarker(t, browserType) {
+  const { page } = await setup(t, () => {
+    localStorage.setItem('eraudio:speed-steps', JSON.stringify({ temporary: { large: 20 } }));
+  }, { browserType });
+  await page.getByRole('button', { name: 'DJ', exact: true }).click();
+  const slider = page.locator('#speed-slider');
+  const baseThumb = page.locator('.pf-speed-base-thumb');
+  const temporaryThumb = page.locator('.pf-speed-temporary-thumb');
+  const button = page.locator('.pf-right [data-step-size="large"][data-step-dir="up"]');
+  await openVideo(page, 'lkII03srb3U');
+  await page.evaluate(() => {
+    window.speedRequests = [];
+    const setPlaybackRate = ytPlayer.setPlaybackRate.bind(ytPlayer);
+    ytPlayer.setPlaybackRate = (rate) => {
+      window.speedRequests.push(rate);
+      setPlaybackRate(rate);
+    };
+  });
+  await slider.fill('12000');
+  assert.equal(await baseThumb.isHidden(), true);
+  const sliderBounds = await slider.boundingBox();
+
+  await button.hover();
+  await page.mouse.down();
+  await page.waitForFunction(() => document.querySelector('#val-speed').textContent === '40.00%');
+  assert.equal(await slider.inputValue(), '24000');
+  assert.equal(await slider.getAttribute('aria-valuetext'), 'Requested 40.00% (1.4000x), temporary while held');
+  assert.equal(await baseThumb.isVisible(), true);
+  assert.equal(await temporaryThumb.isVisible(), true);
+  assert.equal(await slider.evaluate((element) => element.classList.contains('is-temporary')), true);
+  const baseBounds = await baseThumb.boundingBox();
+  const temporaryBounds = await temporaryThumb.boundingBox();
+  assert.ok(Math.abs((baseBounds.x + baseBounds.width / 2) - (sliderBounds.x + 5 + (sliderBounds.width - 10) * 0.7)) < 2);
+  assert.ok(Math.abs((temporaryBounds.x + temporaryBounds.width / 2) - (sliderBounds.x + 5 + (sliderBounds.width - 10) * 0.9)) < 2);
+  assert.equal(await temporaryThumb.evaluate((element) => getComputedStyle(element).opacity), '0.5');
+  assert.equal(await page.locator('#speed-marker-value').evaluate((element) =>
+    getComputedStyle(element, '::before').content), '"TEMP "');
+  await page.mouse.up();
+  assert.equal(await slider.inputValue(), '12000');
+  assert.deepEqual((await page.evaluate(() => window.speedRequests)).slice(-2), [1.4, 1.2]);
+  assert.equal(await baseThumb.isHidden(), true);
+  assert.equal(await temporaryThumb.isHidden(), true);
+  assert.equal(await slider.evaluate((element) => element.classList.contains('is-temporary')), false);
+  assert.equal(await slider.getAttribute('aria-valuetext'), 'Requested 20.00% (1.2000x)');
+
+  await button.focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('#val-speed').textContent === '40.00%');
+  assert.equal(await baseThumb.isVisible(), true);
+  await page.keyboard.up('Space');
+  assert.equal(await slider.inputValue(), '12000');
+  assert.equal(await baseThumb.isHidden(), true);
+
+  await button.focus();
+  await page.keyboard.down('Enter');
+  await page.waitForFunction(() => document.querySelector('#val-speed').textContent === '40.00%');
+  await slider.focus();
+  assert.equal(await slider.inputValue(), '12000');
+  assert.equal(await temporaryThumb.isHidden(), true);
+  await page.keyboard.up('Enter');
+
+  await page.locator('[data-pf="="]').focus();
+  await page.keyboard.down('Space');
+  assert.equal(await slider.inputValue(), '0');
+  assert.equal(await baseThumb.isHidden(), true);
+  await page.keyboard.up('Space');
+  assert.equal(await slider.inputValue(), '12000');
+
+  await slider.fill('30000');
+  await button.focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.querySelector('#speed-slider').classList.contains('is-temporary'));
+  assert.equal(await slider.inputValue(), '30000');
+  assert.equal(await temporaryThumb.isVisible(), true);
+  const labelBounds = await page.locator('#speed-marker-value').boundingBox();
+  const rowBounds = await page.locator('.pf-slider-row').boundingBox();
+  assert.ok(labelBounds.x >= rowBounds.x && labelBounds.x + labelBounds.width <= rowBounds.x + rowBounds.width);
+  await page.keyboard.up('Space');
+  assert.equal(await temporaryThumb.isHidden(), true);
+}
+
+test('temporary speed steps retain a solid baseline and show a translucent marker in Chromium', { timeout: 20000 },
+  (t) => checkTemporarySpeedMarker(t, chromium));
+test('temporary speed steps retain a solid baseline and show a translucent marker in Firefox', { timeout: 20000 },
+  (t) => checkTemporarySpeedMarker(t, firefox));
+
 test('Google sign-in connects TOP even when its first automatic YouTube attempt needs consent', async (t) => {
   const { page, historyRequests } = await setup(t, () => { window.youtubeError = true; }, { unifiedSignIn: true });
   const google = page.getByRole('button', { name: 'Sign in with Google', exact: true });

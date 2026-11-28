@@ -1251,6 +1251,10 @@ body {
   pointer-events: none;
 }
 
+.pf-slider-track.is-temporary .pf-speed-marker-value::before {
+  content: 'TEMP ';
+}
+
 .pf-speed-actual {
   color: #d6d7ea;
   font: 10px/1.4 var(--font-mono);
@@ -1260,6 +1264,7 @@ body {
 .pf-slider-row .speed-slider {
   display: block;
   background: #121220;
+  margin: 0;
 }
 
 .pf-slider-row .speed-slider::-webkit-slider-thumb {
@@ -1276,6 +1281,40 @@ body {
   height: 22px;
   background: linear-gradient(180deg, #e3cf86 0%, #8a7330 100%);
   border: 1px solid #f3e7b4;
+}
+
+.pf-slider-row .speed-slider.is-temporary::-webkit-slider-thumb {
+  background: transparent;
+  border-color: transparent;
+}
+
+.pf-slider-row .speed-slider.is-temporary::-moz-range-thumb {
+  background: transparent;
+  border-color: transparent;
+}
+
+.pf-speed-base-thumb:not([hidden]),
+.pf-speed-temporary-thumb:not([hidden]) {
+  position: absolute;
+  top: 24px;
+  width: 10px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(180deg, #e3cf86 0%, #8a7330 100%);
+  border: 1px solid #f3e7b4;
+  border-bottom-color: #5a4a18;
+  border-right-color: #5a4a18;
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.pf-speed-base-thumb:not([hidden]) {
+  left: var(--base-speed-position);
+}
+
+.pf-speed-temporary-thumb:not([hidden]) {
+  left: var(--speed-position);
+  opacity: 0.5;
 }
 
 .pf-left,

@@ -22,7 +22,8 @@ function setSpeedRate(value) {
 }
 
 function updateSpeedAccessibility(rate) {
-  controls.speed.setAttribute('aria-valuetext', `Requested ${formatValue('speed', rate)} (${rate.toFixed(4)}x)`);
+  const temporary = controls.speed.classList.contains('is-temporary') ? ', temporary while held' : '';
+  controls.speed.setAttribute('aria-valuetext', `Requested ${formatValue('speed', rate)} (${rate.toFixed(4)}x)${temporary}`);
   speedMarkerValue.textContent = formatValue('speed', rate);
   const fraction = (Number(controls.speed.value) + 30000) / 60000;
   speedMarkerValue.parentElement.style.setProperty('--speed-position', `calc(${fraction * 100}% + ${5 - fraction * 10}px)`);
@@ -4230,9 +4231,11 @@ document.querySelectorAll('.pf-left [data-step-size]').forEach((button) => {
   });
 });
 
-function bindMomentarySpeed(button, pressedSpeed, ready = null) {
+function bindMomentarySpeed(button, pressedSpeed, ready = null, showTemporary = false) {
   let restoreValue = null;
   let pressedBy = null;
+  const baseThumb = document.querySelector('.pf-speed-base-thumb');
+  const temporaryThumb = document.querySelector('.pf-speed-temporary-thumb');
   const press = (source, id) => {
     if (pressedBy) return;
     const currentPress = { source, id };
@@ -4240,6 +4243,14 @@ function bindMomentarySpeed(button, pressedSpeed, ready = null) {
     const apply = () => {
       if (pressedBy !== currentPress) return;
       restoreValue = currentSpeedRate();
+      if (showTemporary) {
+        const fraction = (Number(controls.speed.value) + speedPositionLimit) / (2 * speedPositionLimit);
+        baseThumb.style.setProperty('--base-speed-position', `calc(${fraction * 100}% + ${5 - fraction * 10}px)`);
+        baseThumb.hidden = false;
+        temporaryThumb.hidden = false;
+        controls.speed.classList.add('is-temporary');
+        controls.speed.parentElement.classList.add('is-temporary');
+      }
       updateControl('speed', pressedSpeed(Number(restoreValue)));
     };
     if (ready) ready.then(apply);
@@ -4251,6 +4262,12 @@ function bindMomentarySpeed(button, pressedSpeed, ready = null) {
     if (restoreValue === null) return;
     const previous = restoreValue;
     restoreValue = null;
+    if (showTemporary) {
+      baseThumb.hidden = true;
+      temporaryThumb.hidden = true;
+      controls.speed.classList.remove('is-temporary');
+      controls.speed.parentElement.classList.remove('is-temporary');
+    }
     updateControl('speed', previous);
   };
   button.addEventListener('pointerdown', (event) => {
@@ -4274,7 +4291,7 @@ function bindMomentarySpeed(button, pressedSpeed, ready = null) {
 
 // Right-side buttons apply their steps only while held.
 document.querySelectorAll('.pf-right [data-step-size]').forEach((button) => {
-  bindMomentarySpeed(button, (base) => steppedSpeed(button, base, 'temporary'), stepConfigReady);
+  bindMomentarySpeed(button, (base) => steppedSpeed(button, base, 'temporary'), stepConfigReady, true);
 });
 
 bindMomentarySpeed(document.querySelector('[data-pf="="]'), () => '1.00');
