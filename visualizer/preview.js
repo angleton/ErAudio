@@ -17,6 +17,7 @@
   const frequencies = Float32Array.from(bins, (_, index) =>
     Math.log2(Math.max(30, index * sampleRate / fftSize) / 30));
   const visualizer = new ErAudioSpectrum(canvas, drawing, sampleRate, fftSize, performance.now());
+  const drawnSpectrum = new ErAudioDrawnSpectrum(canvas, canvas);
   let paused = false;
 
   bandInput.addEventListener('input', () => {
@@ -42,6 +43,7 @@
       }
     }
     visualizer.draw(bins, Number(bandInput.value), now, paused, window.devicePixelRatio || 1);
+    drawnSpectrum.draw(drawing, visualizer.bandLevels, now, window.devicePixelRatio || 1);
     requestAnimationFrame(draw);
   }
   requestAnimationFrame(draw);

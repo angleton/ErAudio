@@ -33,6 +33,7 @@
         this.heldPeaks = new Float32Array(bandCount);
         this.holdUntil = new Float64Array(bandCount);
         this.bandTops = new Float32Array(bandCount);
+        this.bandLevels = new Float32Array(bandCount);
       }
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
@@ -61,6 +62,7 @@
           peak = bins[this.bandEdges[band]];
         }
         const level = Math.min(1, Math.max(0, (peak - quietDb) / (loudDb - quietDb)));
+        this.bandLevels[band] = level;
         spectrumTop = height * (1 - level);
         const ledTop = height - Math.round(level * rowCount) * rowHeight;
         this.bandTops[band] = spectrumTop + (ledTop - spectrumTop) * ledStrength;

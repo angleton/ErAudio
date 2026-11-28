@@ -1436,6 +1436,9 @@ const liveLevelSetup = document.querySelector('#live-level-setup');
 const spectrum = document.querySelector('#live-spectrum');
 const spectrumArea = document.querySelector('.spectrum-area');
 const spectrumContainer = document.querySelector('.vis-container');
+const drawnSpectrum = new ErAudioDrawnSpectrum(spectrum, visualizerPlayButton,
+  () => liveLevelSetup.hidden,
+  () => { liveLevelStatus.textContent = 'Share tab audio to draw live spectra in the visualizer.'; });
 const visualizerFullscreenButton = document.querySelector('#visualizer-fullscreen');
 const liveLevelButton = document.querySelector('#live-level-share');
 const liveBpm = document.querySelector('#live-bpm');
@@ -1680,6 +1683,7 @@ async function requestLiveLevels() {
       context.close().catch((error) => console.warn('Could not close the live level audio context.', error));
     }
     drawing?.clearRect(0, 0, spectrum.width, spectrum.height);
+    drawnSpectrum.clear();
     resetLiveTempo();
     liveLevelStatus.textContent = message;
     liveLevelSetup.hidden = false;
@@ -1764,6 +1768,7 @@ async function requestLiveLevels() {
       }
       if (!liveLevelsPaused) analyzer.getFloatFrequencyData(bins);
       visualizer.draw(bins, spectrumBandCount, now, liveLevelsPaused, window.devicePixelRatio || 1);
+      drawnSpectrum.draw(drawing, visualizer.bandLevels, now, window.devicePixelRatio || 1);
       frame = requestAnimationFrame(drawSpectrum);
     }
     drawSpectrum(startTime);

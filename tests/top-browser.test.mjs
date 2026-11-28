@@ -30,6 +30,7 @@ const assets = new Map([
   ['/history-sync.js', ['history-sync.js', 'text/javascript']],
   ['/tempo.js', ['tempo.js', 'text/javascript']],
   ['/visualizer/spectrum.js', ['visualizer/spectrum.js', 'text/javascript']],
+  ['/visualizer/drawn-spectrum.js', ['visualizer/drawn-spectrum.js', 'text/javascript']],
   ['/styles.css', ['styles.css', 'text/css']],
 ]);
 

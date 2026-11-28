@@ -101,6 +101,43 @@ test('standalone preview works offline, pauses and resumes, and changes band cou
   assert.deepEqual(remoteRequests, []);
 });
 
+test('drawn spectra respond to levels perpendicular to the line and expire after five seconds', async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(new URL('../visualizer/preview.html', import.meta.url).href);
+  const result = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 100;
+    const renderer = new ErAudioDrawnSpectrum(canvas, canvas);
+    const paths = [];
+    let path;
+    const drawing = {
+      save() {}, restore() {},
+      beginPath() { path = []; },
+      moveTo(x, y) { path.push([x, y]); },
+      lineTo(x, y) { path.push([x, y]); },
+      stroke() { paths.push(path); },
+    };
+    renderer.strokes.push({
+      points: [{ x: 0.1, y: 0.5 }, { x: 0.9, y: 0.5 }],
+      expiresAt: 5000,
+    });
+    renderer.draw(drawing, new Float32Array([1]), 4999, 1);
+    const loud = paths.slice();
+    paths.length = 0;
+    renderer.draw(drawing, new Float32Array([0]), 4999, 1);
+    const silent = paths.slice();
+    paths.length = 0;
+    renderer.draw(drawing, new Float32Array([1]), 5000, 1);
+    return { loud, silent, expired: paths, remaining: renderer.strokes.length };
+  });
+  assert.deepEqual(result.loud, [[[10, 50], [90, 50]], [[50, 50], [50, 25]]]);
+  assert.deepEqual(result.silent, [[[10, 50], [90, 50]]]);
+  assert.deepEqual(result.expired, []);
+  assert.equal(result.remaining, 0);
+});
+
 test('minimum bands show whole lights at varying levels and sizes while maximum bands stay smooth', async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());

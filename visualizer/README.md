@@ -4,7 +4,7 @@ The player and the standalone preview use the same spectrum renderer. The player
 
 ## Try it
 
-Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 8–512 bands. Below 512 bands, gaps gradually appear and the fill quickly develops flat tops; white peak dots gradually become rectangular lights. At 16 bands and below, the display is a grid of whole LED-like blocks. Use **Pause** to hold the colored fill while the white peak markers fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
+Open [preview.html](./preview.html) directly in a browser. It works offline and needs no YouTube playback, sign-in, or audio sharing. Move **Frequency bands** to try 8–512 bands. Below 512 bands, gaps gradually appear and the fill quickly develops flat tops; white peak dots gradually become rectangular lights. At 16 bands and below, the display is a grid of whole LED-like blocks. Hold Shift and drag with the left mouse button to draw a reactive spectrum along a freehand line. Use **Pause** to hold the colored fill while the white peak markers fall; **Resume** restarts the simulation. The preview does not change the player's saved band setting.
 
 Edit a file, save it, and reload the preview to see the change. Edits to the shared renderer affect both the preview and the player.
 
@@ -13,6 +13,7 @@ Edit a file, save it, and reload the preview to see the change. Edits to the sha
 | File | Purpose |
 | --- | --- |
 | [spectrum.js](./spectrum.js) | Shared frequency-to-band mapping, peak timing, and canvas drawing. Start here to change the visualization. |
+| [drawn-spectrum.js](./drawn-spectrum.js) | Shift-drag handling and audio-reactive freehand spectra, shared by the player and preview. |
 | [preview.html](./preview.html) | Standalone preview page and controls. |
 | [preview.js](./preview.js) | Simulated frequency levels and preview controls. It does not affect the player's audio or BPM detection. |
 | [../styles.css](../styles.css) | Shared `.vis-container` background and `#live-spectrum` canvas size and glow. Changes to these rules affect both displays. |
@@ -31,6 +32,8 @@ In [spectrum.js](./spectrum.js):
 
 The simulation in [preview.js](./preview.js) can also be edited to try different patterns; it is not the player's audio analyzer.
 
+In [drawn-spectrum.js](./drawn-spectrum.js), `lifetimeMs` controls how long a completed line stays visible, `heightFraction` controls the height of its levels relative to the canvas, and `pointSpacing`, `maxPoints`, `maxBands`, and `maxStrokes` bound drawing detail and work. Change the baseline's `strokeStyle` or the per-level `hsl(...)` color to customize their appearance. Bass maps to the beginning of the line and treble to the end. Levels extend perpendicular to the direction drawn: left-to-right rises upward. Coordinates are normalized so lines follow canvas resizing. Each line uses the shared renderer's current band levels; paused audio holds those levels, and stopping sharing clears the drawings.
+
 ## How the renderer is called
 
 `new ErAudioSpectrum(canvas, drawing, sampleRate, fftSize, now)` creates a renderer for a canvas and its 2D context. `sampleRate` and `fftSize` describe the frequency data, and `now` is the starting time in milliseconds.
@@ -41,6 +44,7 @@ On each animation frame, the caller invokes `draw(bins, bandCount, now, paused, 
 - `bandCount` is the number of displayed bands. Changing it resets the held peaks.
 - `now` is the animation timestamp in milliseconds, and `ratio` is the device pixel ratio.
 - When `paused` is true, the caller must keep `bins` unchanged. The fill then stays fixed while existing peak dots fall instead of being refreshed.
+- After `draw()`, `bandLevels` contains the normalized live levels used by the freehand spectra.
 
 The player handles capture and calls the renderer; the preview creates its own synthetic bins. Neither the renderer nor the preview needs a Google account.
 

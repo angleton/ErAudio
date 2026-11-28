@@ -12,6 +12,7 @@ const assets = new Map([
   ['/history-sync.js', ['history-sync.js', 'text/javascript']],
   ['/tempo.js', ['tempo.js', 'text/javascript']],
   ['/visualizer/spectrum.js', ['visualizer/spectrum.js', 'text/javascript']],
+  ['/visualizer/drawn-spectrum.js', ['visualizer/drawn-spectrum.js', 'text/javascript']],
   ['/styles.css', ['styles.css', 'text/css']],
 ]);
 const playerScript = `
@@ -1196,6 +1197,92 @@ test('the visualizer uses the transport play and pause actions', { timeout: 2000
 
   await visualizer.press('Space');
   assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+});
+
+test('Shift-drag draws temporary live spectra without toggling playback', { timeout: 20000 }, async (t) => {
+  const { page } = await setup(t, () => {
+    let handle;
+    const audio = {
+      readyState: 'live', stop() {},
+      addEventListener(event, callback) { if (event === 'ended') window.stopSharedAudio = callback; },
+    };
+    const video = { stop() {}, getCaptureHandle: () => ({ handle }) };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        setCaptureHandleConfig(config) { handle = config.handle; },
+        async getDisplayMedia() {
+          return { getVideoTracks: () => [video], getAudioTracks: () => [audio], getTracks: () => [video, audio] };
+        },
+      },
+    });
+    window.MediaStream = class {};
+    window.AudioContext = class {
+      sampleRate = 44100;
+      state = 'running';
+      createAnalyser() {
+        return {
+          fftSize: 0,
+          get frequencyBinCount() { return this.fftSize / 2; },
+          getFloatFrequencyData(bins) { bins.fill(-55); },
+        };
+      }
+      createMediaStreamSource() { return { connect() {} }; }
+      async resume() {}
+      async close() { this.state = 'closed'; }
+    };
+  });
+  await openVideo(page, 'aaaaaaaaaaa');
+  const surface = page.locator('#visualizer-play');
+  const box = await surface.boundingBox();
+  const x = box.x + box.width * 0.3;
+  const y = box.y + box.height * 0.75;
+
+  await page.keyboard.down('ShiftLeft');
+  await page.mouse.click(x, y);
+  await page.keyboard.up('ShiftLeft');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.match(await page.locator('#live-level-status').textContent(), /Share tab audio to draw/);
+
+  await page.getByRole('button', { name: 'SHARE TAB AUDIO FOR VISUALIZER' }).click();
+  await page.waitForFunction(() => document.querySelector('#live-level-setup').hidden);
+  await page.keyboard.down('ShiftLeft');
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 80, y - 10, { steps: 8 });
+  assert.ok(await page.evaluate(() => drawnSpectrum.strokes[0].points.length > 2));
+  assert.equal(await page.evaluate(() => drawnSpectrum.strokes[0].expiresAt), Infinity);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  await page.mouse.up();
+  await page.keyboard.up('ShiftLeft');
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.evaluate(() => drawnSpectrum.strokes.length), 1);
+  assert.ok(await page.evaluate(() => drawnSpectrum.strokes[0].points.length > 2));
+  const lifetime = await page.evaluate(() => drawnSpectrum.strokes[0].expiresAt - performance.now());
+  assert.ok(lifetime > 4500 && lifetime <= 5000);
+
+  await page.keyboard.down('ShiftRight');
+  await page.mouse.move(x, y - 20);
+  await page.mouse.down();
+  await page.mouse.move(x + 70, y - 20, { steps: 7 });
+  await page.keyboard.up('ShiftRight');
+  await page.mouse.up();
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.evaluate(() => drawnSpectrum.strokes.length), 2);
+
+  const expiration = await page.evaluate(() => {
+    const first = drawnSpectrum.strokes[0].expiresAt;
+    const context = spectrum.getContext('2d');
+    drawnSpectrum.draw(context, new Float32Array([1]), first - 1, 1);
+    const before = drawnSpectrum.strokes.length;
+    drawnSpectrum.draw(context, new Float32Array([1]), first, 1);
+    return { before, after: drawnSpectrum.strokes.length };
+  });
+  assert.equal(expiration.before, 2);
+  assert.equal(expiration.after, 1);
+  await page.mouse.click(x, y);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
+  await page.evaluate(() => window.stopSharedAudio());
+  assert.equal(await page.evaluate(() => drawnSpectrum.strokes.length), 0);
 });
 
 test('the track title handles both mouse buttons without toggling playback', { timeout: 20000 }, async (t) => {

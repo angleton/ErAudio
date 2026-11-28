@@ -7,6 +7,7 @@
   <title>ErAudio Spectrum Preview</title>
   <link rel="stylesheet" href="../styles.css">
   <script src="spectrum.js" defer></script>
+  <script src="drawn-spectrum.js" defer></script>
   <script src="preview.js" defer></script>
   <style>
     body { align-items: center; justify-content: center; padding: 20px; }
@@ -35,7 +36,7 @@
       <button class="pl-btn" id="preview-pause" type="button" aria-pressed="false">Pause</button>
     </div>
     <p id="preview-error" role="alert" hidden></p>
-    <p>Changes to the preview's band count do not change the player's saved setting. See the <a href="README.md">visualizer guide</a>.</p>
+    <p>Hold Shift and drag on the spectrum to draw a temporary audio-reactive line. Changes to the preview's band count do not change the player's saved setting. See the <a href="README.md">visualizer guide</a>.</p>
   </main>
 </body>
 </html>
