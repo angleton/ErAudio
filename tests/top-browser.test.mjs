@@ -629,6 +629,11 @@ test('live spectrum uses the shared renderer and stops sampling while paused', {
   assert.match(await page.locator('#live-level-status').textContent(), /Enable the visualizer and BPM/);
   await share.click();
   await page.waitForFunction(() => window.spectrumReads > 2);
+  await page.evaluate(() => { playerIsPlaying = true; });
+  await page.waitForFunction(() => liveTempo.previous !== null);
+  assert.ok(await page.evaluate(() => Math.abs(performance.now() - liveTempo.previous.now) < 250),
+    'audio samples must use the same clock as manual taps');
+  await page.evaluate(() => { playerIsPlaying = false; updateBeatLight(); });
   assert.equal(await page.locator('#live-level-setup').isHidden(), true);
   assert.equal(await page.locator('#live-spectrum').evaluate((canvas) =>
     canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height)

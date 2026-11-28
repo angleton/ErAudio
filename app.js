@@ -1442,6 +1442,7 @@ const drawnSpectrum = new ErAudioDrawnSpectrum(spectrum, visualizerPlayButton,
 const visualizerFullscreenButton = document.querySelector('#visualizer-fullscreen');
 const liveLevelButton = document.querySelector('#live-level-share');
 const liveBpm = document.querySelector('#live-bpm');
+const beatLight = document.querySelector('#beat-light');
 const liveTempo = new ErAudioLiveTempo();
 const spectrumSettings = document.querySelector('#spectrum-settings');
 const spectrumBandInput = document.querySelector('#spectrum-bands');
@@ -1462,6 +1463,11 @@ const tabCaptureAvailable = window.isSecureContext && location.origin !== 'null'
 let liveLevelAutoPrompted = false;
 let liveLevelsPaused = false;
 let playerIsPlaying = false;
+const beatLightStorageKey = 'eraudio:beat-light';
+const storedBeatLight = readStoredValue(beatLightStorageKey);
+let beatLightEnabled = storedBeatLight === 'true'
+  || (storedBeatLight !== 'false' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+let beatLightFrame = null;
 let detectedBpm = null;
 let tappedBpm = null;
 let tappedBpmTimer;
@@ -1628,6 +1634,47 @@ function renderMainBpm() {
   liveBpm.setAttribute('aria-label', `${label}. Tap to measure BPM`);
 }
 
+function renderBeatLight(now) {
+  const beat = beatLightEnabled && playerIsPlaying ? liveTempo.beatAt(now) : null;
+  beatLight.classList.toggle('lit', Boolean(beat?.lit));
+  const confidence = beat?.confidence || 'none';
+  if (beatLight.dataset.confidence !== confidence) beatLight.dataset.confidence = confidence;
+  const state = !beatLightEnabled ? 'off'
+    : !beat ? 'on; waiting for beat timing'
+      : beat.confidence === 'uncertain' ? 'on; tap-guided timing is not confirmed by audio'
+        : 'on; estimated beat timing';
+  const description = `Beat light ${state}. ${beatLightEnabled ? 'Turn off' : 'Turn on'}.`;
+  if (beatLight.getAttribute('aria-pressed') !== String(beatLightEnabled)) {
+    beatLight.setAttribute('aria-pressed', String(beatLightEnabled));
+  }
+  if (beatLight.getAttribute('aria-label') !== description) {
+    beatLight.setAttribute('aria-label', description);
+    beatLight.title = description;
+  }
+}
+
+function updateBeatLight() {
+  renderBeatLight(performance.now());
+  if (!beatLightEnabled || !playerIsPlaying) {
+    if (beatLightFrame !== null) cancelAnimationFrame(beatLightFrame);
+    beatLightFrame = null;
+    return;
+  }
+  if (beatLightFrame !== null) return;
+  const animate = (now) => {
+    renderBeatLight(now);
+    beatLightFrame = requestAnimationFrame(animate);
+  };
+  beatLightFrame = requestAnimationFrame(animate);
+}
+
+beatLight.addEventListener('click', () => {
+  beatLightEnabled = !beatLightEnabled;
+  writeStoredValue(beatLightStorageKey, String(beatLightEnabled));
+  updateBeatLight();
+});
+updateBeatLight();
+
 function showLiveTempo(bpm) {
   if (detectedBpm === bpm) return;
   detectedBpm = bpm;
@@ -1646,6 +1693,7 @@ function resetLiveTempo() {
   showLiveTempo(null);
   clearTappedBpm();
   bpmTaps.forEach((taps) => { taps.length = 0; });
+  updateBeatLight();
 }
 
 function seekPlayback(position) {
@@ -1764,7 +1812,7 @@ async function requestLiveLevels() {
         for (let band = 0; band < levels.length; band++) {
           levels[band] = ErAudioLiveTempo.bandLevel(tempoBins, tempoEdges[band], tempoEdges[band + 1]);
         }
-        showLiveTempo(liveTempo.update(context.currentTime * 1000, levels));
+        showLiveTempo(liveTempo.update(now, levels));
       }
       if (!liveLevelsPaused) analyzer.getFloatFrequencyData(bins);
       visualizer.draw(bins, spectrumBandCount, now, liveLevelsPaused, window.devicePixelRatio || 1);
@@ -2960,6 +3008,7 @@ function onPlayerStateChange(event) {
   speedPlaybackError = false;
   updateActualSpeed();
   if (!playerIsPlaying) resetLiveTempo();
+  else updateBeatLight();
   refreshPlaybackHighlight(event.data);
   if (event.data !== YT.PlayerState.BUFFERING) {
     liveLevelsPaused = event.data === YT.PlayerState.PAUSED;
@@ -4651,6 +4700,8 @@ function updateTappedTempo(bpm, taps) {
   const average = (recent.at(-1) - recent[0]) / intervals.length;
   if (average > 0 && intervals.every((interval) => Math.abs(interval - average) <= average * 0.12)) {
     liveTempo.setTempoHint(60000 / average);
+    liveTempo.setBeatTapHint(60000 / average, recent.at(-1));
+    updateBeatLight();
   }
 }
 

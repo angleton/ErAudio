@@ -139,3 +139,69 @@ test('holds the last tempo through a brief confidence dip, then clears it if the
     if (time === 18000) assert.equal(actual, null);
   }
 });
+
+test('estimates beat phase from periodic audio and clears it after silence or reset', () => {
+  const detector = new LiveTempo();
+  assert.equal(feed(detector, 0, 10000, beat(120)), 120);
+  assert.deepEqual(detector.beatAt(10120), { lit: true, confidence: 'estimated' });
+  assert.deepEqual(detector.beatAt(10370), { lit: false, confidence: 'estimated' });
+  feed(detector, 10000, 12500, () => 0);
+  assert.equal(detector.beatAt(12500), null);
+  detector.reset();
+  assert.equal(detector.beatAt(12500), null);
+});
+
+test('steady taps supply uncertain timing and audio gradually corrects a nearby phase', () => {
+  const detector = new LiveTempo();
+  detector.setBeatTapHint(120, 10020);
+  assert.deepEqual(detector.beatAt(10020), { lit: true, confidence: 'uncertain' });
+  assert.equal(feed(detector, 0, 10000, beat(120)), 120);
+  feed(detector, 10000, 14000, beat(120));
+  assert.ok(detector.beatHint.phase > 10020 && detector.beatHint.phase < 10120);
+  assert.equal(detector.beatAt(14020).confidence, 'estimated');
+});
+
+test('taps help select one of two audio-supported beat phases', () => {
+  const pulse = beat(120);
+  const alternating = (time) => pulse(time) + pulse(time + 250);
+  const automatic = new LiveTempo();
+  assert.equal(feed(automatic, 0, 10000, alternating), 120);
+  assert.equal(automatic.beatAt(10120), null);
+
+  const guided = new LiveTempo();
+  guided.setBeatTapHint(120, 5120);
+  assert.equal(feed(guided, 0, 10000, alternating), 120);
+  assert.equal(guided.beatAt(10120).confidence, 'estimated');
+  assert.equal(guided.beatAt(10120).lit, true);
+});
+
+test('conflicting taps stay uncertain and cannot create an audio tempo', () => {
+  const detector = new LiveTempo();
+  assert.equal(feed(detector, 0, 10000, beat(120)), 120);
+  detector.setTempoHint(90);
+  detector.setBeatTapHint(90, 10000);
+  assert.equal(feed(detector, 10000, 14000, beat(120)), 120);
+  assert.equal(detector.beatAt(14000).confidence, 'uncertain');
+
+  detector.setBeatTapHint(120, 14370);
+  feed(detector, 14000, 18000, beat(120));
+  assert.equal(detector.beatAt(18000).confidence, 'uncertain');
+  feed(detector, 18000, 20500, () => 0);
+  assert.equal(detector.bpm, null);
+  assert.equal(detector.beatAt(20500).confidence, 'uncertain');
+  assert.equal(detector.beatAt(44370), null);
+});
+
+test('tap guidance expires after 30 seconds and capture gaps or reset discard it', () => {
+  const detector = new LiveTempo();
+  detector.setBeatTapHint(120, 1000);
+  assert.equal(detector.beatAt(30999).confidence, 'uncertain');
+  assert.equal(detector.beatAt(31000), null);
+  detector.update(1000, new Float32Array(3));
+  detector.setBeatTapHint(120, 1000);
+  detector.update(1600, new Float32Array(3));
+  assert.equal(detector.beatAt(1600), null);
+  detector.setBeatTapHint(120, 1600);
+  detector.reset();
+  assert.equal(detector.beatAt(1600), null);
+});

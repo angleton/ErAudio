@@ -68,7 +68,7 @@ function item(id, videoId, title) {
   return { id, snippet: { title }, contentDetails: { videoId } };
 }
 
-async function setup(t, initScript, { unifiedSignIn = false, combinedSignIn = false, browserType = chromium } = {}) {
+async function setup(t, initScript, { unifiedSignIn = false, combinedSignIn = false, browserType = chromium, reducedMotion } = {}) {
   const server = createServer(async (req, res) => {
     try {
       if (req.url === '/ErAudio.json') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(
@@ -93,6 +93,7 @@ async function setup(t, initScript, { unifiedSignIn = false, combinedSignIn = fa
   const browser = await browserType.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
+  if (reducedMotion) await page.emulateMedia({ reducedMotion });
   if (initScript) await page.addInitScript(initScript);
   const requests = [];
   const historyRequests = [];
@@ -306,6 +307,72 @@ test('main BPM readout measures pointer and keyboard taps without changing playb
   assert.equal(await page.locator('#bpm-right-auto').isChecked(), true);
   assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 2);
   assert.equal(await page.evaluate(() => ytPlayer.getPlaybackRate()), 1);
+});
+
+test('beat light follows steady taps, shows uncertainty, and resets without changing playback', async (t) => {
+  const { page } = await setup(t);
+  await openVideo(page, 'aaaaaaaaaaa');
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
+  await page.evaluate(() => onPlayerStateChange({ data: YT.PlayerState.PLAYING }));
+  const light = page.locator('#beat-light');
+  const bpm = page.locator('#live-bpm');
+  assert.equal(await light.getAttribute('aria-pressed'), 'true');
+  for (let tap = 0; tap < 4; tap++) {
+    if (tap) await page.clock.runFor(500);
+    await bpm.click();
+  }
+  assert.equal(await light.getAttribute('data-confidence'), 'uncertain');
+  assert.match(await light.getAttribute('aria-label'), /not confirmed by audio/);
+  assert.equal(await light.evaluate((element) => element.classList.contains('lit')), true);
+  await page.clock.runFor(200);
+  assert.equal(await light.evaluate((element) => element.classList.contains('lit')), false);
+  await page.clock.runFor(300);
+  assert.equal(await light.evaluate((element) => element.classList.contains('lit')), true);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlayerState()), 1);
+  assert.equal(await page.evaluate(() => ytPlayer.getPlaybackRate()), 1);
+
+  await page.evaluate(() => {
+    const now = performance.now();
+    const phase = liveTempo.beatHint.phase;
+    for (let time = now - 10000; time <= now; time += 20) {
+      const position = ((time - phase) % 500 + 500) % 500;
+      const level = Math.max(0, 1 - Math.abs(position - 44) / 44);
+      liveTempo.update(time, Float32Array.of(level, level * 0.6, level * 0.3));
+    }
+  });
+  await page.clock.runFor(20);
+  assert.equal(await light.getAttribute('data-confidence'), 'estimated');
+  assert.match(await light.getAttribute('aria-label'), /estimated beat timing/);
+
+  await light.click();
+  assert.equal(await light.getAttribute('aria-pressed'), 'false');
+  assert.equal(await light.evaluate((element) => element.classList.contains('lit')), false);
+  await light.click();
+  assert.equal(await light.getAttribute('aria-pressed'), 'true');
+  await page.evaluate(() => seekPlayback(20));
+  assert.equal(await light.getAttribute('data-confidence'), 'none');
+  assert.equal(await page.evaluate(() => liveTempo.beatHint), null);
+  await page.evaluate(() => {
+    liveTempo.setBeatTapHint(120, performance.now());
+    onPlayerStateChange({ data: YT.PlayerState.PAUSED });
+  });
+  assert.equal(await light.getAttribute('data-confidence'), 'none');
+  assert.equal(await page.evaluate(() => liveTempo.beatHint), null);
+});
+
+test('beat light respects reduced motion and saves an explicit preference', async (t) => {
+  const { page } = await setup(t, undefined, { reducedMotion: 'reduce' });
+  const light = page.locator('#beat-light');
+  assert.equal(await light.getAttribute('aria-pressed'), 'false');
+  await light.click();
+  assert.equal(await light.getAttribute('aria-pressed'), 'true');
+  await page.reload();
+  assert.equal(await light.getAttribute('aria-pressed'), 'true');
+  await light.click();
+  await page.reload();
+  assert.equal(await light.getAttribute('aria-pressed'), 'false');
 });
 
 function comment(id, text, likes, author = 'Listener') {

@@ -9,6 +9,41 @@
   const maxGapMs = 500;
   const tempoHintMs = 30000;
   const tempoHintFadeMs = 20000;
+  const phaseConfidence = 0.45;
+  const phaseWindowFraction = 0.25;
+  const phaseCorrection = 0.15;
+  const maxPhaseCorrectionMs = 15;
+  const beatFlashMs = 100;
+
+  function phaseDifference(time, reference, period) {
+    return ((time - reference + period / 2) % period + period) % period - period / 2;
+  }
+
+  function estimateBeatPhase(onsets, lastSample, bpm, now, hint, strength) {
+    const period = 60000 / bpm;
+    let total = 0;
+    let nearby = 0;
+    let weighted = 0;
+    let cosine = 0;
+    let sine = 0;
+    for (let index = 0; index < onsets.length; index++) {
+      const onset = onsets[index];
+      if (!(onset > 0)) continue;
+      const time = lastSample - (onsets.length - 1 - index) * sampleMs;
+      const distance = hint ? Math.abs(phaseDifference(time, hint.phase, period)) : 0;
+      const proximity = hint ? Math.max(0, 1 - distance / (period * phaseWindowFraction)) : 0;
+      total += onset;
+      if (hint && distance <= period * phaseWindowFraction) nearby += onset;
+      const weight = onset * (1 + 3 * strength * proximity);
+      const angle = 2 * Math.PI * phaseDifference(time, now, period) / period;
+      weighted += weight;
+      cosine += weight * Math.cos(angle);
+      sine += weight * Math.sin(angle);
+    }
+    if (!total || (hint && nearby / total < 0.2)
+      || Math.hypot(cosine, sine) / weighted < phaseConfidence) return null;
+    return now + Math.atan2(sine, cosine) * period / (2 * Math.PI);
+  }
 
   function estimateTempo(onsets, hintBpm, hintStrength) {
     const observed = onsets.filter((value) => value !== null);
@@ -81,6 +116,8 @@
       this.nextEstimate = 0;
       this.bpm = null;
       this.clearTempoHint();
+      this.beatHint = null;
+      this.audioBeat = null;
     }
 
     clearTempoHint() {
@@ -91,6 +128,26 @@
       if (!this.previous || !Number.isFinite(bpm) || bpm < 55 || bpm > 200) return;
       this.tempoHint = { bpm, expiresAt: this.previous.now + tempoHintMs };
       this.nextEstimate = 0;
+    }
+
+    setBeatTapHint(bpm, now) {
+      if (!Number.isFinite(now) || !Number.isFinite(bpm) || bpm < 55 || bpm > 200) return;
+      this.beatHint = { bpm, phase: now, expiresAt: now + tempoHintMs, confirmedAt: -Infinity };
+    }
+
+    beatAt(now) {
+      if (!Number.isFinite(now)) return null;
+      const hint = this.beatHint && now < this.beatHint.expiresAt ? this.beatHint : null;
+      const audio = this.audioBeat && this.audioBeat.bpm === this.bpm
+        && now - this.audioBeat.confirmedAt < confidenceHoldMs ? this.audioBeat : null;
+      const beat = hint || audio;
+      if (!beat) return null;
+      const period = 60000 / beat.bpm;
+      const offset = phaseDifference(now, beat.phase, period);
+      return {
+        lit: Math.abs(offset) < beatFlashMs / 2,
+        confidence: hint && now - hint.confirmedAt >= confidenceHoldMs ? 'uncertain' : 'estimated',
+      };
     }
 
     update(now, bands) {
@@ -132,6 +189,21 @@
         if (estimate !== null) {
           this.bpm = estimate;
           this.lastConfidentAt = now;
+          const lastSample = this.nextSample - sampleMs;
+          const phase = estimateBeatPhase(this.onsets, lastSample, estimate, now, null, 0);
+          if (phase !== null) this.audioBeat = { bpm: estimate, phase, confirmedAt: now };
+          const beatHint = this.beatHint;
+          if (beatHint && now < beatHint.expiresAt && Math.abs(estimate - beatHint.bpm) <= beatHint.bpm * 0.08) {
+            const strength = Math.min(1, Math.max(0, (beatHint.expiresAt - now) / tempoHintFadeMs));
+            const guided = estimateBeatPhase(this.onsets, lastSample, beatHint.bpm, now, beatHint, strength);
+            if (guided !== null) {
+              const difference = phaseDifference(guided, beatHint.phase, 60000 / beatHint.bpm);
+              if (Math.abs(difference) <= 60000 / beatHint.bpm * phaseWindowFraction) {
+                beatHint.phase += Math.max(-maxPhaseCorrectionMs, Math.min(maxPhaseCorrectionMs, difference * phaseCorrection));
+                beatHint.confirmedAt = now;
+              }
+            }
+          }
         }
       }
       if (now - this.lastOnset > 2000 || now - this.lastConfidentAt >= confidenceHoldMs) this.bpm = null;

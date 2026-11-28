@@ -935,7 +935,7 @@ body {
 
 .live-bpm {
   margin-left: auto;
-  margin-right: 7px;
+  margin-right: 0;
   border: 0;
   background: transparent;
   color: #a0a0a0;
@@ -948,6 +948,41 @@ body {
 .live-bpm:hover,
 .live-bpm:focus-visible {
   color: var(--accent-gold);
+}
+
+.beat-light {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 7px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: #d6b468;
+  cursor: pointer;
+  font: bold 10px var(--font-mono);
+}
+
+.beat-lamp {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #6f6b4d;
+  border-radius: 50%;
+  background: #302f20;
+}
+
+.beat-light.lit .beat-lamp {
+  background: #ffe77a;
+  border-color: #fff3af;
+  box-shadow: 0 0 5px #ffcf46;
+}
+
+.beat-uncertain {
+  visibility: hidden;
+}
+
+.beat-light[data-confidence="uncertain"] .beat-uncertain {
+  visibility: visible;
 }
 
 .locations-panel {
