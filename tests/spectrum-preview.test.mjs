@@ -138,6 +138,46 @@ test('drawn spectra respond to levels perpendicular to the line and expire after
   assert.equal(result.remaining, 0);
 });
 
+test('completed drawn spectra fade during the last second while active strokes stay visible', async (t) => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(new URL('../visualizer/preview.html', import.meta.url).href);
+  const result = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 100;
+    const renderer = new ErAudioDrawnSpectrum(canvas, canvas);
+    const alphas = [];
+    const drawing = {
+      save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {},
+      stroke() { alphas.push(this.globalAlpha); },
+    };
+    const stroke = {
+      points: [{ x: 0.1, y: 0.5 }, { x: 0.9, y: 0.5 }],
+      expiresAt: Infinity,
+    };
+    renderer.strokes.push(stroke);
+    const at = (now) => {
+      alphas.length = 0;
+      renderer.draw(drawing, new Float32Array([1]), now, 1);
+      return [...alphas];
+    };
+    const active = at(6000);
+    stroke.expiresAt = 5000;
+    const full = at(4000);
+    const halfway = at(4500);
+    const almostGone = at(4999);
+    const expired = at(5000);
+    return { active, full, halfway, almostGone, expired };
+  });
+  assert.deepEqual(result.active, [0.9, 0.9]);
+  assert.deepEqual(result.full, [0.9, 0.9]);
+  assert.deepEqual(result.halfway, [0.45, 0.45]);
+  assert.ok(result.almostGone.every((alpha) => alpha > 0 && alpha < 0.001));
+  assert.equal(result.almostGone.length, 2);
+  assert.deepEqual(result.expired, []);
+});
+
 test('minimum bands show whole lights at varying levels and sizes while maximum bands stay smooth', async (t) => {
   const browser = await chromium.launch();
   t.after(() => browser.close());

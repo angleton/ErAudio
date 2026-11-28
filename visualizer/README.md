@@ -32,7 +32,7 @@ In [spectrum.js](./spectrum.js):
 
 The simulation in [preview.js](./preview.js) can also be edited to try different patterns; it is not the player's audio analyzer.
 
-In [drawn-spectrum.js](./drawn-spectrum.js), `lifetimeMs` controls how long a completed line stays visible, `heightFraction` controls the height of its levels relative to the canvas, and `pointSpacing`, `maxPoints`, `maxBands`, and `maxStrokes` bound drawing detail and work. Change the baseline's `strokeStyle` or the per-level `hsl(...)` color to customize their appearance. Bass maps to the beginning of the line and treble to the end. Levels extend perpendicular to the direction drawn: left-to-right rises upward. Coordinates are normalized so lines follow canvas resizing. Each line uses the shared renderer's current band levels; paused audio holds those levels, and stopping sharing clears the drawings.
+In [drawn-spectrum.js](./drawn-spectrum.js), `lifetimeMs` controls how long a completed line stays visible, `fadeMs` controls its fade-out at the end of that lifetime, `heightFraction` controls the height of its levels relative to the canvas, and `pointSpacing`, `maxPoints`, `maxBands`, and `maxStrokes` bound drawing detail and work. Change the baseline's `strokeStyle` or the per-level `hsl(...)` color to customize their appearance. Bass maps to the beginning of the line and treble to the end. Levels extend perpendicular to the direction drawn: left-to-right rises upward. Coordinates are normalized so lines follow canvas resizing. Each line uses the shared renderer's current band levels; paused audio holds those levels, and stopping sharing clears the drawings.
 
 ## How the renderer is called
 

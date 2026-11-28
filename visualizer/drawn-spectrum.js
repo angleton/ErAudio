@@ -1,5 +1,6 @@
 (() => {
   const lifetimeMs = 5000;
+  const fadeMs = 1000;
   const maxStrokes = 32;
   const maxPoints = 1024;
   const pointSpacing = 3;
@@ -128,7 +129,7 @@
         if (!length) continue;
 
         drawing.save();
-        drawing.globalAlpha = 0.9;
+        drawing.globalAlpha = 0.9 * Math.min(1, (stroke.expiresAt - now) / fadeMs);
         drawing.strokeStyle = '#c9fcff';
         drawing.lineWidth = ratio;
         drawing.beginPath();
